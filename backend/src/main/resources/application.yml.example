@@ -1,0 +1,59 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: ember-backend
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/ember}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:changeme}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+
+ember:
+  jwt:
+    # HS256 secret, base64 or plain — must be >= 32 bytes. Override in prod via env var.
+    secret: ${JWT_SECRET:change-this-development-only-secret-value-please-0000}
+    access-token-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:60}
+    issuer: ember-backend
+
+  storage:
+    r2:
+      endpoint: ${R2_ENDPOINT:}
+      region: auto
+      bucket: ${R2_BUCKET:ember-photos}
+      access-key-id: ${R2_ACCESS_KEY_ID:}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+      # Public base URL the app/widget can fetch photos from directly (r2.dev subdomain or custom domain).
+      public-base-url: ${R2_PUBLIC_BASE_URL:}
+
+  fcm:
+    # Path to the Firebase service-account JSON credentials file.
+    credentials-path: ${FCM_CREDENTIALS_PATH:}
+    enabled: ${FCM_ENABLED:true}
+
+  play-billing:
+    package-name: ${PLAY_PACKAGE_NAME:com.ember.app}
+    service-account-credentials-path: ${PLAY_SERVICE_ACCOUNT_CREDENTIALS_PATH:}
+    enabled: ${PLAY_BILLING_ENABLED:true}
+
+logging:
+  level:
+    com.ember.backend: ${EMBER_LOG_LEVEL:INFO}
