@@ -1,0 +1,17 @@
+package com.ember.backend.exception
+
+import org.springframework.http.HttpStatus
+
+open class ApiException(val status: HttpStatus, message: String) : RuntimeException(message)
+
+class EmailAlreadyRegisteredException :
+    ApiException(HttpStatus.CONFLICT, "An account with this email already exists")
+
+class InvalidCredentialsException :
+    ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password")
+
+class ResourceNotFoundException(message: String) : ApiException(HttpStatus.NOT_FOUND, message)
+
+class InvalidFriendRequestException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
+
+class SubscriptionVerificationException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
