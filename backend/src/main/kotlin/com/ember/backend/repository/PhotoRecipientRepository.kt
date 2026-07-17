@@ -37,6 +37,25 @@ interface PhotoRecipientRepository : JpaRepository<PhotoRecipient, UUID> {
 
     @Query(
         value = """
+            select
+                p.sender_id            as senderId,
+                u.display_name         as senderDisplayName,
+                p.storage_key          as storageKey,
+                p.content_type         as contentType,
+                p.created_at           as createdAt
+            from photo_recipients pr
+            join photos p on p.id = pr.photo_id
+            join users u on u.id = p.sender_id
+            where pr.recipient_id = :recipientId
+            order by p.created_at desc
+            limit :limit
+        """,
+        nativeQuery = true,
+    )
+    fun findRecentReceived(@Param("recipientId") recipientId: UUID, @Param("limit") limit: Int): List<FeedRow>
+
+    @Query(
+        value = """
             select p.created_at as createdAt
             from photo_recipients pr
             join photos p on p.id = pr.photo_id

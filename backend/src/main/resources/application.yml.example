@@ -56,4 +56,6 @@ ember:
 
 logging:
   level:
-    com.ember.backend: ${EMBER_LOG_LEVEL:INFO}
+    com.ember.backend: ${EMBER_LOG_LEVEL:DEBUG}
+    org.hibernate.SQL: ${SQL_LOG_LEVEL:WARN}
+    org.hibernate.orm.jdbc.bind: ${SQL_LOG_LEVEL:WARN}

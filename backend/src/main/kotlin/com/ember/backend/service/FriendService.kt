@@ -1,5 +1,7 @@
 package com.ember.backend.service
 
+import com.ember.backend.dto.FriendRequestRequest
+import com.ember.backend.dto.FriendSearchResult
 import com.ember.backend.dto.FriendSummary
 import com.ember.backend.dto.PendingFriendRequest
 import com.ember.backend.exception.InvalidFriendRequestException
@@ -10,10 +12,14 @@ import com.ember.backend.model.User
 import com.ember.backend.repository.FriendshipRepository
 import com.ember.backend.repository.PhotoRecipientRepository
 import com.ember.backend.repository.UserRepository
+import org.slf4j.LoggerFactory
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.util.UUID
+
+private const val SEARCH_RESULT_LIMIT = 20
 
 @Service
 class FriendService(
@@ -21,6 +27,7 @@ class FriendService(
     private val userRepository: UserRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     fun getFriends(userId: UUID): List<FriendSummary> {
         val friendships = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
@@ -33,6 +40,7 @@ class FriendService(
                 friendshipId = friendship.id,
                 friendId = friend.id,
                 displayName = friend.displayName,
+                username = friend.username,
                 email = friend.email,
                 pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
                 pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
@@ -50,17 +58,38 @@ class FriendService(
                     friendshipId = it.id,
                     requesterId = it.requester.id,
                     displayName = it.requester.displayName,
+                    username = it.requester.username,
                     email = it.requester.email,
                     createdAt = it.createdAt,
                 )
             }
 
+    fun searchUsers(userId: UUID, query: String): List<FriendSearchResult> {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return emptyList()
+
+        return userRepository.search(userId, trimmed, PageRequest.of(0, SEARCH_RESULT_LIMIT)).map { user ->
+            FriendSearchResult(
+                userId = user.id,
+                displayName = user.displayName,
+                username = user.username,
+                requested = friendshipRepository.findBetween(userId, user.id) != null,
+            )
+        }
+    }
+
     @Transactional
-    fun sendFriendRequest(userId: UUID, targetEmail: String): PendingFriendRequest {
+    fun sendFriendRequest(userId: UUID, request: FriendRequestRequest): PendingFriendRequest {
         val requester = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found") }
-        val addressee = userRepository.findByEmail(targetEmail.trim().lowercase())
-            ?: throw ResourceNotFoundException("No user found with that email")
+
+        val addressee = when {
+            request.targetUserId != null -> userRepository.findById(request.targetUserId)
+                .orElseThrow { ResourceNotFoundException("User not found") }
+            !request.email.isNullOrBlank() -> userRepository.findByEmail(request.email.trim().lowercase())
+                ?: throw ResourceNotFoundException("No user found with that email")
+            else -> throw InvalidFriendRequestException("Either targetUserId or email is required")
+        }
 
         if (addressee.id == requester.id) {
             throw InvalidFriendRequestException("You cannot send a friend request to yourself")
@@ -72,10 +101,15 @@ class FriendService(
         val friendship = friendshipRepository.save(
             Friendship(requester = requester, addressee = addressee)
         )
+        logger.info(
+            "Friend request sent: from userId={} ({}) to userId={} ({})",
+            requester.id, requester.email, addressee.id, addressee.email,
+        )
         return PendingFriendRequest(
             friendshipId = friendship.id,
             requesterId = requester.id,
             displayName = requester.displayName,
+            username = requester.username,
             email = requester.email,
             createdAt = friendship.createdAt,
         )
@@ -96,11 +130,16 @@ class FriendService(
         friendship.status = FriendshipStatus.ACCEPTED
         friendship.respondedAt = Instant.now()
         friendshipRepository.save(friendship)
+        logger.info(
+            "Friend request accepted: userId={} ({}) and userId={} ({}) are now friends",
+            friendship.requester.id, friendship.requester.email, friendship.addressee.id, friendship.addressee.email,
+        )
 
         return FriendSummary(
             friendshipId = friendship.id,
             friendId = friendship.requester.id,
             displayName = friendship.requester.displayName,
+            username = friendship.requester.username,
             email = friendship.requester.email,
             pinnedByMe = friendship.addresseePinned,
             pinnedByThem = friendship.requesterPinned,
@@ -131,6 +170,7 @@ class FriendService(
             friendshipId = friendship.id,
             friendId = friend.id,
             displayName = friend.displayName,
+            username = friend.username,
             email = friend.email,
             pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
             pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,

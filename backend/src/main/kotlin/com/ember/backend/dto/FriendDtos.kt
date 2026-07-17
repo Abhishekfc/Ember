@@ -1,13 +1,12 @@
 package com.ember.backend.dto
 
-import jakarta.validation.constraints.Email
-import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import java.time.Instant
 import java.util.UUID
 
 data class FriendRequestRequest(
-    @field:Email @field:NotBlank val email: String,
+    val email: String? = null,
+    val targetUserId: UUID? = null,
 )
 
 data class FriendAcceptRequest(
@@ -18,6 +17,7 @@ data class FriendSummary(
     val friendshipId: UUID,
     val friendId: UUID,
     val displayName: String,
+    val username: String,
     val email: String,
     val pinnedByMe: Boolean,
     val pinnedByThem: Boolean,
@@ -29,6 +29,14 @@ data class PendingFriendRequest(
     val friendshipId: UUID,
     val requesterId: UUID,
     val displayName: String,
+    val username: String,
     val email: String,
     val createdAt: Instant,
+)
+
+data class FriendSearchResult(
+    val userId: UUID,
+    val displayName: String,
+    val username: String,
+    val requested: Boolean,
 )
