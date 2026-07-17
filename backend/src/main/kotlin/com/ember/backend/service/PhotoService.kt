@@ -11,6 +11,7 @@ import com.ember.backend.repository.FriendshipRepository
 import com.ember.backend.repository.PhotoRecipientRepository
 import com.ember.backend.repository.PhotoRepository
 import com.ember.backend.repository.UserRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
@@ -28,6 +29,7 @@ class PhotoService(
     private val r2StorageService: R2StorageService,
     private val pushNotificationService: PushNotificationService,
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     @Transactional
     fun upload(senderId: UUID, file: MultipartFile, recipientIds: List<UUID>): PhotoUploadResponse {
@@ -72,6 +74,10 @@ class PhotoService(
         pushNotificationService.notifyNewPhoto(
             senderDisplayName = sender.displayName,
             recipientUserIds = recipients.map { it.recipient.id },
+        )
+        logger.info(
+            "Photo uploaded: photoId={} sender={} ({}) recipients={} sizeBytes={}",
+            photo.id, sender.id, sender.email, recipientIds, file.size,
         )
 
         return PhotoUploadResponse(

@@ -7,6 +7,9 @@ open class ApiException(val status: HttpStatus, message: String) : RuntimeExcept
 class EmailAlreadyRegisteredException :
     ApiException(HttpStatus.CONFLICT, "An account with this email already exists")
 
+class UsernameAlreadyTakenException :
+    ApiException(HttpStatus.CONFLICT, "That username is already taken")
+
 class InvalidCredentialsException :
     ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password")
 
