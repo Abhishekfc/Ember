@@ -126,7 +126,12 @@ fun LoginScreen(
             onValueChange = viewModel::onPasswordChange,
             placeholder = "••••••••",
             icon = Icons.Filled.Lock,
-            keyboardType = KeyboardType.Password,
+            // Deliberately KeyboardType.Text, not .Password: masking still comes from
+            // PasswordVisualTransformation below, but .Password sets the underlying InputType's
+            // password variation flag, which is what triggers Google Password Manager's "Save
+            // password?" prompt on every login — the manifest importantForAutofill exclusion
+            // didn't suppress it in practice on this device, so this is the actual working fix.
+            keyboardType = KeyboardType.Text,
             visualTransformation = PasswordVisualTransformation(),
             imeAction = ImeAction.Done,
         )

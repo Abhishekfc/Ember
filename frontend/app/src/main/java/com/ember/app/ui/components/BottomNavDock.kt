@@ -75,7 +75,7 @@ fun BottomNavDock(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
+            .padding(start = 24.dp, end = 24.dp, bottom = 26.dp),
     ) {
         Row(
             modifier = Modifier

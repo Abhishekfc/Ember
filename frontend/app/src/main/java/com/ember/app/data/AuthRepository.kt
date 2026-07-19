@@ -25,6 +25,7 @@ class AuthRepository(
         val body = response.body()
         return if (response.isSuccessful && body != null) {
             tokenStore.save(body.token)
+            tokenStore.saveDisplayName(body.displayName)
             Result.success(body)
         } else {
             val message = response.errorBody()?.string()?.let {

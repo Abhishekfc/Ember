@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,7 +45,6 @@ import com.ember.app.ui.theme.PublicSansFontFamily
 @Composable
 fun FindPeopleScreen(
     viewModel: FindPeopleViewModel,
-    onBack: () -> Unit,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -62,26 +60,12 @@ fun FindPeopleScreen(
             .background(colors.background.asBrush(screenSize))
             .padding(top = 60.dp, start = 20.dp, end = 20.dp, bottom = 20.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onBack),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.ChevronLeft, contentDescription = "Back", tint = colors.mutedDim, modifier = Modifier.size(18.dp))
-            Text(
-                text = "Friends",
-                fontFamily = PublicSansFontFamily,
-                fontSize = 12.5.sp,
-                color = colors.mutedDim,
-                modifier = Modifier.padding(start = 6.dp),
-            )
-        }
-
         Text(
             text = "Find people",
             fontFamily = typography.display,
             fontSize = 22.sp,
             color = colors.cream,
-            modifier = Modifier.padding(top = 18.dp, bottom = 16.dp),
+            modifier = Modifier.padding(bottom = 16.dp),
         )
 
         Row(
