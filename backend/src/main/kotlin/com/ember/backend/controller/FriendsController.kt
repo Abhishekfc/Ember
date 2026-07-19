@@ -60,4 +60,12 @@ class FriendsController(private val friendService: FriendService) {
         @AuthenticationPrincipal me: AuthenticatedUser,
         @PathVariable friendshipId: UUID,
     ): FriendSummary = friendService.setPinned(me.id, friendshipId, pinned = false)
+
+    @DeleteMapping("/{friendshipId}")
+    fun removeFriend(
+        @AuthenticationPrincipal me: AuthenticatedUser,
+        @PathVariable friendshipId: UUID,
+    ) {
+        friendService.removeFriend(me.id, friendshipId)
+    }
 }

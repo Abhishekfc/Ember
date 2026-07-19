@@ -23,6 +23,9 @@ class User(
     @Column(name = "display_name", nullable = false)
     var displayName: String,
 
+    @Column(name = "profile_photo_storage_key")
+    var profilePhotoStorageKey: String? = null,
+
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: Instant = Instant.now(),
 )

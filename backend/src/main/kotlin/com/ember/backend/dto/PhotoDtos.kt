@@ -10,10 +10,15 @@ data class PhotoUploadResponse(
     val recipientIds: List<UUID>,
 )
 
+data class PhotoEntry(
+    val photoId: UUID,
+    val photoUrl: String,
+    val createdAt: Instant,
+)
+
 data class FeedItem(
     val friendId: UUID,
     val displayName: String,
-    val photoUrl: String,
-    val createdAt: Instant,
+    val photos: List<PhotoEntry>,
     val streak: Int,
 )

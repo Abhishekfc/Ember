@@ -1,5 +1,6 @@
 package com.ember.app.ui.components
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -89,6 +90,7 @@ fun GlowPhotoTile(
                 contentDescription = name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+                onError = { Log.w("GlowPhotoTile", "Failed to load $photoUrl", it.result.throwable) },
             )
         }
 

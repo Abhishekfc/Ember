@@ -19,6 +19,7 @@ data class FriendSummary(
     val displayName: String,
     val username: String,
     val email: String,
+    val profilePhotoUrl: String?,
     val pinnedByMe: Boolean,
     val pinnedByThem: Boolean,
     val lastActivityAt: Instant?,

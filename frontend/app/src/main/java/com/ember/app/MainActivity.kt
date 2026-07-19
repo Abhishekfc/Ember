@@ -1,15 +1,22 @@
 package com.ember.app
 
 import android.os.Bundle
+import android.view.autofill.AutofillManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewmodel.initializer
@@ -17,29 +24,43 @@ import com.ember.app.data.ActivityRepository
 import com.ember.app.data.AuthRepository
 import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
+import com.ember.app.data.UserRepository
+import com.ember.app.data.local.SeenPhotoStore
 import com.ember.app.data.local.ThemePreferenceStore
 import com.ember.app.data.remote.NetworkModule
+import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.ui.activity.ActivityScreen
 import com.ember.app.ui.activity.ActivityViewModel
 import com.ember.app.ui.auth.LoginScreen
 import com.ember.app.ui.auth.LoginViewModel
+import com.ember.app.ui.camera.CameraScreen
+import com.ember.app.ui.camera.CameraViewModel
+import com.ember.app.ui.camera.RecipientPickerScreen
+import com.ember.app.ui.camera.RecipientPickerViewModel
 import com.ember.app.ui.components.NavDestination
 import com.ember.app.ui.friends.FindPeopleScreen
 import com.ember.app.ui.friends.FindPeopleViewModel
+import com.ember.app.ui.friends.FriendProfileScreen
+import com.ember.app.ui.friends.FriendProfileViewModel
 import com.ember.app.ui.friends.FriendsScreen
 import com.ember.app.ui.friends.FriendsViewModel
 import com.ember.app.ui.home.HomeScreen
 import com.ember.app.ui.home.HomeViewModel
+import com.ember.app.ui.profile.MyProfileScreen
+import com.ember.app.ui.profile.MyProfileViewModel
 import com.ember.app.ui.settings.SettingsScreen
 import com.ember.app.ui.theme.EmberAppTheme
+import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.ThemeScreen
 import com.ember.app.ui.theme.ThemeViewModel
+import com.ember.app.widget.WidgetPhotoSync
 import kotlinx.coroutines.launch
 
-/** Screens reached from within a tab (Settings -> Theme, Friends -> Find People) rather than
- * from the bottom nav directly. Kept separate from the active tab so back navigation can pop
- * just the nested screen without losing which tab you were on. */
-private enum class NestedScreen { THEME, FIND_PEOPLE }
+/** Screens reached from within a tab (Settings -> Theme, Friends -> Find People / Friend
+ * Profile) or from the raised center nav button (Camera) rather than from the bottom nav tabs
+ * directly. Kept separate from the active tab so back navigation can pop just the nested
+ * screen without losing which tab you were on. */
+private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, CAMERA, PROFILE }
 
 class MainActivity : ComponentActivity() {
 
@@ -48,10 +69,20 @@ class MainActivity : ComponentActivity() {
     private val photoRepository by lazy { PhotoRepository(networkModule.api) }
     private val friendRepository by lazy { FriendRepository(networkModule.api) }
     private val activityRepository by lazy { ActivityRepository(networkModule.api) }
+    private val userRepository by lazy { UserRepository(networkModule.api) }
     private val themePreferenceStore by lazy { ThemePreferenceStore(applicationContext) }
+    private val seenPhotoStore by lazy { SeenPhotoStore(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // KeyboardType.Text on the password field plus the manifest's importantForAutofill
+        // exclusion still weren't enough to stop Google Password Manager's "Save password?"
+        // prompt on every login — this is the actual API for opting an app out of Autofill
+        // entirely. Shows a one-time system confirmation the first time; harmless no-op after
+        // the user accepts it (or on every later launch once it's already disabled).
+        getSystemService(AutofillManager::class.java)?.let { autofillManager ->
+            if (autofillManager.isEnabled) autofillManager.disableAutofillServices()
+        }
         setContent {
             val themeViewModel: ThemeViewModel = viewModel(
                 factory = viewModelFactory {
@@ -68,11 +99,47 @@ class MainActivity : ComponentActivity() {
                     },
                 )
                 var authenticated by remember { mutableStateOf(false) }
+                // Distinct from `authenticated`: this only tracks whether we've finished reading
+                // the saved token yet, so a returning user with a valid session doesn't flash
+                // the login screen for a frame while that DataStore read is in flight.
+                var sessionChecked by remember { mutableStateOf(false) }
                 var activeTab by remember { mutableStateOf(NavDestination.HOME) }
                 var nestedScreen by remember { mutableStateOf<NestedScreen?>(null) }
+                var selectedFriend by remember { mutableStateOf<FriendSummaryDto?>(null) }
                 val coroutineScope = rememberCoroutineScope()
 
-                if (!authenticated) {
+                LaunchedEffect(Unit) {
+                    authenticated = networkModule.tokenStore.currentToken() != null
+                    sessionChecked = true
+                }
+
+                // Shared by the manual "Sign out" button in Settings and by the automatic
+                // handler below for an expired/invalid token (a 401 on an authenticated
+                // request) — both need to land the user back on a clean login screen.
+                val onSignOut = {
+                    coroutineScope.launch { networkModule.tokenStore.clear() }
+                    // All per-account ViewModels (home feed, friends list, login form, etc.)
+                    // live in the Activity's ViewModelStore and are normally retrieved by
+                    // class/key regardless of how many times `authenticated` flips — without
+                    // clearing here, signing into a different account would keep showing the
+                    // previous account's cached feed, friends, and stale form fields.
+                    viewModelStore.clear()
+                    authenticated = false
+                    activeTab = NavDestination.HOME
+                    nestedScreen = null
+                    selectedFriend = null
+                }
+
+                // The backend issues short-lived JWTs with no refresh flow yet, so a session
+                // will eventually 401 on its own — without this, the app would sit on a
+                // permanently broken "couldn't load" error instead of returning to login.
+                LaunchedEffect(Unit) {
+                    networkModule.sessionExpired.collect { onSignOut() }
+                }
+
+                if (!sessionChecked) {
+                    Box(modifier = Modifier.fillMaxSize().background(EmberTheme.colors.background.asBrush(Size.Zero)))
+                } else if (!authenticated) {
                     LoginScreen(viewModel = loginViewModel, onAuthenticated = { authenticated = true })
                 } else {
                     // Swiping/pressing back should always retrace the last navigation step
@@ -90,22 +157,94 @@ class MainActivity : ComponentActivity() {
                         activeTab = destination
                         nestedScreen = null
                     }
-                    val onCameraClick = { Toast.makeText(this, "Camera — coming soon", Toast.LENGTH_SHORT).show() }
+                    val onCameraClick = { nestedScreen = NestedScreen.CAMERA }
                     val onComingSoon: (String) -> Unit = { label ->
                         Toast.makeText(this, "$label — coming soon", Toast.LENGTH_SHORT).show()
                     }
-                    val onSignOut = {
-                        coroutineScope.launch { networkModule.tokenStore.clear() }
-                        authenticated = false
-                        activeTab = NavDestination.HOME
-                        nestedScreen = null
-                    }
+
+                    // Hoisted (rather than declared inside their respective tab branches below)
+                    // so they survive navigating into nested screens and back, and so they can
+                    // be refreshed from elsewhere: FriendsViewModel after a friend is removed,
+                    // HomeViewModel after a photo is sent (streaks can change on send, not just
+                    // receive).
+                    val friendsViewModel: FriendsViewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer { FriendsViewModel(friendRepository) }
+                        },
+                    )
+                    val homeViewModel: HomeViewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer {
+                                HomeViewModel(
+                                    photoRepository,
+                                    networkModule.tokenStore,
+                                    userRepository,
+                                    seenPhotoStore,
+                                    onFeedLoaded = { items ->
+                                        coroutineScope.launch { WidgetPhotoSync.sync(applicationContext, items) }
+                                    },
+                                )
+                            }
+                        },
+                    )
 
                     when {
-                        nestedScreen == NestedScreen.THEME -> ThemeScreen(
-                            viewModel = themeViewModel,
-                            onBack = { nestedScreen = null },
-                        )
+                        nestedScreen == NestedScreen.CAMERA -> {
+                            val cameraViewModel: CameraViewModel = viewModel(
+                                factory = viewModelFactory {
+                                    initializer { CameraViewModel(friendRepository, photoRepository) }
+                                },
+                            )
+                            var showRecipientPicker by remember { mutableStateOf(false) }
+                            BackHandler(enabled = showRecipientPicker) { showRecipientPicker = false }
+
+                            if (showRecipientPicker) {
+                                val recipientPickerViewModel: RecipientPickerViewModel = viewModel(
+                                    factory = viewModelFactory {
+                                        initializer {
+                                            RecipientPickerViewModel(friendRepository, cameraViewModel.selectedRecipientIds)
+                                        }
+                                    },
+                                )
+                                RecipientPickerScreen(
+                                    viewModel = recipientPickerViewModel,
+                                    onClose = { showRecipientPicker = false },
+                                    onConfirm = { ids ->
+                                        cameraViewModel.setSelectedRecipients(ids)
+                                        showRecipientPicker = false
+                                    },
+                                )
+                            } else {
+                                CameraScreen(
+                                    viewModel = cameraViewModel,
+                                    onClose = { nestedScreen = null },
+                                    onOpenRecipientPicker = { showRecipientPicker = true },
+                                    onSent = {
+                                        nestedScreen = null
+                                        homeViewModel.loadFeed()
+                                    },
+                                )
+                            }
+                        }
+
+                        nestedScreen == NestedScreen.PROFILE -> {
+                            val myProfileViewModel: MyProfileViewModel = viewModel(
+                                factory = viewModelFactory {
+                                    initializer {
+                                        MyProfileViewModel(
+                                            userRepository,
+                                            onProfileUpdated = { profile ->
+                                                coroutineScope.launch { networkModule.tokenStore.saveDisplayName(profile.displayName) }
+                                                homeViewModel.applyProfileUpdate(profile)
+                                            },
+                                        )
+                                    }
+                                },
+                            )
+                            MyProfileScreen(viewModel = myProfileViewModel)
+                        }
+
+                        nestedScreen == NestedScreen.THEME -> ThemeScreen(viewModel = themeViewModel)
 
                         nestedScreen == NestedScreen.FIND_PEOPLE -> {
                             val findPeopleViewModel: FindPeopleViewModel = viewModel(
@@ -113,9 +252,25 @@ class MainActivity : ComponentActivity() {
                                     initializer { FindPeopleViewModel(friendRepository) }
                                 },
                             )
-                            FindPeopleScreen(
-                                viewModel = findPeopleViewModel,
-                                onBack = { nestedScreen = null },
+                            FindPeopleScreen(viewModel = findPeopleViewModel)
+                        }
+
+                        nestedScreen == NestedScreen.FRIEND_PROFILE && selectedFriend != null -> {
+                            val friend = selectedFriend!!
+                            val friendProfileViewModel: FriendProfileViewModel = viewModel(
+                                key = friend.friendshipId,
+                                factory = viewModelFactory {
+                                    initializer { FriendProfileViewModel(friendRepository, friend) }
+                                },
+                            )
+                            FriendProfileScreen(
+                                viewModel = friendProfileViewModel,
+                                onSendPhotoClick = onCameraClick,
+                                onRemoved = {
+                                    nestedScreen = null
+                                    selectedFriend = null
+                                    friendsViewModel.loadFriends()
+                                },
                             )
                         }
 
@@ -141,32 +296,24 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        activeTab == NavDestination.FRIENDS -> {
-                            val friendsViewModel: FriendsViewModel = viewModel(
-                                factory = viewModelFactory {
-                                    initializer { FriendsViewModel(friendRepository) }
-                                },
-                            )
-                            FriendsScreen(
-                                viewModel = friendsViewModel,
-                                onNavigate = onNavigate,
-                                onCameraClick = onCameraClick,
-                                onFindPeopleClick = { nestedScreen = NestedScreen.FIND_PEOPLE },
-                            )
-                        }
+                        activeTab == NavDestination.FRIENDS -> FriendsScreen(
+                            viewModel = friendsViewModel,
+                            onNavigate = onNavigate,
+                            onCameraClick = onCameraClick,
+                            onFindPeopleClick = { nestedScreen = NestedScreen.FIND_PEOPLE },
+                            onFriendClick = { friend ->
+                                selectedFriend = friend
+                                nestedScreen = NestedScreen.FRIEND_PROFILE
+                            },
+                        )
 
-                        else -> {
-                            val homeViewModel: HomeViewModel = viewModel(
-                                factory = viewModelFactory {
-                                    initializer { HomeViewModel(photoRepository) }
-                                },
-                            )
-                            HomeScreen(
-                                viewModel = homeViewModel,
-                                onNavigate = onNavigate,
-                                onCameraClick = onCameraClick,
-                            )
-                        }
+                        else -> HomeScreen(
+                            viewModel = homeViewModel,
+                            onNavigate = onNavigate,
+                            onCameraClick = onCameraClick,
+                            onAddFriendClick = { nestedScreen = NestedScreen.FIND_PEOPLE },
+                            onProfileClick = { nestedScreen = NestedScreen.PROFILE },
+                        )
                     }
                 }
             }

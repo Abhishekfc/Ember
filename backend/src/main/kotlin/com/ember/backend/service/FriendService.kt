@@ -26,11 +26,13 @@ class FriendService(
     private val friendshipRepository: FriendshipRepository,
     private val userRepository: UserRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
+    private val r2StorageService: R2StorageService,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     fun getFriends(userId: UUID): List<FriendSummary> {
         val friendships = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
+
         return friendships.map { friendship ->
             val isRequester = friendship.requester.id == userId
             val friend = if (isRequester) friendship.addressee else friendship.requester
@@ -42,6 +44,7 @@ class FriendService(
                 displayName = friend.displayName,
                 username = friend.username,
                 email = friend.email,
+                profilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
                 pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
                 pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
                 lastActivityAt = exchangeTimestamps.maxOrNull(),
@@ -141,6 +144,7 @@ class FriendService(
             displayName = friendship.requester.displayName,
             username = friendship.requester.username,
             email = friendship.requester.email,
+            profilePhotoUrl = friendship.requester.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
             pinnedByMe = friendship.addresseePinned,
             pinnedByThem = friendship.requesterPinned,
             lastActivityAt = null,
@@ -172,10 +176,29 @@ class FriendService(
             displayName = friend.displayName,
             username = friend.username,
             email = friend.email,
+            profilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
             pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
             pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
             lastActivityAt = null,
             streak = 0,
+        )
+    }
+
+    @Transactional
+    fun removeFriend(userId: UUID, friendshipId: UUID) {
+        val friendship = friendshipRepository.findById(friendshipId)
+            .orElseThrow { ResourceNotFoundException("Friendship not found") }
+
+        val isRequester = friendship.requester.id == userId
+        val isAddressee = friendship.addressee.id == userId
+        if (!isRequester && !isAddressee) {
+            throw InvalidFriendRequestException("You are not part of this friendship")
+        }
+
+        friendshipRepository.delete(friendship)
+        logger.info(
+            "Friendship removed: userId={} removed friendshipId={} (with userId={})",
+            userId, friendship.id, if (isRequester) friendship.addressee.id else friendship.requester.id,
         )
     }
 }

@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,7 +37,6 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun ThemeScreen(
     viewModel: ThemeViewModel,
-    onBack: () -> Unit,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -50,24 +48,7 @@ fun ThemeScreen(
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize)),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 60.dp, start = 20.dp, end = 20.dp)
-                .clickable(onClick = onBack),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.ChevronLeft, contentDescription = "Back", tint = colors.mutedDim, modifier = Modifier.size(18.dp))
-            Text(
-                text = "Settings",
-                fontFamily = PublicSansFontFamily,
-                fontSize = 12.5.sp,
-                color = colors.mutedDim,
-                modifier = Modifier.padding(start = 6.dp),
-            )
-        }
-
-        Column(modifier = Modifier.padding(top = 18.dp, start = 20.dp, end = 20.dp)) {
+        Column(modifier = Modifier.padding(top = 60.dp, start = 20.dp, end = 20.dp)) {
             Text(
                 text = "Theme",
                 fontFamily = typography.display,

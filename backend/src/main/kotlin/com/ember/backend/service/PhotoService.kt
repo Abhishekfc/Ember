@@ -1,6 +1,7 @@
 package com.ember.backend.service
 
 import com.ember.backend.dto.FeedItem
+import com.ember.backend.dto.PhotoEntry
 import com.ember.backend.dto.PhotoUploadResponse
 import com.ember.backend.exception.InvalidFriendRequestException
 import com.ember.backend.exception.ResourceNotFoundException
@@ -16,9 +17,11 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 private val ALLOWED_CONTENT_TYPES = setOf("image/jpeg", "image/png", "image/webp")
+private const val FEED_WINDOW_HOURS = 24L
 
 @Service
 class PhotoService(
@@ -88,15 +91,29 @@ class PhotoService(
         )
     }
 
-    fun getFeed(userId: UUID): List<FeedItem> =
-        photoRecipientRepository.findLatestPhotoPerSender(userId).map { row ->
-            val exchangeTimestamps = photoRecipientRepository.findExchangeTimestamps(userId, row.senderId)
+    /** Every photo a friend sent in the last 24 hours, Snapchat-style — not just their latest
+     * one. Photos older than the window simply stop appearing here (consistent with the
+     * deliberate no-Memories/no-resurfacing-old-photos stance); nothing is deleted from storage. */
+    fun getFeed(userId: UUID): List<FeedItem> {
+        val acceptedFriendIds = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
+            .map { if (it.requester.id == userId) it.addressee.id else it.requester.id }
+            .toSet()
+
+        val since = Instant.now().minus(FEED_WINDOW_HOURS, ChronoUnit.HOURS)
+        val rows = photoRecipientRepository.findRecentPhotos(userId, since)
+            .filter { it.senderId in acceptedFriendIds }
+
+        return rows.groupBy { it.senderId }.map { (senderId, senderRows) ->
+            val exchangeTimestamps = photoRecipientRepository.findExchangeTimestamps(userId, senderId)
+            val photos = senderRows.sortedBy { it.createdAt }.map {
+                PhotoEntry(photoId = it.photoId, photoUrl = r2StorageService.publicUrl(it.storageKey), createdAt = it.createdAt)
+            }
             FeedItem(
-                friendId = row.senderId,
-                displayName = row.senderDisplayName,
-                photoUrl = r2StorageService.publicUrl(row.storageKey),
-                createdAt = row.createdAt,
+                friendId = senderId,
+                displayName = senderRows.first().senderDisplayName,
+                photos = photos,
                 streak = StreakCalculator.compute(exchangeTimestamps),
             )
-        }
+        }.sortedByDescending { it.photos.last().createdAt }
+    }
 }

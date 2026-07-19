@@ -23,6 +23,23 @@ class FriendRepository(private val api: EmberApi) {
     suspend fun sendFriendRequest(targetUserId: String): Result<PendingFriendRequestDto> =
         handle(api.sendFriendRequest(FriendRequestBody(targetUserId = targetUserId))) { "Couldn't send request (${it})" }
 
+    suspend fun setPinned(friendshipId: String, pinned: Boolean): Result<FriendSummaryDto> =
+        handle(if (pinned) api.pinFriend(friendshipId) else api.unpinFriend(friendshipId)) {
+            "Couldn't update pin (${it})"
+        }
+
+    suspend fun removeFriend(friendshipId: String): Result<Unit> {
+        val response = api.removeFriend(friendshipId)
+        return if (response.isSuccessful) {
+            Result.success(Unit)
+        } else {
+            val message = response.errorBody()?.string()?.let {
+                runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+            } ?: "Couldn't remove friend (${response.code()})"
+            Result.failure(Exception(message))
+        }
+    }
+
     private suspend fun <T> handle(response: Response<T>, defaultMessage: (Int) -> String): Result<T> {
         val body = response.body()
         return if (response.isSuccessful && body != null) {

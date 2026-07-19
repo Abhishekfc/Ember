@@ -54,6 +54,7 @@ fun FriendsScreen(
     onNavigate: (NavDestination) -> Unit,
     onCameraClick: () -> Unit,
     onFindPeopleClick: () -> Unit,
+    onFriendClick: (FriendSummaryDto) -> Unit,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -153,7 +154,7 @@ fun FriendsScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     itemsIndexed(viewModel.filteredFriends) { index, friend ->
-                        FriendRow(friend, seed = index, shape = rowShape)
+                        FriendRow(friend, seed = index, shape = rowShape, onClick = { onFriendClick(friend) })
                     }
                 }
             }
@@ -170,7 +171,7 @@ fun FriendsScreen(
 }
 
 @Composable
-private fun FriendRow(friend: FriendSummaryDto, seed: Int, shape: RoundedCornerShape) {
+private fun FriendRow(friend: FriendSummaryDto, seed: Int, shape: RoundedCornerShape, onClick: () -> Unit) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
 
@@ -179,10 +180,11 @@ private fun FriendRow(friend: FriendSummaryDto, seed: Int, shape: RoundedCornerS
             .fillMaxWidth()
             .background(colors.panel, shape)
             .border(1.dp, colors.border, shape)
+            .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GlowPhotoTile(size = 56.dp, seed = seed)
+        GlowPhotoTile(size = 56.dp, seed = seed, photoUrl = friend.profilePhotoUrl)
         Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
             Text(text = friend.displayName, fontFamily = typography.body, fontSize = 14.5.sp, color = colors.cream)
             Text(
