@@ -13,10 +13,10 @@ import java.io.File
 class PhotoRepository(private val api: EmberApi) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getFeed(): Result<List<FeedItem>> {
+    suspend fun getFeed(): Result<List<FeedItem>> = safeCall {
         val response = api.getFeed()
         val body = response.body()
-        return if (response.isSuccessful && body != null) {
+        if (response.isSuccessful && body != null) {
             Result.success(body)
         } else {
             val message = response.errorBody()?.string()?.let {
@@ -26,7 +26,7 @@ class PhotoRepository(private val api: EmberApi) {
         }
     }
 
-    suspend fun uploadPhoto(file: File, recipientIds: List<String>): Result<PhotoUploadResponseDto> {
+    suspend fun uploadPhoto(file: File, recipientIds: List<String>): Result<PhotoUploadResponseDto> = safeCall {
         val filePart = MultipartBody.Part.createFormData(
             "file",
             file.name,
@@ -36,7 +36,7 @@ class PhotoRepository(private val api: EmberApi) {
 
         val response = api.uploadPhoto(filePart, recipientParts)
         val body = response.body()
-        return if (response.isSuccessful && body != null) {
+        if (response.isSuccessful && body != null) {
             Result.success(body)
         } else {
             val message = response.errorBody()?.string()?.let {

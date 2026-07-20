@@ -66,6 +66,8 @@ class HomeViewModel(
         selectedFriendId = friendId
     }
 
+    // The carousel itself displays newest-first (see FeaturedPhotoCard), so page 0 is always
+    // the latest photo — a plain 0 default is correct without needing per-friend photo counts.
     fun photoIndexFor(friendId: String): Int = photoIndexByFriend[friendId] ?: 0
 
     fun setPhotoIndex(friendId: String, index: Int) {

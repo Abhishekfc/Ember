@@ -14,18 +14,19 @@ import java.io.File
 class UserRepository(private val api: EmberApi) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getMyProfile(): Result<UserProfileDto> = handle(api.getMyProfile())
+    suspend fun getMyProfile(): Result<UserProfileDto> = safeCall { handle(api.getMyProfile()) }
 
-    suspend fun updateProfile(displayName: String, username: String): Result<UserProfileDto> =
+    suspend fun updateProfile(displayName: String, username: String): Result<UserProfileDto> = safeCall {
         handle(api.updateProfile(UpdateProfileRequestDto(displayName = displayName, username = username)))
+    }
 
-    suspend fun uploadProfilePhoto(file: File): Result<UserProfileDto> {
+    suspend fun uploadProfilePhoto(file: File): Result<UserProfileDto> = safeCall {
         val filePart = MultipartBody.Part.createFormData(
             "file",
             file.name,
             file.asRequestBody("image/jpeg".toMediaType()),
         )
-        return handle(api.uploadProfilePhoto(filePart))
+        handle(api.uploadProfilePhoto(filePart))
     }
 
     private fun handle(response: Response<UserProfileDto>): Result<UserProfileDto> {

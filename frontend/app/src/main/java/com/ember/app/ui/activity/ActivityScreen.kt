@@ -21,8 +21,10 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +47,7 @@ import com.ember.app.ui.theme.EmberTheme
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActivityScreen(
     viewModel: ActivityViewModel,
@@ -75,37 +78,46 @@ fun ActivityScreen(
                 )
             }
 
-            when {
-                viewModel.isLoading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = colors.glow)
-                }
+            PullToRefreshBox(
+                // Only true once there's already content on screen — the cold-start load is
+                // covered by the full-screen spinner instead, so the pull indicator doesn't
+                // animate in from the top on every app launch.
+                isRefreshing = viewModel.isLoading && viewModel.events.isNotEmpty(),
+                onRefresh = viewModel::loadActivity,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                when {
+                    viewModel.isLoading && viewModel.events.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = colors.glow)
+                    }
 
-                viewModel.errorMessage != null -> Box(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = viewModel.errorMessage.orEmpty(), fontFamily = typography.body, fontSize = 13.sp, color = colors.muted)
-                }
+                    viewModel.errorMessage != null -> Box(
+                        modifier = Modifier.fillMaxSize().padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = viewModel.errorMessage.orEmpty(), fontFamily = typography.body, fontSize = 13.sp, color = colors.muted)
+                    }
 
-                viewModel.events.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Nothing new — check back later.",
-                        fontFamily = typography.body,
-                        fontSize = 13.sp,
-                        color = colors.muted,
-                    )
-                }
+                    viewModel.events.isEmpty() -> Box(
+                        modifier = Modifier.fillMaxSize().padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Nothing new — check back later.",
+                            fontFamily = typography.body,
+                            fontSize = 13.sp,
+                            color = colors.muted,
+                        )
+                    }
 
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 110.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(viewModel.events) { event ->
-                        ActivityRow(event, shape = rowShape)
+                    else -> LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 110.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(viewModel.events) { event ->
+                            ActivityRow(event, shape = rowShape)
+                        }
                     }
                 }
             }
