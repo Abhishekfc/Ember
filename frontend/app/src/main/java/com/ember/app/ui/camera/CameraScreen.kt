@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,9 +38,11 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -72,6 +76,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
+import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 import java.io.File
@@ -82,6 +87,7 @@ fun CameraScreen(
     viewModel: CameraViewModel,
     onClose: () -> Unit,
     onOpenRecipientPicker: () -> Unit,
+    onUpgradeToGold: () -> Unit,
     onSent: () -> Unit,
 ) {
     val colors = EmberTheme.colors
@@ -158,47 +164,56 @@ fun CameraScreen(
                 )
             }
 
-            // Weighted box centers the card + controls vertically in the leftover space, so
-            // there's no dead gap piling up at the bottom of the screen.
-            Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 22.dp)
-                            .aspectRatio(0.8f)
-                            .shadow(20.dp, cardShape, ambientColor = colors.glow.copy(alpha = 0.35f), spotColor = colors.glow.copy(alpha = 0.35f))
-                            .clip(cardShape)
-                            .background(Color.Black),
-                    ) {
-                        if (captured != null) {
-                            CapturedPreview(viewModel = viewModel, file = captured)
-                        } else {
-                            LiveCameraStage()
-                        }
-                    }
+            // Home's card sits below three stacked header lines (wordmark, greeting, date);
+            // this screen's header is a single row, so matching just the "18dp after header"
+            // padding isn't enough — this extra spacer makes up the difference in header height
+            // so the card lands at the same absolute position on screen as Home's does, and
+            // feels like the same card carrying through both screens rather than two layouts
+            // that happen to share a corner radius.
+            Spacer(modifier = Modifier.height(64.dp))
 
-                    if (captured != null) {
-                        PreviewControls(viewModel = viewModel, onSent = onSent)
-                    } else {
-                        CaptureControls(
-                            viewModel = viewModel,
-                            onPickFromGallery = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp, start = 22.dp, end = 22.dp)
+                    .aspectRatio(0.8f)
+                    .shadow(20.dp, cardShape, ambientColor = colors.glow.copy(alpha = 0.35f), spotColor = colors.glow.copy(alpha = 0.35f))
+                    .clip(cardShape)
+                    .background(Color.Black),
+            ) {
+                if (captured != null) {
+                    CapturedPreview(viewModel = viewModel, file = captured)
+                } else {
+                    LiveCameraStage()
+                }
+            }
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+            ) {
+                if (captured != null) {
+                    PreviewControls(viewModel = viewModel, onSent = onSent)
+                } else {
+                    CaptureControls(
+                        viewModel = viewModel,
+                        onPickFromGallery = {
+                            viewModel.onGalleryClick {
                                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                            },
-                        )
-                    }
+                            }
+                        },
+                    )
+                }
 
-                    if (viewModel.errorMessage != null) {
-                        Text(
-                            text = viewModel.errorMessage.orEmpty(),
-                            fontFamily = PublicSansFontFamily,
-                            fontSize = 12.sp,
-                            color = colors.glow2,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 14.dp, start = 24.dp, end = 24.dp),
-                        )
-                    }
+                if (viewModel.errorMessage != null) {
+                    Text(
+                        text = viewModel.errorMessage.orEmpty(),
+                        fontFamily = PublicSansFontFamily,
+                        fontSize = 12.sp,
+                        color = colors.glow2,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 14.dp, start = 24.dp, end = 24.dp),
+                    )
                 }
             }
         }
@@ -216,6 +231,16 @@ fun CameraScreen(
                     )
                 }
             }
+        }
+
+        if (viewModel.showGoldUpsell) {
+            GoldUpsellOverlay(
+                onDismiss = viewModel::dismissGoldUpsell,
+                onUpgrade = {
+                    viewModel.dismissGoldUpsell()
+                    onUpgradeToGold()
+                },
+            )
         }
     }
 }
@@ -277,6 +302,35 @@ private object CameraSession {
     val imageCapture: ImageCapture = ImageCapture.Builder().build()
 }
 
+/** A small circular icon button with a translucent backing — used for gallery/flip so they read
+ * as clean tappable controls instead of bare floating glyphs. */
+@Composable
+private fun RoundIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    badge: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    val colors = EmberTheme.colors
+    Box(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(colors.panel)
+                .border(1.dp, colors.border, CircleShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = contentDescription, tint = colors.cream, modifier = Modifier.size(20.dp))
+        }
+        if (badge != null) {
+            Box(modifier = Modifier.align(Alignment.TopEnd)) { badge() }
+        }
+    }
+}
+
 /** Gallery / shutter / flip row shown while the viewfinder is live. */
 @Composable
 private fun CaptureControls(
@@ -287,30 +341,40 @@ private fun CaptureControls(
     val context = LocalContext.current
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 30.dp),
-        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 34.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            Icons.Filled.Image,
+        RoundIconButton(
+            icon = Icons.Filled.Image,
             contentDescription = "Pick from gallery",
-            tint = colors.cream.copy(alpha = 0.75f),
-            modifier = Modifier
-                .size(24.dp)
-                .clickable(onClick = onPickFromGallery),
+            onClick = onPickFromGallery,
+            badge = if (!viewModel.isGoldMember) {
+                {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(colors.glow)
+                            .border(2.dp, Color(0xFF0E0B16), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.Lock, contentDescription = "Ember Gold", tint = colors.accentText, modifier = Modifier.size(10.dp))
+                    }
+                }
+            } else null,
         )
 
         Box(
             modifier = Modifier
-                .padding(horizontal = 44.dp)
-                .size(74.dp)
+                .size(76.dp)
                 .clip(CircleShape)
                 .border(4.dp, colors.cream, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
-                    .size(60.dp)
+                    .size(62.dp)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(colors.glow, colors.glow2)))
                     .clickable(enabled = !viewModel.isSending) {
@@ -319,19 +383,16 @@ private fun CaptureControls(
             )
         }
 
-        Icon(
-            Icons.Filled.Cameraswitch,
+        RoundIconButton(
+            icon = Icons.Filled.Cameraswitch,
             contentDescription = "Flip camera",
-            tint = colors.cream.copy(alpha = 0.75f),
-            modifier = Modifier
-                .size(24.dp)
-                .clickable {
-                    CameraSession.lensFacing = if (CameraSession.lensFacing == CameraSelector.LENS_FACING_BACK) {
-                        CameraSelector.LENS_FACING_FRONT
-                    } else {
-                        CameraSelector.LENS_FACING_BACK
-                    }
-                },
+            onClick = {
+                CameraSession.lensFacing = if (CameraSession.lensFacing == CameraSelector.LENS_FACING_BACK) {
+                    CameraSelector.LENS_FACING_FRONT
+                } else {
+                    CameraSelector.LENS_FACING_BACK
+                }
+            },
         )
     }
 }
@@ -416,7 +477,7 @@ private fun PreviewControls(viewModel: CameraViewModel, onSent: () -> Unit) {
     val colors = EmberTheme.colors
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 30.dp, start = 22.dp, end = 22.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -431,7 +492,8 @@ private fun PreviewControls(viewModel: CameraViewModel, onSent: () -> Unit) {
                 modifier = Modifier
                     .size(46.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.14f))
+                    .background(colors.panel)
+                    .border(1.dp, colors.border, CircleShape)
                     .padding(11.dp),
             )
             Text(
@@ -466,6 +528,84 @@ private fun PreviewControls(viewModel: CameraViewModel, onSent: () -> Unit) {
                 contentDescription = null,
                 tint = colors.accentText,
                 modifier = Modifier.padding(start = 8.dp).size(15.dp),
+            )
+        }
+    }
+}
+
+/** Compact paywall shown when a free account taps the gallery button. */
+@Composable
+private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
+    val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
+    val panelShape = RoundedCornerShape(24.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .padding(horizontal = 36.dp)
+                .clickable(enabled = false) {} // absorb taps so they don't fall through to dismiss
+                .background(colors.panel, panelShape)
+                .border(1.dp, colors.border, panelShape)
+                .padding(horizontal = 26.dp, vertical = 28.dp),
+        ) {
+            val badgeSizePx = Size(56f, 56f)
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), badgeSizePx), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(26.dp))
+            }
+            Text(
+                text = "Ember Gold",
+                fontFamily = typography.display,
+                fontSize = 19.sp,
+                color = colors.cream,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            Text(
+                text = "Sending photos from your gallery is an Ember Gold perk",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 12.5.sp,
+                color = colors.muted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp, bottom = 22.dp),
+            )
+
+            val buttonSizePx = Size(240f, 48f)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), RoundedCornerShape(14.dp))
+                    .clickable(onClick = onUpgrade)
+                    .padding(vertical = 13.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = "Get Ember Gold",
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.accentText,
+                )
+            }
+            Text(
+                text = "Maybe later",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 12.5.sp,
+                color = colors.mutedDim,
+                modifier = Modifier
+                    .padding(top = 14.dp)
+                    .clickable(onClick = onDismiss),
             )
         }
     }

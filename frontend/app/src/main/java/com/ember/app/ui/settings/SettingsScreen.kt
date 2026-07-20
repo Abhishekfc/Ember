@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,10 +55,12 @@ private data class SettingsRow(
 @Composable
 fun SettingsScreen(
     currentTheme: ThemeKey,
+    notificationsEnabled: Boolean,
+    onNotificationsChange: (Boolean) -> Unit,
     onNavigate: (NavDestination) -> Unit,
     onCameraClick: () -> Unit,
     onThemeClick: () -> Unit,
-    onComingSoon: (String) -> Unit,
+    onGoldClick: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val colors = EmberTheme.colors
@@ -66,10 +70,9 @@ fun SettingsScreen(
     val panelShape = RoundedCornerShape(18.dp)
 
     val rows = listOf(
-        SettingsRow(Icons.Filled.Notifications, "Notifications", null) { onComingSoon("Notifications") },
         SettingsRow(Icons.Filled.Palette, "Theme", currentTheme.displayName, onThemeClick),
-        SettingsRow(Icons.Filled.AutoAwesome, "Ember Gold", "Free") { onComingSoon("Ember Gold") },
-        SettingsRow(Icons.Filled.People, "Friends", null) { onComingSoon("Friends management") },
+        SettingsRow(Icons.Filled.AutoAwesome, "Ember Gold", "Free", onGoldClick),
+        SettingsRow(Icons.Filled.People, "Friends", null) { onNavigate(NavDestination.FRIENDS) },
     )
 
     Box(
@@ -94,6 +97,34 @@ fun SettingsScreen(
                     .background(colors.panel, panelShape)
                     .border(1.dp, colors.border, panelShape),
             ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Notifications, contentDescription = null, tint = colors.glow, modifier = Modifier.size(16.dp))
+                    Text(
+                        text = "Notifications",
+                        fontFamily = PublicSansFontFamily,
+                        fontSize = 13.5.sp,
+                        color = colors.cream,
+                        modifier = Modifier.padding(start = 12.dp).weight(1f),
+                    )
+                    Switch(
+                        checked = notificationsEnabled,
+                        onCheckedChange = onNotificationsChange,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = colors.glow,
+                            checkedThumbColor = colors.accentText,
+                            uncheckedTrackColor = colors.border,
+                            uncheckedThumbColor = colors.mutedDim,
+                            uncheckedBorderColor = colors.border,
+                        ),
+                    )
+                }
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(1.dp).background(colors.border))
+
                 rows.forEachIndexed { index, row ->
                     Row(
                         modifier = Modifier

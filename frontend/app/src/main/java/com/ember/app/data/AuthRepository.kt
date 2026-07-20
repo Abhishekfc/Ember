@@ -16,10 +16,10 @@ class AuthRepository(
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun register(email: String, password: String, displayName: String, username: String): Result<AuthResponse> =
-        handle(api.register(RegisterRequest(email, password, displayName, username)))
+        safeCall { handle(api.register(RegisterRequest(email, password, displayName, username))) }
 
     suspend fun login(email: String, password: String): Result<AuthResponse> =
-        handle(api.login(LoginRequest(email, password)))
+        safeCall { handle(api.login(LoginRequest(email, password))) }
 
     private suspend fun handle(response: Response<AuthResponse>): Result<AuthResponse> {
         val body = response.body()

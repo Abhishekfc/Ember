@@ -2,6 +2,7 @@ package com.ember.app.data
 
 import com.ember.app.data.remote.EmberApi
 import com.ember.app.data.remote.dto.ErrorResponse
+import com.ember.app.data.remote.dto.FriendAcceptBody
 import com.ember.app.data.remote.dto.FriendRequestBody
 import com.ember.app.data.remote.dto.FriendSearchResultDto
 import com.ember.app.data.remote.dto.FriendSummaryDto
@@ -12,25 +13,35 @@ import retrofit2.Response
 class FriendRepository(private val api: EmberApi) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getFriends(): Result<List<FriendSummaryDto>> = handle(api.getFriends()) { "Couldn't load your friends (${it})" }
+    suspend fun getFriends(): Result<List<FriendSummaryDto>> = safeCall {
+        handle(api.getFriends()) { "Couldn't load your friends (${it})" }
+    }
 
-    suspend fun getPendingRequests(): Result<List<PendingFriendRequestDto>> =
+    suspend fun getPendingRequests(): Result<List<PendingFriendRequestDto>> = safeCall {
         handle(api.getPendingFriendRequests()) { "Couldn't load friend requests (${it})" }
+    }
 
-    suspend fun searchUsers(query: String): Result<List<FriendSearchResultDto>> =
+    suspend fun searchUsers(query: String): Result<List<FriendSearchResultDto>> = safeCall {
         handle(api.searchFriends(query)) { "Search failed (${it})" }
+    }
 
-    suspend fun sendFriendRequest(targetUserId: String): Result<PendingFriendRequestDto> =
+    suspend fun sendFriendRequest(targetUserId: String): Result<PendingFriendRequestDto> = safeCall {
         handle(api.sendFriendRequest(FriendRequestBody(targetUserId = targetUserId))) { "Couldn't send request (${it})" }
+    }
 
-    suspend fun setPinned(friendshipId: String, pinned: Boolean): Result<FriendSummaryDto> =
+    suspend fun acceptFriendRequest(friendshipId: String): Result<FriendSummaryDto> = safeCall {
+        handle(api.acceptFriendRequest(FriendAcceptBody(friendshipId))) { "Couldn't accept request (${it})" }
+    }
+
+    suspend fun setPinned(friendshipId: String, pinned: Boolean): Result<FriendSummaryDto> = safeCall {
         handle(if (pinned) api.pinFriend(friendshipId) else api.unpinFriend(friendshipId)) {
             "Couldn't update pin (${it})"
         }
+    }
 
-    suspend fun removeFriend(friendshipId: String): Result<Unit> {
+    suspend fun removeFriend(friendshipId: String): Result<Unit> = safeCall {
         val response = api.removeFriend(friendshipId)
-        return if (response.isSuccessful) {
+        if (response.isSuccessful) {
             Result.success(Unit)
         } else {
             val message = response.errorBody()?.string()?.let {

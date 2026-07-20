@@ -52,6 +52,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
 
     implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     implementation("dev.chrisbanes.haze:haze:1.7.2")
 

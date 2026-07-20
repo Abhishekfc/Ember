@@ -1,8 +1,8 @@
 package com.ember.app
 
 import android.os.Bundle
-import android.view.autofill.AutofillManager
-import android.widget.Toast
+import android.view.View
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,7 +25,9 @@ import com.ember.app.data.ActivityRepository
 import com.ember.app.data.AuthRepository
 import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
+import com.ember.app.data.SubscriptionRepository
 import com.ember.app.data.UserRepository
+import com.ember.app.data.local.NotificationPreferenceStore
 import com.ember.app.data.local.SeenPhotoStore
 import com.ember.app.data.local.ThemePreferenceStore
 import com.ember.app.data.remote.NetworkModule
@@ -48,19 +51,21 @@ import com.ember.app.ui.home.HomeScreen
 import com.ember.app.ui.home.HomeViewModel
 import com.ember.app.ui.profile.MyProfileScreen
 import com.ember.app.ui.profile.MyProfileViewModel
+import com.ember.app.ui.settings.EmberGoldScreen
 import com.ember.app.ui.settings.SettingsScreen
 import com.ember.app.ui.theme.EmberAppTheme
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.ThemeScreen
 import com.ember.app.ui.theme.ThemeViewModel
 import com.ember.app.widget.WidgetPhotoSync
+import com.ember.app.widget.WidgetUpdateWorker
 import kotlinx.coroutines.launch
 
 /** Screens reached from within a tab (Settings -> Theme, Friends -> Find People / Friend
  * Profile) or from the raised center nav button (Camera) rather than from the bottom nav tabs
  * directly. Kept separate from the active tab so back navigation can pop just the nested
  * screen without losing which tab you were on. */
-private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, CAMERA, PROFILE }
+private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, CAMERA, PROFILE, GOLD }
 
 class MainActivity : ComponentActivity() {
 
@@ -70,19 +75,16 @@ class MainActivity : ComponentActivity() {
     private val friendRepository by lazy { FriendRepository(networkModule.api) }
     private val activityRepository by lazy { ActivityRepository(networkModule.api) }
     private val userRepository by lazy { UserRepository(networkModule.api) }
+    private val subscriptionRepository by lazy { SubscriptionRepository(networkModule.api) }
     private val themePreferenceStore by lazy { ThemePreferenceStore(applicationContext) }
     private val seenPhotoStore by lazy { SeenPhotoStore(applicationContext) }
+    private val notificationPreferenceStore by lazy { NotificationPreferenceStore(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // KeyboardType.Text on the password field plus the manifest's importantForAutofill
-        // exclusion still weren't enough to stop Google Password Manager's "Save password?"
-        // prompt on every login — this is the actual API for opting an app out of Autofill
-        // entirely. Shows a one-time system confirmation the first time; harmless no-op after
-        // the user accepts it (or on every later launch once it's already disabled).
-        getSystemService(AutofillManager::class.java)?.let { autofillManager ->
-            if (autofillManager.isEnabled) autofillManager.disableAutofillServices()
-        }
+        // Keep the widget's background refresh alive even across reinstalls that wiped the
+        // schedule; KEEP policy makes this a no-op when it's already queued.
+        WidgetUpdateWorker.schedule(applicationContext)
         setContent {
             val themeViewModel: ThemeViewModel = viewModel(
                 factory = viewModelFactory {
@@ -158,9 +160,6 @@ class MainActivity : ComponentActivity() {
                         nestedScreen = null
                     }
                     val onCameraClick = { nestedScreen = NestedScreen.CAMERA }
-                    val onComingSoon: (String) -> Unit = { label ->
-                        Toast.makeText(this, "$label — coming soon", Toast.LENGTH_SHORT).show()
-                    }
 
                     // Hoisted (rather than declared inside their respective tab branches below)
                     // so they survive navigating into nested screens and back, and so they can
@@ -192,7 +191,7 @@ class MainActivity : ComponentActivity() {
                         nestedScreen == NestedScreen.CAMERA -> {
                             val cameraViewModel: CameraViewModel = viewModel(
                                 factory = viewModelFactory {
-                                    initializer { CameraViewModel(friendRepository, photoRepository) }
+                                    initializer { CameraViewModel(friendRepository, photoRepository, subscriptionRepository) }
                                 },
                             )
                             var showRecipientPicker by remember { mutableStateOf(false) }
@@ -219,6 +218,7 @@ class MainActivity : ComponentActivity() {
                                     viewModel = cameraViewModel,
                                     onClose = { nestedScreen = null },
                                     onOpenRecipientPicker = { showRecipientPicker = true },
+                                    onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                                     onSent = {
                                         nestedScreen = null
                                         homeViewModel.loadFeed()
@@ -245,6 +245,8 @@ class MainActivity : ComponentActivity() {
                         }
 
                         nestedScreen == NestedScreen.THEME -> ThemeScreen(viewModel = themeViewModel)
+
+                        nestedScreen == NestedScreen.GOLD -> EmberGoldScreen()
 
                         nestedScreen == NestedScreen.FIND_PEOPLE -> {
                             val findPeopleViewModel: FindPeopleViewModel = viewModel(
@@ -274,14 +276,22 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        activeTab == NavDestination.SETTINGS -> SettingsScreen(
-                            currentTheme = themeViewModel.selectedTheme,
-                            onNavigate = onNavigate,
-                            onCameraClick = onCameraClick,
-                            onThemeClick = { nestedScreen = NestedScreen.THEME },
-                            onComingSoon = onComingSoon,
-                            onSignOut = onSignOut,
-                        )
+                        activeTab == NavDestination.SETTINGS -> {
+                            val notificationsEnabled by notificationPreferenceStore.enabled
+                                .collectAsState(initial = true)
+                            SettingsScreen(
+                                currentTheme = themeViewModel.selectedTheme,
+                                notificationsEnabled = notificationsEnabled,
+                                onNotificationsChange = { enabled ->
+                                    coroutineScope.launch { notificationPreferenceStore.save(enabled) }
+                                },
+                                onNavigate = onNavigate,
+                                onCameraClick = onCameraClick,
+                                onThemeClick = { nestedScreen = NestedScreen.THEME },
+                                onGoldClick = { nestedScreen = NestedScreen.GOLD },
+                                onSignOut = onSignOut,
+                            )
+                        }
 
                         activeTab == NavDestination.ACTIVITY -> {
                             val activityViewModel: ActivityViewModel = viewModel(
@@ -318,5 +328,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // The manifest's importantForAutofill="noExcludeDescendants" on this Activity doesn't
+        // reach Compose content in practice — Compose's own ComposeView appears to mark itself
+        // important for autofill regardless of what its ancestors declare. setContent() creates
+        // and attaches that ComposeView synchronously as the sole child of the content root, so
+        // right after it returns we can reach in and force the flag directly on the view that
+        // actually matters, overriding whatever Compose set internally. This — not the manifest
+        // attribute, not KeyboardType, not disableAutofillServices() (which silently no-ops
+        // unless its one-time system dialog gets shown and accepted) — is what actually stops
+        // Google Password Manager's "Save password?" prompt from firing on every login.
+        (findViewById<ViewGroup>(android.R.id.content))?.getChildAt(0)
+            ?.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
     }
 }

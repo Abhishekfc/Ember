@@ -39,3 +39,8 @@ data class FriendRequestBody(
     val targetUserId: String? = null,
     val email: String? = null,
 )
+
+@Serializable
+data class FriendAcceptBody(
+    val friendshipId: String,
+)

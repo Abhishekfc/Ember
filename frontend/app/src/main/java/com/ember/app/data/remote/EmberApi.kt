@@ -3,6 +3,7 @@ package com.ember.app.data.remote
 import com.ember.app.data.remote.dto.ActivityEventDto
 import com.ember.app.data.remote.dto.AuthResponse
 import com.ember.app.data.remote.dto.FeedItem
+import com.ember.app.data.remote.dto.FriendAcceptBody
 import com.ember.app.data.remote.dto.FriendRequestBody
 import com.ember.app.data.remote.dto.FriendSearchResultDto
 import com.ember.app.data.remote.dto.FriendSummaryDto
@@ -10,6 +11,7 @@ import com.ember.app.data.remote.dto.LoginRequest
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
 import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import com.ember.app.data.remote.dto.RegisterRequest
+import com.ember.app.data.remote.dto.SubscriptionStatusDto
 import com.ember.app.data.remote.dto.UpdateProfileRequestDto
 import com.ember.app.data.remote.dto.UserProfileDto
 import okhttp3.MultipartBody
@@ -53,6 +55,9 @@ interface EmberApi {
     @POST("friends/request")
     suspend fun sendFriendRequest(@Body request: FriendRequestBody): Response<PendingFriendRequestDto>
 
+    @POST("friends/accept")
+    suspend fun acceptFriendRequest(@Body request: FriendAcceptBody): Response<FriendSummaryDto>
+
     @POST("friends/{friendshipId}/pin")
     suspend fun pinFriend(@Path("friendshipId") friendshipId: String): Response<FriendSummaryDto>
 
@@ -74,4 +79,7 @@ interface EmberApi {
     @Multipart
     @POST("users/me/photo")
     suspend fun uploadProfilePhoto(@Part file: MultipartBody.Part): Response<UserProfileDto>
+
+    @GET("subscription/status")
+    suspend fun getSubscriptionStatus(): Response<SubscriptionStatusDto>
 }

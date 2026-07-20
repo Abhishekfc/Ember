@@ -17,6 +17,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
+import com.ember.app.data.SubscriptionRepository
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,6 +32,7 @@ internal const val CAPTION_Y_FRACTION = 0.72f
 class CameraViewModel(
     private val friendRepository: FriendRepository,
     private val photoRepository: PhotoRepository,
+    private val subscriptionRepository: SubscriptionRepository,
 ) : ViewModel() {
 
     var friends by mutableStateOf<List<FriendSummaryDto>>(emptyList())
@@ -42,6 +44,14 @@ class CameraViewModel(
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
+    /** Gallery picking is an Ember Gold perk; free accounts are limited to the live camera.
+     * Defaults to false (not Gold) until the subscription check resolves, so the upsell never
+     * flashes a free feature open before snapping shut. */
+    var isGoldMember by mutableStateOf(false)
+        private set
+    var showGoldUpsell by mutableStateOf(false)
+        private set
+
     /** Captured (or gallery-picked) photo waiting on the preview stage — nothing is sent
      * until the user reviews it and taps Send. */
     var capturedFile by mutableStateOf<File?>(null)
@@ -51,6 +61,9 @@ class CameraViewModel(
 
     init {
         loadFriends()
+        viewModelScope.launch {
+            subscriptionRepository.getStatus().onSuccess { isGoldMember = it.isActive }
+        }
     }
 
     val recipientLabel: String
@@ -87,6 +100,16 @@ class CameraViewModel(
 
     fun setSelectedRecipients(ids: Set<String>) {
         selectedRecipientIds = ids
+    }
+
+    /** Entry point for the gallery button: opens the picker for Gold members, otherwise shows
+     * the upsell instead — the caller never launches the picker directly. */
+    fun onGalleryClick(launchPicker: () -> Unit) {
+        if (isGoldMember) launchPicker() else showGoldUpsell = true
+    }
+
+    fun dismissGoldUpsell() {
+        showGoldUpsell = false
     }
 
     fun captureFailed(message: String) {

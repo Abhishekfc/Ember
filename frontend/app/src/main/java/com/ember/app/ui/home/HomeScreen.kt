@@ -9,6 +9,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,14 +28,19 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +63,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,11 +71,14 @@ import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.ui.components.BottomNavDock
 import com.ember.app.ui.components.NavDestination
+import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.CourgetteFontFamily
 import com.ember.app.ui.theme.EmberTheme
+import com.ember.app.ui.theme.PublicSansFontFamily
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -90,8 +100,22 @@ fun HomeScreen(
     ) {
         // hazeSource is scoped to this Column only (header + content) — it must never wrap
         // the BottomNavDock sibling below, or the blur source would include the dock's own
-        // pixels and produce a ghosting artifact.
-        Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState)) {
+        // pixels and produce a ghosting artifact. verticalScroll is what lets the pull-to-
+        // refresh gesture register even though the content itself fits on one screen.
+        PullToRefreshBox(
+            // Only true once there's already content on screen to refresh — the very first
+            // cold-start load is covered by the full-screen spinner below instead, so the
+            // pull indicator doesn't also animate in from the top on every app launch.
+            isRefreshing = viewModel.isLoading && viewModel.feedItems.isNotEmpty(),
+            onRefresh = viewModel::loadFeed,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(hazeState)
+                .verticalScroll(rememberScrollState()),
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -112,13 +136,19 @@ fun HomeScreen(
                 )
             }
 
+            // The opening line is a live status, not a greeting — it says something true about
+            // the app's actual state right now (who's waiting to be seen) instead of the
+            // generic "Good evening, Name" every dashboard app defaults to. The personal touch
+            // moves to a small subline instead of carrying the whole header.
+            val unseenCount = viewModel.feedItems.count { viewModel.hasUnseenPhoto(it) }
             Text(
                 text = buildAnnotatedString {
-                    append("Good ${daypart()}")
-                    val name = viewModel.userName?.substringBefore(" ")
-                    if (!name.isNullOrBlank()) {
-                        append(", ")
-                        withStyle(SpanStyle(color = colors.glow)) { append(name) }
+                    if (unseenCount > 0) {
+                        withStyle(SpanStyle(color = colors.glow)) { append("$unseenCount") }
+                        append(if (unseenCount == 1) " photo is" else " photos are")
+                        append(" glowing for you")
+                    } else {
+                        append("You're all caught up")
                     }
                 },
                 fontFamily = typography.display,
@@ -126,41 +156,27 @@ fun HomeScreen(
                 color = colors.cream,
                 modifier = Modifier.padding(top = 24.dp, start = 22.dp, end = 22.dp),
             )
-            Row(
+            Text(
+                text = viewModel.userName?.substringBefore(" ")?.let { "Hey $it · ${viewModel.dateText}" } ?: viewModel.dateText,
+                fontFamily = typography.body,
+                fontSize = 12.5.sp,
+                color = colors.muted,
                 modifier = Modifier.padding(top = 5.dp, start = 22.dp, end = 22.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = viewModel.dateText,
-                    fontFamily = typography.body,
-                    fontSize = 12.5.sp,
-                    color = colors.muted,
-                )
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp)
-                        .size(3.dp)
-                        .clip(CircleShape)
-                        .background(colors.mutedDim),
-                )
-                Text(
-                    text = "Latest from friends",
-                    fontFamily = typography.body,
-                    fontSize = 12.5.sp,
-                    color = colors.muted,
-                )
-            }
+            )
 
+            // These status branches use fixed vertical padding instead of fillMaxSize because
+            // the parent Column is now scrollable (unbounded height), where fillMaxSize
+            // collapses to zero.
             when {
-                viewModel.isLoading -> Box(
-                    modifier = Modifier.fillMaxSize(),
+                viewModel.isLoading && viewModel.feedItems.isEmpty() -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 200.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(color = colors.glow)
                 }
 
                 viewModel.errorMessage != null -> Box(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 180.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -182,17 +198,12 @@ fun HomeScreen(
                     }
                 }
 
-                viewModel.feedItems.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No photos yet — once a friend sends you one, it'll glow right here.",
-                        fontFamily = typography.body,
-                        fontSize = 13.sp,
-                        color = colors.muted,
-                    )
-                }
+                viewModel.feedItems.isEmpty() -> EmptyFeedState(
+                    onCameraClick = onCameraClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 18.dp, start = 22.dp, end = 22.dp),
+                )
 
                 else -> {
                     val selected = viewModel.selectedItem ?: viewModel.feedItems.first()
@@ -211,20 +222,11 @@ fun HomeScreen(
                         onAddFriendClick = onAddFriendClick,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 20.dp),
-                    )
-
-                    Text(
-                        text = "‹  Swipe left or right to view friends  ›",
-                        fontFamily = typography.body,
-                        fontSize = 12.sp,
-                        color = colors.mutedDim,
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(top = 16.dp),
+                            .padding(top = 20.dp, bottom = 110.dp),
                     )
                 }
             }
+        }
         }
 
         BottomNavDock(
@@ -311,14 +313,17 @@ private fun FeaturedPhotoCard(
         modifier = modifier,
     ) { friend ->
         key(friend.friendId) {
+            // Photos come back oldest-first; the carousel shows newest-first instead, so page
+            // 0 is always the latest photo and swiping steps backward through the day.
+            val orderedPhotos = remember(friend.photos) { friend.photos.asReversed() }
             val pagerState = rememberPagerState(
-                initialPage = viewModel.photoIndexFor(friend.friendId).coerceIn(0, friend.photos.lastIndex),
-            ) { friend.photos.size }
+                initialPage = viewModel.photoIndexFor(friend.friendId).coerceIn(0, orderedPhotos.lastIndex),
+            ) { orderedPhotos.size }
 
             LaunchedEffect(pagerState.currentPage) {
                 viewModel.setPhotoIndex(friend.friendId, pagerState.currentPage)
-                if (pagerState.currentPage == friend.photos.lastIndex) {
-                    viewModel.markLatestSeen(friend.friendId, friend.photos.last().photoId)
+                if (pagerState.currentPage == 0) {
+                    viewModel.markLatestSeen(friend.friendId, orderedPhotos.first().photoId)
                 }
             }
 
@@ -332,7 +337,7 @@ private fun FeaturedPhotoCard(
             ) {
                 HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                     AsyncImage(
-                        model = friend.photos[page].photoUrl,
+                        model = orderedPhotos[page].photoUrl,
                         contentDescription = friend.displayName,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
@@ -352,14 +357,14 @@ private fun FeaturedPhotoCard(
                         ),
                 )
 
-                if (friend.photos.size > 1) {
+                if (orderedPhotos.size > 1) {
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        friend.photos.forEachIndexed { index, _ ->
+                        orderedPhotos.forEachIndexed { index, _ ->
                             Box(
                                 modifier = Modifier
                                     .width(16.dp)
@@ -391,7 +396,7 @@ private fun FeaturedPhotoCard(
                             color = Color(0xFFFBF8F3),
                         )
                         Text(
-                            text = formatRelativeTime(friend.photos[pagerState.currentPage].createdAt),
+                            text = formatRelativeTime(orderedPhotos[pagerState.currentPage].createdAt),
                             fontFamily = typography.body,
                             fontSize = 12.5.sp,
                             color = Color.White.copy(alpha = 0.75f),
@@ -416,6 +421,78 @@ private fun FeaturedPhotoCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Fills the same footprint the featured photo card would occupy (rather than a stray line of
+ * text floating in empty space) with a glowing placeholder and a direct CTA into the camera —
+ * matching Locket's "the frame is always there, waiting" empty state instead of a blank screen. */
+@Composable
+private fun EmptyFeedState(onCameraClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
+    val cardShape = RoundedCornerShape(30.dp)
+
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.8f)
+                .shadow(20.dp, cardShape, ambientColor = colors.glow.copy(alpha = 0.25f), spotColor = colors.glow.copy(alpha = 0.25f))
+                .clip(cardShape)
+                .background(Brush.radialGradient(listOf(colors.glow.copy(alpha = 0.22f), colors.panel)))
+                .border(1.dp, colors.border, cardShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(colors.glow.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.PhotoCamera, contentDescription = null, tint = colors.glow, modifier = Modifier.size(30.dp))
+                }
+                Text(
+                    text = "No photos yet",
+                    fontFamily = typography.display,
+                    fontSize = 19.sp,
+                    color = colors.cream,
+                    modifier = Modifier.padding(top = 18.dp),
+                )
+                Text(
+                    text = "Once a friend sends you one, it'll glow right here",
+                    fontFamily = typography.body,
+                    fontSize = 12.5.sp,
+                    color = colors.muted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        }
+
+        val buttonSizePx = Size(300f, 52f)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 20.dp)
+                .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), RoundedCornerShape(16.dp))
+                .clickable(onClick = onCameraClick)
+                .padding(vertical = 15.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.PhotoCamera, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
+            Text(
+                text = "Send your first photo",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.accentText,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 }
@@ -497,6 +574,25 @@ private fun FriendAvatarRow(
                     maxLines = 1,
                     modifier = Modifier.padding(top = 7.dp),
                 )
+                // Same "hide a zero streak" rule as the Friends list — a badge with nothing
+                // to say isn't worth showing.
+                if (item.streak > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 1.dp)) {
+                        Icon(
+                            Icons.Rounded.LocalFireDepartment,
+                            contentDescription = "Streak",
+                            tint = colors.glow,
+                            modifier = Modifier.size(11.dp),
+                        )
+                        Text(
+                            text = "${item.streak}",
+                            fontFamily = typography.body,
+                            fontSize = 10.5.sp,
+                            color = colors.glow,
+                            modifier = Modifier.padding(start = 2.dp),
+                        )
+                    }
+                }
             }
         }
 

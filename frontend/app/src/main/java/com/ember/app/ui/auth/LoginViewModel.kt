@@ -53,7 +53,16 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
             }
             isLoading = false
             result.fold(
-                onSuccess = { onSuccess() },
+                onSuccess = {
+                    // Google Password Manager's "Save password?" prompt fires off the password
+                    // field being non-empty when it disappears from the view tree (i.e. when
+                    // this screen unmounts on successful login) — clearing it first, before
+                    // that happens, leaves nothing for the save-prompt heuristic to act on.
+                    // (KeyboardType.Text on the field and disabling Autofill services outright
+                    // weren't enough on their own to stop it appearing on every login.)
+                    password = ""
+                    onSuccess()
+                },
                 onFailure = { errorMessage = it.message ?: "Something went wrong" },
             )
         }
