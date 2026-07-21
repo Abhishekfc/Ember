@@ -1,6 +1,7 @@
 package com.ember.backend.service
 
 import com.ember.backend.dto.UpdateProfileRequest
+import com.ember.backend.dto.UsernameAvailability
 import com.ember.backend.dto.UserProfile
 import com.ember.backend.exception.InvalidFriendRequestException
 import com.ember.backend.exception.ResourceNotFoundException
@@ -12,8 +13,13 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
 import java.util.UUID
+import kotlin.random.Random
 
 private val ALLOWED_CONTENT_TYPES = setOf("image/jpeg", "image/png", "image/webp")
+private val USERNAME_FORMAT = Regex("^[a-zA-Z0-9_.]+\$")
+private const val USERNAME_MIN_LENGTH = 3
+private const val USERNAME_MAX_LENGTH = 30
+private const val MAX_SUGGESTIONS = 3
 
 @Service
 class UserService(
@@ -74,6 +80,41 @@ class UserService(
         userRepository.save(user)
         logger.info("Profile updated: userId={}", userId)
         return user.toProfile()
+    }
+
+    /**
+     * Read-only check so the client can tell someone their chosen username is taken *before*
+     * they hit save, rather than only finding out from a failed update. Every lookup here —
+     * the candidate itself, and each suggestion — is an exact-match `existsByUsername`, backed
+     * by `idx_users_username`; none of this ever scans the full users table the way
+     * `FriendService.searchUsers`'s substring search does.
+     */
+    fun checkUsernameAvailability(userId: UUID, candidate: String): UsernameAvailability {
+        val normalized = candidate.trim().lowercase()
+        if (normalized.length < USERNAME_MIN_LENGTH || normalized.length > USERNAME_MAX_LENGTH || !USERNAME_FORMAT.matches(normalized)) {
+            return UsernameAvailability(available = false)
+        }
+
+        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
+        if (normalized == user.username || !userRepository.existsByUsername(normalized)) {
+            return UsernameAvailability(available = true)
+        }
+
+        return UsernameAvailability(available = false, suggestions = generateUsernameSuggestions(normalized))
+    }
+
+    private fun generateUsernameSuggestions(base: String): List<String> {
+        val trimmedBase = base.take(USERNAME_MAX_LENGTH - 4)
+        return sequence {
+            yield("$trimmedBase${Random.nextInt(10, 100)}")
+            yield("${trimmedBase}_${Random.nextInt(1, 1000)}")
+            yield("$trimmedBase.${Random.nextInt(1, 100)}")
+            yield("$trimmedBase${Random.nextInt(100, 1000)}")
+            yield("$trimmedBase${Random.nextInt(1000, 10000)}")
+        }
+            .filterNot { userRepository.existsByUsername(it) }
+            .take(MAX_SUGGESTIONS)
+            .toList()
     }
 
     private fun User.toProfile() = UserProfile(

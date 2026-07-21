@@ -46,4 +46,8 @@ class RecipientPickerViewModel(
             selectedFriendIds + friendId
         }
     }
+
+    fun setSelection(ids: Set<String>) {
+        selectedFriendIds = ids
+    }
 }

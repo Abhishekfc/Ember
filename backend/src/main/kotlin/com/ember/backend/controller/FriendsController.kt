@@ -24,8 +24,10 @@ import java.util.UUID
 class FriendsController(private val friendService: FriendService) {
 
     @GetMapping
-    fun listFriends(@AuthenticationPrincipal me: AuthenticatedUser): List<FriendSummary> =
-        friendService.getFriends(me.id)
+    fun listFriends(
+        @AuthenticationPrincipal me: AuthenticatedUser,
+        @RequestParam(defaultValue = "false") refresh: Boolean,
+    ): List<FriendSummary> = friendService.getFriends(me.id, forceRefresh = refresh)
 
     @GetMapping("/pending")
     fun listPendingRequests(@AuthenticationPrincipal me: AuthenticatedUser): List<PendingFriendRequest> =

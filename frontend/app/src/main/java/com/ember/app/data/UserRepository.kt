@@ -3,6 +3,7 @@ package com.ember.app.data
 import com.ember.app.data.remote.EmberApi
 import com.ember.app.data.remote.dto.ErrorResponse
 import com.ember.app.data.remote.dto.UpdateProfileRequestDto
+import com.ember.app.data.remote.dto.UsernameAvailabilityDto
 import com.ember.app.data.remote.dto.UserProfileDto
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -16,8 +17,20 @@ class UserRepository(private val api: EmberApi) {
 
     suspend fun getMyProfile(): Result<UserProfileDto> = safeCall { handle(api.getMyProfile()) }
 
-    suspend fun updateProfile(displayName: String, username: String): Result<UserProfileDto> = safeCall {
+    // Both params are optional so a single-field edit (the "tap a row, change just that one
+    // thing" popup flow) doesn't need to resend the other field's current value.
+    suspend fun updateProfile(displayName: String? = null, username: String? = null): Result<UserProfileDto> = safeCall {
         handle(api.updateProfile(UpdateProfileRequestDto(displayName = displayName, username = username)))
+    }
+
+    suspend fun checkUsernameAvailability(username: String): Result<UsernameAvailabilityDto> = safeCall {
+        val response = api.checkUsernameAvailability(username)
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            Result.success(body)
+        } else {
+            Result.failure(Exception("Couldn't check that username"))
+        }
     }
 
     suspend fun uploadProfilePhoto(file: File): Result<UserProfileDto> = safeCall {

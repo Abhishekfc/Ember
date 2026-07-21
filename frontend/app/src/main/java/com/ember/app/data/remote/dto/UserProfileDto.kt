@@ -16,3 +16,9 @@ data class UpdateProfileRequestDto(
     val displayName: String? = null,
     val username: String? = null,
 )
+
+@Serializable
+data class UsernameAvailabilityDto(
+    val available: Boolean,
+    val suggestions: List<String> = emptyList(),
+)

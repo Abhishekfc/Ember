@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,14 +29,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
-import com.ember.app.ui.components.GlowPhotoTile
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -52,36 +52,55 @@ fun RecipientPickerScreen(
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
     val rowShape = RoundedCornerShape(16.dp)
+    val pinnedFriend = viewModel.friends.firstOrNull { it.pinnedByMe }
+    val allFriendIds = remember(viewModel.friends) { viewModel.friends.map { it.friendId }.toSet() }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize))
-            .padding(top = 60.dp, start = 20.dp, end = 20.dp, bottom = 26.dp),
+            .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(text = "Send to", fontFamily = typography.display, fontSize = 20.sp, color = colors.cream)
-            Icon(
-                Icons.Filled.Close,
-                contentDescription = "Close",
-                tint = colors.mutedDim,
-                modifier = Modifier.size(18.dp).clickable(onClick = onClose),
-            )
+            Text(text = "Send to", fontFamily = typography.display, fontSize = 22.sp, color = colors.cream)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(colors.panel)
+                    .border(1.dp, colors.border, CircleShape)
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.cream, modifier = Modifier.size(16.dp))
+            }
         }
-        Text(
-            text = "Pick one person, select several, or pin a partner so photos always go to just them",
-            fontFamily = PublicSansFontFamily,
-            fontSize = 12.sp,
-            color = colors.muted,
-            modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
-        )
 
-        Box(modifier = Modifier.weight(1f)) {
+        // Quiet inline text, not bordered chips — the two shortcuts worth a single tap, stated
+        // as plainly as possible rather than given their own visual weight on a screen whose
+        // only real job is a short list of people.
+        if (pinnedFriend != null) {
+            Row(modifier = Modifier.padding(top = 18.dp)) {
+                QuickSelectLink(
+                    label = "Everyone",
+                    active = viewModel.selectedFriendIds == allFriendIds,
+                    onClick = { viewModel.setSelection(allFriendIds) },
+                )
+                Text(text = "  ·  ", fontFamily = PublicSansFontFamily, fontSize = 13.sp, color = colors.mutedDim)
+                QuickSelectLink(
+                    label = "${pinnedFriend.displayName} only",
+                    active = viewModel.selectedFriendIds == setOf(pinnedFriend.friendId),
+                    onClick = { viewModel.setSelection(setOf(pinnedFriend.friendId)) },
+                )
+            }
+        }
+
+        Box(modifier = Modifier.weight(1f).padding(top = 18.dp)) {
             when {
                 viewModel.isLoading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = colors.glow)
@@ -98,7 +117,7 @@ fun RecipientPickerScreen(
 
                 else -> LazyColumn(
                     contentPadding = PaddingValues(bottom = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(viewModel.friends, key = { it.friendId }) { friend ->
                         RecipientRow(
@@ -110,24 +129,6 @@ fun RecipientPickerScreen(
                     }
                 }
             }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 14.dp)
-                .background(colors.violet.copy(alpha = 0x1F / 255f), RoundedCornerShape(14.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.PushPin, contentDescription = null, tint = colors.violet, modifier = Modifier.size(14.dp))
-            Text(
-                text = "Pinning a friend makes them your default recipient — good for couples who only want photos going to each other.",
-                fontFamily = PublicSansFontFamily,
-                fontSize = 11.sp,
-                color = colors.muted,
-                modifier = Modifier.padding(start = 8.dp),
-            )
         }
 
         val buttonSizePx = Size(300f, 52f)
@@ -152,6 +153,25 @@ fun RecipientPickerScreen(
 }
 
 @Composable
+private fun QuickSelectLink(label: String, active: Boolean, onClick: () -> Unit) {
+    val colors = EmberTheme.colors
+    Text(
+        text = label,
+        fontFamily = PublicSansFontFamily,
+        fontSize = 13.sp,
+        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+        color = if (active) colors.glow else colors.muted,
+        modifier = Modifier.clickable(onClick = onClick),
+    )
+}
+
+/** A real circular avatar — photo if the friend has one, a bold initial if not — same fallback
+ * language as the header's ProfileChip and every other "this is a person" spot in the app,
+ * rather than the photo-card-styled tile this screen used before: a flat gradient square with
+ * no initial reads as an anonymous colored block, not a face, and every friend without a photo
+ * looked identical. Selection is carried entirely by the row's own tint/border; there's no
+ * separate checkbox competing for attention next to it. */
+@Composable
 private fun RecipientRow(
     friend: FriendSummaryDto,
     isSelected: Boolean,
@@ -163,13 +183,36 @@ private fun RecipientRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.panel, shape)
-            .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) colors.glow else colors.border, shape)
+            .background(if (isSelected) colors.glow.copy(alpha = 0.12f) else colors.panel, shape)
+            .border(1.dp, if (isSelected) colors.glow else colors.border, shape)
             .clickable(onClick = onClick)
-            .padding(12.dp),
+            .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GlowPhotoTile(size = 42.dp, seed = friend.friendId.hashCode(), photoUrl = friend.profilePhotoUrl)
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(colors.panel)
+                .border(1.dp, colors.border, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (friend.profilePhotoUrl != null) {
+                AsyncImage(
+                    model = friend.profilePhotoUrl,
+                    contentDescription = friend.displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                )
+            } else {
+                Text(
+                    text = friend.displayName.firstOrNull()?.uppercase() ?: "•",
+                    fontFamily = EmberTheme.typography.display,
+                    fontSize = 17.sp,
+                    color = colors.cream,
+                )
+            }
+        }
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = friend.displayName, fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = colors.cream)
@@ -183,23 +226,12 @@ private fun RecipientRow(
                 }
             }
             Text(
-                text = if (friend.pinnedByMe) "Pinned partner" else "Tap to select",
+                text = "@${friend.username}",
                 fontFamily = PublicSansFontFamily,
                 fontSize = 10.5.sp,
                 color = colors.mutedDim,
                 modifier = Modifier.padding(top = 1.dp),
             )
-        }
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .background(if (isSelected) colors.glow else Color.Transparent, CircleShape)
-                .border(if (isSelected) 0.dp else 1.5.dp, colors.mutedDim, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (isSelected) {
-                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = colors.accentText, modifier = Modifier.size(13.dp))
-            }
         }
     }
 }

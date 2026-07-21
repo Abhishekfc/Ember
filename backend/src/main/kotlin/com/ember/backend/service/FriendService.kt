@@ -13,6 +13,7 @@ import com.ember.backend.repository.FriendshipRepository
 import com.ember.backend.repository.PhotoRecipientRepository
 import com.ember.backend.repository.UserRepository
 import org.slf4j.LoggerFactory
+import org.springframework.cache.CacheManager
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -27,13 +28,30 @@ class FriendService(
     private val userRepository: UserRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
     private val r2StorageService: R2StorageService,
+    private val cacheManager: CacheManager,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    fun getFriends(userId: UUID): List<FriendSummary> {
+    /** Cached per-user — hit on every Friends screen open, and streak/pin state here changes
+     * far less often than it's read. Evicted for both sides of a friendship on accept/pin/remove
+     * (below), and for both sides of a photo exchange in PhotoService.upload.
+     *
+     * [forceRefresh] (set from the Friends screen's pull-to-refresh gesture) skips the cache
+     * *read* but still writes the fresh result back — see [PhotoService.getFeed] for why this
+     * needs to be done by hand rather than through a plain `@Cacheable` annotation. */
+    fun getFriends(userId: UUID, forceRefresh: Boolean = false): List<FriendSummary> {
+        val cache = cacheManager.getCache("friends")
+        val cacheKey = userId.toString()
+        if (!forceRefresh) {
+            cache?.get(cacheKey, List::class.java)?.let {
+                @Suppress("UNCHECKED_CAST")
+                return it as List<FriendSummary>
+            }
+        }
+
         val friendships = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
 
-        return friendships.map { friendship ->
+        val summaries = friendships.map { friendship ->
             val isRequester = friendship.requester.id == userId
             val friend = if (isRequester) friendship.addressee else friendship.requester
             val exchangeTimestamps = photoRecipientRepository.findExchangeTimestamps(userId, friend.id)
@@ -51,6 +69,9 @@ class FriendService(
                 streak = StreakCalculator.compute(exchangeTimestamps),
             )
         }
+
+        cache?.put(cacheKey, summaries)
+        return summaries
     }
 
     fun getPendingRequests(userId: UUID): List<PendingFriendRequest> =
@@ -137,6 +158,7 @@ class FriendService(
             "Friend request accepted: userId={} ({}) and userId={} ({}) are now friends",
             friendship.requester.id, friendship.requester.email, friendship.addressee.id, friendship.addressee.email,
         )
+        evictFriendsCache(friendship.requester.id, friendship.addressee.id)
 
         return FriendSummary(
             friendshipId = friendship.id,
@@ -168,6 +190,7 @@ class FriendService(
 
         if (isRequester) friendship.requesterPinned = pinned else friendship.addresseePinned = pinned
         friendshipRepository.save(friendship)
+        evictFriendsCache(friendship.requester.id, friendship.addressee.id)
 
         val friend: User = if (isRequester) friendship.addressee else friendship.requester
         return FriendSummary(
@@ -200,5 +223,17 @@ class FriendService(
             "Friendship removed: userId={} removed friendshipId={} (with userId={})",
             userId, friendship.id, if (isRequester) friendship.addressee.id else friendship.requester.id,
         )
+        // Also evicts feed, not just friends — a removed friend's existing photos should stop
+        // showing up immediately rather than lingering until the TTL catches up.
+        evictFriendsCache(friendship.requester.id, friendship.addressee.id)
+        cacheManager.getCache("feed")?.let { cache ->
+            cache.evict(friendship.requester.id.toString())
+            cache.evict(friendship.addressee.id.toString())
+        }
+    }
+
+    private fun evictFriendsCache(vararg userIds: UUID) {
+        val cache = cacheManager.getCache("friends") ?: return
+        userIds.forEach { cache.evict(it.toString()) }
     }
 }

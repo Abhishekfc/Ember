@@ -2,6 +2,7 @@ package com.ember.app.ui.activity
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,20 +34,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.ActivityEventDto
 import com.ember.app.data.remote.dto.ActivityEventType
 import com.ember.app.ui.components.BottomNavDock
-import com.ember.app.ui.components.GlowPhotoTile
 import com.ember.app.ui.components.NavDestination
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.TextStyle
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +70,9 @@ fun ActivityScreen(
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
     val hazeState = rememberHazeState()
-    val rowShape = RoundedCornerShape(16.dp)
+
+    val groups = remember(viewModel.events) { groupByDay(viewModel.events) }
+    val todayCount = remember(viewModel.events) { groups.firstOrNull { it.first == "Today" }?.second?.size ?: 0 }
 
     Box(
         modifier = Modifier
@@ -67,14 +81,19 @@ fun ActivityScreen(
             .background(colors.background.asBrush(screenSize)),
     ) {
         Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState)) {
-            Column(modifier = Modifier.padding(top = 68.dp, start = 20.dp, end = 20.dp)) {
-                Text(text = "Activity", fontFamily = typography.display, fontSize = 22.sp, color = colors.cream)
+            Column(modifier = Modifier.padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 16.dp)) {
+                Text(text = "Activity", fontFamily = typography.display, fontSize = 26.sp, color = colors.cream)
                 Text(
-                    text = "What's happened recently",
+                    text = when {
+                        viewModel.events.isEmpty() -> "Nothing yet"
+                        todayCount == 0 -> "Nothing new today"
+                        todayCount == 1 -> "1 moment today"
+                        else -> "$todayCount moments today"
+                    },
                     fontFamily = typography.body,
-                    fontSize = 12.sp,
+                    fontSize = 12.5.sp,
                     color = colors.muted,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
 
@@ -91,32 +110,54 @@ fun ActivityScreen(
                         CircularProgressIndicator(color = colors.glow)
                     }
 
-                    viewModel.errorMessage != null -> Box(
+                    viewModel.errorMessage != null && viewModel.events.isEmpty() -> Box(
                         modifier = Modifier.fillMaxSize().padding(32.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = viewModel.errorMessage.orEmpty(), fontFamily = typography.body, fontSize = 13.sp, color = colors.muted)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = viewModel.errorMessage.orEmpty(),
+                                fontFamily = typography.body,
+                                fontSize = 13.sp,
+                                color = colors.muted,
+                                textAlign = TextAlign.Center,
+                            )
+                            Text(
+                                text = "Tap to retry",
+                                fontFamily = typography.body,
+                                fontSize = 13.sp,
+                                color = colors.glow,
+                                modifier = Modifier.padding(top = 12.dp).clickable { viewModel.loadActivity() },
+                            )
+                        }
                     }
 
-                    viewModel.events.isEmpty() -> Box(
-                        modifier = Modifier.fillMaxSize().padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Nothing new — check back later.",
-                            fontFamily = typography.body,
-                            fontSize = 13.sp,
-                            color = colors.muted,
-                        )
-                    }
+                    viewModel.events.isEmpty() -> EmptyActivityState(modifier = Modifier.fillMaxSize().padding(32.dp))
 
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 110.dp),
+                        // The header block above already carries its own 16dp bottom margin, so
+                        // this only needs to add a little more breathing room, not create the
+                        // whole gap by itself — spacing shouldn't depend on one value elsewhere
+                        // being exactly right.
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 110.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(viewModel.events) { event ->
-                            ActivityRow(event, shape = rowShape)
+                        groups.forEach { (label, events) ->
+                            item(key = "header-$label") {
+                                Text(
+                                    text = label.uppercase(),
+                                    fontFamily = typography.body,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    letterSpacing = 0.8.sp,
+                                    color = colors.mutedDim,
+                                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp),
+                                )
+                            }
+                            items(events, key = { "${it.actorId}-${it.createdAt}-${it.type}" }) { event ->
+                                ActivityRow(event)
+                            }
                         }
                     }
                 }
@@ -133,6 +174,25 @@ fun ActivityScreen(
     }
 }
 
+/** Buckets events into day-labelled groups (Today / Yesterday / weekday / date), preserving the
+ * backend's newest-first order both across and within groups. Grouping earns its place here
+ * because the content genuinely is chronological — unlike a numbered list on a page where order
+ * is just decoration, when something happened is real information on an activity log. */
+private fun groupByDay(events: List<ActivityEventDto>): List<Pair<String, List<ActivityEventDto>>> =
+    events.groupBy { dayLabel(it.createdAt) }.toList()
+
+private fun dayLabel(isoInstant: String): String {
+    val zone = ZoneId.systemDefault()
+    val then = runCatching { Instant.parse(isoInstant) }.getOrNull()?.atZone(zone)?.toLocalDate() ?: return "Earlier"
+    val today = LocalDate.now(zone)
+    return when {
+        then == today -> "Today"
+        then == today.minusDays(1) -> "Yesterday"
+        then.isAfter(today.minusDays(7)) -> then.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+        else -> "${then.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${then.dayOfMonth}"
+    }
+}
+
 private fun iconFor(type: ActivityEventType): ImageVector = when (type) {
     ActivityEventType.PHOTO_RECEIVED -> Icons.Filled.Image
     ActivityEventType.STREAK_EXPIRING -> Icons.Filled.LocalFireDepartment
@@ -140,46 +200,134 @@ private fun iconFor(type: ActivityEventType): ImageVector = when (type) {
     ActivityEventType.REQUEST_INCOMING -> Icons.Filled.PersonAdd
 }
 
+/** Same card weight as [com.ember.app.ui.friends.FriendsScreen]'s friend rows — panel
+ * background, 20dp corners, 14dp padding — so the two tabs read as one app instead of Activity
+ * looking unfinished next to Friends. Two real images carry the row instead of one abstract
+ * placeholder: the actor's actual profile photo (who), and — only for a received photo — a
+ * thumbnail of the photo itself (what), so a burst of sends from one friend collapses into a
+ * single "sent you 3 photos" row (see ActivityService) rather than three identical-looking
+ * entries. Urgent events (streak about to lapse) get a warm badge and warm-tinted time so
+ * they're what your eye catches first while scanning — deliberately not a full-card colored
+ * border too: on some themes (e.g. Citrus, whose glow is a saturated pure yellow) that read as
+ * a caution-tape outline around the whole card rather than a warm highlight. */
 @Composable
-private fun ActivityRow(event: ActivityEventDto, shape: RoundedCornerShape) {
+private fun ActivityRow(event: ActivityEventDto) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
+    val shape = RoundedCornerShape(20.dp)
+    val badgeTint = if (event.warn) colors.glow else colors.violet
+    val badgeIconTint = if (event.warn) colors.accentText else Color.White
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.panel, shape)
-            .border(1.dp, if (event.warn) colors.glow.copy(alpha = 0.35f) else colors.border, shape)
-            .padding(12.dp),
+            .border(1.dp, colors.border, shape)
+            .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            GlowPhotoTile(size = 42.dp, seed = event.actorId.hashCode())
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(colors.panel)
+                    .border(1.dp, colors.border, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (event.actorProfilePhotoUrl != null) {
+                    AsyncImage(
+                        model = event.actorProfilePhotoUrl,
+                        contentDescription = event.actorDisplayName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    )
+                } else {
+                    Text(
+                        text = event.actorDisplayName.firstOrNull()?.uppercase() ?: "•",
+                        fontFamily = typography.display,
+                        fontSize = 18.sp,
+                        color = colors.cream,
+                    )
+                }
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(18.dp)
-                    .background(if (event.warn) colors.glow else colors.panel, CircleShape)
-                    .border(1.5.dp, colors.panel, CircleShape),
+                    .size(19.dp)
+                    .clip(CircleShape)
+                    .background(colors.panel)
+                    .padding(2.dp)
+                    .clip(CircleShape)
+                    .background(badgeTint),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = iconFor(event.type),
-                    contentDescription = null,
-                    tint = if (event.warn) colors.accentText else colors.glow,
-                    modifier = Modifier.size(10.dp),
-                )
+                Icon(imageVector = iconFor(event.type), contentDescription = null, tint = badgeIconTint, modifier = Modifier.size(10.dp))
             }
         }
-        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-            Text(text = event.message, fontFamily = typography.body, fontSize = 12.5.sp, color = colors.cream, lineHeight = 17.sp)
+        Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
+            Text(
+                text = event.message,
+                fontFamily = typography.body,
+                fontSize = 13.5.sp,
+                color = colors.cream,
+                lineHeight = 18.sp,
+                maxLines = 2,
+            )
             Text(
                 text = formatRelativeTime(event.createdAt),
                 fontFamily = typography.body,
-                fontSize = 10.5.sp,
-                color = colors.mutedDim,
-                modifier = Modifier.padding(top = 2.dp),
+                fontSize = 11.sp,
+                fontWeight = if (event.warn) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (event.warn) colors.glow else colors.mutedDim,
+                modifier = Modifier.padding(top = 3.dp),
             )
         }
+        if (event.photoUrl != null) {
+            AsyncImage(
+                model = event.photoUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(10.dp)),
+            )
+        }
+    }
+}
+
+/** Fills the space with a direct explanation and next step, rather than a stray line of grey
+ * text floating in the middle of the screen. */
+@Composable
+private fun EmptyActivityState(modifier: Modifier = Modifier) {
+    val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
+
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(colors.glow.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Notifications, contentDescription = null, tint = colors.glow, modifier = Modifier.size(30.dp))
+        }
+        Text(
+            text = "Nothing here yet",
+            fontFamily = typography.display,
+            fontSize = 19.sp,
+            color = colors.cream,
+            modifier = Modifier.padding(top = 18.dp),
+        )
+        Text(
+            text = "Send or receive a photo and it'll show up here",
+            fontFamily = typography.body,
+            fontSize = 12.5.sp,
+            color = colors.muted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }

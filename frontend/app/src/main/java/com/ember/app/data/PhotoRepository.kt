@@ -13,8 +13,8 @@ import java.io.File
 class PhotoRepository(private val api: EmberApi) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getFeed(): Result<List<FeedItem>> = safeCall {
-        val response = api.getFeed()
+    suspend fun getFeed(forceRefresh: Boolean = false): Result<List<FeedItem>> = safeCall {
+        val response = api.getFeed(refresh = forceRefresh)
         val body = response.body()
         if (response.isSuccessful && body != null) {
             Result.success(body)

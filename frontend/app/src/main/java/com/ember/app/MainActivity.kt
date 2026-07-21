@@ -216,7 +216,12 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 CameraScreen(
                                     viewModel = cameraViewModel,
-                                    onClose = { nestedScreen = null },
+                                    // cameraViewModel is scoped to this Activity, not recreated
+                                    // per visit — without discarding here, a capture the user
+                                    // closed out of (rather than sent) would still be sitting
+                                    // there in review, unreachable-looking-fresh, the next time
+                                    // the camera reopens.
+                                    onClose = { cameraViewModel.discardCapture(); nestedScreen = null },
                                     onOpenRecipientPicker = { showRecipientPicker = true },
                                     onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                                     onSent = {
@@ -241,7 +246,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                             )
-                            MyProfileScreen(viewModel = myProfileViewModel)
+                            MyProfileScreen(viewModel = myProfileViewModel, onClose = { nestedScreen = null })
                         }
 
                         nestedScreen == NestedScreen.THEME -> ThemeScreen(viewModel = themeViewModel)
@@ -267,6 +272,10 @@ class MainActivity : ComponentActivity() {
                             )
                             FriendProfileScreen(
                                 viewModel = friendProfileViewModel,
+                                onBack = {
+                                    nestedScreen = null
+                                    selectedFriend = null
+                                },
                                 onSendPhotoClick = onCameraClick,
                                 onRemoved = {
                                     nestedScreen = null

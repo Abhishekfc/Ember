@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,8 +38,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TextFields
@@ -63,19 +66,23 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
+import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -123,45 +130,52 @@ fun CameraScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Real faces, not a text label — who this is going to should be something you
+                // can recognize at a glance, not something you have to read and parse. This is
+                // the *only* recipient control on screen (live and post-capture both), so it's
+                // sized to be genuinely noticeable rather than a small afterthought chip.
                 Row(
                     modifier = Modifier
-                        .background(Color.White.copy(alpha = 0.14f), RoundedCornerShape(percent = 50))
+                        .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(percent = 50))
                         .clickable(onClick = onOpenRecipientPicker)
-                        .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                        .padding(start = 7.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    RecipientAvatarStack(friends = viewModel.selectedFriends, size = 34.dp, ringColor = colors.panel)
                     if (viewModel.hasPinnedSelected) {
-                        Icon(Icons.Filled.PushPin, contentDescription = null, tint = colors.glow, modifier = Modifier.size(11.dp))
+                        Icon(
+                            Icons.Filled.PushPin,
+                            contentDescription = null,
+                            tint = colors.glow,
+                            modifier = Modifier.padding(start = 9.dp).size(12.dp),
+                        )
                     }
-                    Text(
-                        text = "Sending to ",
-                        fontFamily = PublicSansFontFamily,
-                        fontSize = 12.sp,
-                        color = colors.cream,
-                        modifier = Modifier.padding(start = 5.dp),
-                    )
                     Text(
                         text = viewModel.recipientLabel,
                         fontFamily = PublicSansFontFamily,
-                        fontSize = 12.sp,
+                        fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.cream,
+                        color = Color.White,
+                        modifier = Modifier.padding(start = 9.dp),
                     )
                     Icon(
                         Icons.Filled.ChevronRight,
                         contentDescription = null,
-                        tint = colors.cream.copy(alpha = 0.7f),
-                        modifier = Modifier.size(15.dp),
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp),
                     )
                 }
 
-                Text(
-                    text = "Close",
-                    fontFamily = PublicSansFontFamily,
-                    fontSize = 12.sp,
-                    color = colors.cream.copy(alpha = 0.85f),
-                    modifier = Modifier.clickable(onClick = onClose),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.14f))
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
             }
 
             // Home's card sits below three stacked header lines (wordmark, greeting, date);
@@ -264,24 +278,30 @@ private fun LiveCameraStage() {
     }
 
     if (hasCameraPermission) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { ctx -> PreviewView(ctx) },
-            update = { previewView ->
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-                cameraProviderFuture.addListener({
-                    val cameraProvider = cameraProviderFuture.get()
-                    val preview = Preview.Builder().build().also {
-                        it.surfaceProvider = previewView.surfaceProvider
-                    }
-                    val selector = CameraSelector.Builder().requireLensFacing(CameraSession.lensFacing).build()
-                    runCatching {
-                        cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, CameraSession.imageCapture)
-                    }
-                }, ContextCompat.getMainExecutor(context))
-            },
-        )
+        // A remembered, stable PreviewView plus a rebind keyed specifically on lensFacing —
+        // AndroidView's own `update` block re-runs on *every* recomposition of this composable,
+        // not just when the lens actually changes (any unrelated state change elsewhere on the
+        // capture screen would also silently trigger an extra unbind/rebind here). That's what
+        // made the flip button unreliable: the rebind meant to apply the new lens could race
+        // against another one firing for an unrelated reason, so the switch sometimes only
+        // visibly took effect the next time this screen was reopened fresh. Scoping the rebind
+        // to LaunchedEffect(lensFacing) means it fires exactly once per actual flip, no more.
+        val previewView = remember { PreviewView(context) }
+        LaunchedEffect(CameraSession.lensFacing) {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            cameraProviderFuture.addListener({
+                val cameraProvider = cameraProviderFuture.get()
+                val preview = Preview.Builder().build().also {
+                    it.surfaceProvider = previewView.surfaceProvider
+                }
+                val selector = CameraSelector.Builder().requireLensFacing(CameraSession.lensFacing).build()
+                runCatching {
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, CameraSession.imageCapture)
+                }
+            }, ContextCompat.getMainExecutor(context))
+        }
+        AndroidView(modifier = Modifier.fillMaxSize(), factory = { previewView })
     } else {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Text(
@@ -331,6 +351,84 @@ private fun RoundIconButton(
     }
 }
 
+/** A small overlapping stack of real recipient avatars — up to [maxShown], then a "+N" circle —
+ * used both in the header (pre-capture) and the send confirmation row (post-capture) so "who
+ * this is going to" is the same recognizable faces in both places, not a label you have to read.
+ * An empty selection gets its own dashed "add" circle rather than silently rendering nothing,
+ * so a forgotten recipient choice is visually obvious instead of invisible. [ringColor] separates
+ * overlapping avatars from each other and needs to be solid, since this sits over unpredictable
+ * live-camera or photo content behind it. */
+@Composable
+private fun RecipientAvatarStack(
+    friends: List<FriendSummaryDto>,
+    size: Dp,
+    ringColor: Color,
+) {
+    if (friends.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.5f))
+        }
+        return
+    }
+
+    val maxShown = 3
+    Row {
+        friends.take(maxShown).forEachIndexed { index, friend ->
+            Box(
+                modifier = Modifier
+                    .offset(x = size * -0.35f * index)
+                    .size(size)
+                    .clip(CircleShape)
+                    .border(1.5.dp, ringColor, CircleShape)
+                    .background(ringColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (friend.profilePhotoUrl != null) {
+                    AsyncImage(
+                        model = friend.profilePhotoUrl,
+                        contentDescription = friend.displayName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    )
+                } else {
+                    Text(
+                        text = friend.displayName.firstOrNull()?.uppercase() ?: "•",
+                        fontFamily = PublicSansFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = (size.value * 0.4f).sp,
+                        color = Color.White,
+                    )
+                }
+            }
+        }
+        if (friends.size > maxShown) {
+            Box(
+                modifier = Modifier
+                    .offset(x = size * -0.35f * maxShown)
+                    .size(size)
+                    .clip(CircleShape)
+                    .border(1.5.dp, ringColor, CircleShape)
+                    .background(ringColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "+${friends.size - maxShown}",
+                    fontFamily = PublicSansFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (size.value * 0.32f).sp,
+                    color = Color.White,
+                )
+            }
+        }
+    }
+}
+
 /** Gallery / shutter / flip row shown while the viewfinder is live. */
 @Composable
 private fun CaptureControls(
@@ -339,10 +437,14 @@ private fun CaptureControls(
 ) {
     val colors = EmberTheme.colors
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
 
+    // Clustered tightly around the shutter — same idea as every real camera app's control
+    // strip — instead of flung to the far edges of the screen where they read as three
+    // unrelated buttons rather than one control group with the shutter as its obvious center.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 34.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RoundIconButton(
@@ -378,6 +480,7 @@ private fun CaptureControls(
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(colors.glow, colors.glow2)))
                     .clickable(enabled = !viewModel.isSending) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         capturePhoto(context, viewModel)
                     },
             )
@@ -471,13 +574,20 @@ private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
     }
 }
 
-/** Retake / send row shown while reviewing a captured shot. */
+/** Retake / send row shown while reviewing a captured shot. Recipients are shown once, in the
+ * header chip above (live and preview both) — repeating a second "sending to" row here read as
+ * two separate recipient pickers on the same screen, not one clearer one. Send just stays
+ * disabled if nothing's selected, so the header chip is still the one place that matters. */
 @Composable
-private fun PreviewControls(viewModel: CameraViewModel, onSent: () -> Unit) {
+private fun PreviewControls(
+    viewModel: CameraViewModel,
+    onSent: () -> Unit,
+) {
     val colors = EmberTheme.colors
+    val hasRecipients = viewModel.selectedFriends.isNotEmpty()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, start = 22.dp, end = 22.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -510,8 +620,10 @@ private fun PreviewControls(viewModel: CameraViewModel, onSent: () -> Unit) {
                 .padding(start = 34.dp)
                 .width(190.dp)
                 .clip(RoundedCornerShape(26.dp))
-                .background(Brush.linearGradient(listOf(colors.glow, colors.glow2)))
-                .clickable(enabled = !viewModel.isSending) { viewModel.sendCaptured(onSent) }
+                .background(
+                    if (hasRecipients) Brush.linearGradient(listOf(colors.glow, colors.glow2)) else Brush.linearGradient(listOf(colors.border, colors.border)),
+                )
+                .clickable(enabled = !viewModel.isSending && hasRecipients) { viewModel.sendCaptured(onSent) }
                 .padding(vertical = 15.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
@@ -521,12 +633,12 @@ private fun PreviewControls(viewModel: CameraViewModel, onSent: () -> Unit) {
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = colors.accentText,
+                color = if (hasRecipients) colors.accentText else colors.mutedDim,
             )
             Icon(
                 Icons.AutoMirrored.Filled.Send,
                 contentDescription = null,
-                tint = colors.accentText,
+                tint = if (hasRecipients) colors.accentText else colors.mutedDim,
                 modifier = Modifier.padding(start = 8.dp).size(15.dp),
             )
         }

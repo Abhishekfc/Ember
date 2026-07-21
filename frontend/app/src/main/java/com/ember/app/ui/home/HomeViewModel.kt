@@ -43,6 +43,12 @@ class HomeViewModel(
         private set
     var isLoading by mutableStateOf(true)
         private set
+
+    /** True only while a manual pull-to-refresh gesture is driving the reload — kept separate
+     * from [isLoading] so background reloads (e.g. right after sending a photo) don't pop the
+     * pull-refresh spinner at the top when the user never actually pulled down. */
+    var isPullRefreshing by mutableStateOf(false)
+        private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
@@ -113,11 +119,12 @@ class HomeViewModel(
         viewModelScope.launch { seenLatestPhotoByFriend.putAll(seenPhotoStore.current()) }
     }
 
-    fun loadFeed() {
+    fun loadFeed(isPullRefresh: Boolean = false) {
         viewModelScope.launch {
             isLoading = true
+            if (isPullRefresh) isPullRefreshing = true
             errorMessage = null
-            repository.getFeed().fold(
+            repository.getFeed(forceRefresh = isPullRefresh).fold(
                 onSuccess = { items ->
                     feedItems = items
                     if (items.none { it.friendId == selectedFriendId }) {
@@ -132,6 +139,7 @@ class HomeViewModel(
                 onFailure = { errorMessage = it.message ?: "Couldn't load your feed" },
             )
             isLoading = false
+            isPullRefreshing = false
         }
     }
 }

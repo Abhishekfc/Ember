@@ -10,7 +10,9 @@ data class ActivityEventDto(
     val type: ActivityEventType,
     val actorId: String,
     val actorDisplayName: String,
+    val actorProfilePhotoUrl: String? = null,
     val message: String,
     val createdAt: String,
     val warn: Boolean = false,
+    val photoUrl: String? = null,
 )
