@@ -57,7 +57,7 @@ fun EmberGoldScreen() {
             .fillMaxSize()
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize))
-            .padding(top = 60.dp, start = 20.dp, end = 20.dp, bottom = 30.dp),
+            .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 30.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val badgeSizePx = Size(72f, 72f)

@@ -66,11 +66,14 @@ class CameraViewModel(
         }
     }
 
+    val selectedFriends: List<FriendSummaryDto>
+        get() = friends.filter { it.friendId in selectedRecipientIds }
+
     val recipientLabel: String
         get() {
-            val selected = friends.filter { it.friendId in selectedRecipientIds }
+            val selected = selectedFriends
             return when {
-                selected.isEmpty() -> "Select recipients"
+                selected.isEmpty() -> "Choose recipients"
                 selected.size == 1 -> selected.first().displayName
                 else -> "${selected.size} people"
             }
@@ -84,13 +87,13 @@ class CameraViewModel(
             friendRepository.getFriends().fold(
                 onSuccess = { list ->
                     friends = list
-                    // Default: the pinned partner if there is one, otherwise everyone — matches
-                    // "pinning makes them your default recipient" without forcing an empty
-                    // selection (and an extra tap into the picker) for the common single-friend
-                    // testing case.
+                    // Default to the pinned partner if there is one — never to "everyone" with
+                    // no explicit choice. A silent reply-all default is exactly the kind of
+                    // invisible behavior that makes a send flow feel unsafe rather than just
+                    // unpolished: nothing should leave the device to a friend the user never
+                    // actually picked.
                     if (selectedRecipientIds.isEmpty()) {
-                        val pinned = list.filter { it.pinnedByMe }
-                        selectedRecipientIds = (pinned.ifEmpty { list }).map { it.friendId }.toSet()
+                        selectedRecipientIds = list.filter { it.pinnedByMe }.map { it.friendId }.toSet()
                     }
                 },
                 onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },

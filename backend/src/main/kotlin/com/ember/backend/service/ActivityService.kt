@@ -19,19 +19,39 @@ private const val ACTIVITY_FEED_LIMIT = 30
 class ActivityService(
     private val friendshipRepository: FriendshipRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
+    private val r2StorageService: R2StorageService,
 ) {
 
     fun getActivity(userId: UUID): List<ActivityEvent> {
         val events = mutableListOf<ActivityEvent>()
 
-        photoRecipientRepository.findRecentReceived(userId, RECENT_PHOTOS_LIMIT).forEach { row ->
+        // Consecutive photos from the same sender collapse into one entry ("Priya sent you 3
+        // photos") instead of three near-identical rows back to back — the rows are already
+        // sorted newest-first, so this only merges genuinely back-to-back sends, not every photo
+        // that friend has ever sent.
+        val photoRows = photoRecipientRepository.findRecentReceived(userId, RECENT_PHOTOS_LIMIT)
+        var i = 0
+        while (i < photoRows.size) {
+            val senderId = photoRows[i].senderId
+            var j = i + 1
+            while (j < photoRows.size && photoRows[j].senderId == senderId) j++
+            val group = photoRows.subList(i, j)
+            val latest = group.first()
+            val count = group.size
             events += ActivityEvent(
                 type = ActivityEventType.PHOTO_RECEIVED,
-                actorId = row.senderId,
-                actorDisplayName = row.senderDisplayName,
-                message = "${row.senderDisplayName} sent you a photo",
-                createdAt = row.createdAt,
+                actorId = latest.senderId,
+                actorDisplayName = latest.senderDisplayName,
+                actorProfilePhotoUrl = latest.senderProfilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
+                message = if (count == 1) {
+                    "${latest.senderDisplayName} sent you a photo"
+                } else {
+                    "${latest.senderDisplayName} sent you $count photos"
+                },
+                createdAt = latest.createdAt,
+                photoUrl = r2StorageService.publicUrl(latest.storageKey),
             )
+            i = j
         }
 
         val pending = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.PENDING)
@@ -40,6 +60,7 @@ class ActivityService(
                 type = ActivityEventType.REQUEST_INCOMING,
                 actorId = friendship.requester.id,
                 actorDisplayName = friendship.requester.displayName,
+                actorProfilePhotoUrl = friendship.requester.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
                 message = "${friendship.requester.displayName} wants to be friends",
                 createdAt = friendship.createdAt,
             )
@@ -54,6 +75,7 @@ class ActivityService(
                 type = ActivityEventType.REQUEST_ACCEPTED,
                 actorId = friendship.addressee.id,
                 actorDisplayName = friendship.addressee.displayName,
+                actorProfilePhotoUrl = friendship.addressee.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
                 message = "${friendship.addressee.displayName} accepted your friend request",
                 createdAt = friendship.respondedAt!!,
             )
@@ -77,8 +99,13 @@ class ActivityService(
                     type = ActivityEventType.STREAK_EXPIRING,
                     actorId = friend.id,
                     actorDisplayName = friend.displayName,
+                    actorProfilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
                     message = "Your streak with ${friend.displayName} expires in ${hoursLeft}h",
-                    createdAt = Instant.now(),
+                    // The warning became true the moment today started without an exchange yet —
+                    // not "now", which re-stamped on every single fetch/refresh and made the
+                    // relative time permanently stuck reading "just now" no matter how long the
+                    // streak had actually been at risk.
+                    createdAt = today.atStartOfDay(ZoneOffset.UTC).toInstant(),
                     warn = true,
                 )
             }

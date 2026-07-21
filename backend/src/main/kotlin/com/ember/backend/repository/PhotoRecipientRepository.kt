@@ -11,6 +11,7 @@ interface FeedRow {
     val photoId: UUID
     val senderId: UUID
     val senderDisplayName: String
+    val senderProfilePhotoStorageKey: String?
     val storageKey: String
     val contentType: String
     val createdAt: Instant
@@ -24,12 +25,13 @@ interface PhotoRecipientRepository : JpaRepository<PhotoRecipient, UUID> {
     @Query(
         value = """
             select
-                p.id                    as photoId,
-                p.sender_id             as senderId,
-                u.display_name          as senderDisplayName,
-                p.storage_key           as storageKey,
-                p.content_type          as contentType,
-                p.created_at            as createdAt
+                p.id                              as photoId,
+                p.sender_id                       as senderId,
+                u.display_name                    as senderDisplayName,
+                u.profile_photo_storage_key        as senderProfilePhotoStorageKey,
+                p.storage_key                      as storageKey,
+                p.content_type                     as contentType,
+                p.created_at                       as createdAt
             from photo_recipients pr
             join photos p on p.id = pr.photo_id
             join users u on u.id = p.sender_id
@@ -44,12 +46,13 @@ interface PhotoRecipientRepository : JpaRepository<PhotoRecipient, UUID> {
     @Query(
         value = """
             select
-                p.id                    as photoId,
-                p.sender_id             as senderId,
-                u.display_name          as senderDisplayName,
-                p.storage_key           as storageKey,
-                p.content_type          as contentType,
-                p.created_at            as createdAt
+                p.id                              as photoId,
+                p.sender_id                       as senderId,
+                u.display_name                    as senderDisplayName,
+                u.profile_photo_storage_key        as senderProfilePhotoStorageKey,
+                p.storage_key                      as storageKey,
+                p.content_type                     as contentType,
+                p.created_at                       as createdAt
             from photo_recipients pr
             join photos p on p.id = pr.photo_id
             join users u on u.id = p.sender_id

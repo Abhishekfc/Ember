@@ -13,6 +13,7 @@ import com.ember.backend.repository.PhotoRecipientRepository
 import com.ember.backend.repository.PhotoRepository
 import com.ember.backend.repository.UserRepository
 import org.slf4j.LoggerFactory
+import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
@@ -31,6 +32,7 @@ class PhotoService(
     private val userRepository: UserRepository,
     private val r2StorageService: R2StorageService,
     private val pushNotificationService: PushNotificationService,
+    private val cacheManager: CacheManager,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -83,6 +85,15 @@ class PhotoService(
             photo.id, sender.id, sender.email, recipientIds, file.size,
         )
 
+        // A new photo changes each recipient's feed, and the exchange-timestamp-derived streak
+        // on both sides of every sender/recipient pair — the sender's own feed is unaffected
+        // (it never includes photos they sent themselves).
+        cacheManager.getCache("feed")?.let { cache -> recipientIds.forEach { cache.evict(it.toString()) } }
+        cacheManager.getCache("friends")?.let { cache ->
+            cache.evict(senderId.toString())
+            recipientIds.forEach { cache.evict(it.toString()) }
+        }
+
         return PhotoUploadResponse(
             photoId = photo.id,
             url = r2StorageService.publicUrl(storageKey),
@@ -93,8 +104,26 @@ class PhotoService(
 
     /** Every photo a friend sent in the last 24 hours, Snapchat-style — not just their latest
      * one. Photos older than the window simply stop appearing here (consistent with the
-     * deliberate no-Memories/no-resurfacing-old-photos stance); nothing is deleted from storage. */
-    fun getFeed(userId: UUID): List<FeedItem> {
+     * deliberate no-Memories/no-resurfacing-old-photos stance); nothing is deleted from storage.
+     * Cached per-user (see [upload]'s eviction) since this is the single most repeatedly-fetched
+     * query in the app — Home refetches it on every open, pull-to-refresh, and post-send sync.
+     *
+     * [forceRefresh] (set from Home's pull-to-refresh gesture, not the silent post-send reload)
+     * skips the cache *read* but still writes the fresh result back — a plain `@Cacheable` can't
+     * express "bypass on read, always repopulate on write" in one annotation, so this is done by
+     * hand against the Cache directly rather than declaratively. Without this, pulling to refresh
+     * within the TTL window would silently hand back the same stale snapshot the gesture is
+     * meant to override. */
+    fun getFeed(userId: UUID, forceRefresh: Boolean = false): List<FeedItem> {
+        val cache = cacheManager.getCache("feed")
+        val cacheKey = userId.toString()
+        if (!forceRefresh) {
+            cache?.get(cacheKey, List::class.java)?.let {
+                @Suppress("UNCHECKED_CAST")
+                return it as List<FeedItem>
+            }
+        }
+
         val acceptedFriendIds = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
             .map { if (it.requester.id == userId) it.addressee.id else it.requester.id }
             .toSet()
@@ -103,7 +132,7 @@ class PhotoService(
         val rows = photoRecipientRepository.findRecentPhotos(userId, since)
             .filter { it.senderId in acceptedFriendIds }
 
-        return rows.groupBy { it.senderId }.map { (senderId, senderRows) ->
+        val feed = rows.groupBy { it.senderId }.map { (senderId, senderRows) ->
             val exchangeTimestamps = photoRecipientRepository.findExchangeTimestamps(userId, senderId)
             val photos = senderRows.sortedBy { it.createdAt }.map {
                 PhotoEntry(photoId = it.photoId, photoUrl = r2StorageService.publicUrl(it.storageKey), createdAt = it.createdAt)
@@ -115,5 +144,8 @@ class PhotoService(
                 streak = StreakCalculator.compute(exchangeTimestamps),
             )
         }.sortedByDescending { it.photos.last().createdAt }
+
+        cache?.put(cacheKey, feed)
+        return feed
     }
 }

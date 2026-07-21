@@ -13,6 +13,7 @@ import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import com.ember.app.data.remote.dto.RegisterRequest
 import com.ember.app.data.remote.dto.SubscriptionStatusDto
 import com.ember.app.data.remote.dto.UpdateProfileRequestDto
+import com.ember.app.data.remote.dto.UsernameAvailabilityDto
 import com.ember.app.data.remote.dto.UserProfileDto
 import okhttp3.MultipartBody
 import retrofit2.Response
@@ -34,7 +35,7 @@ interface EmberApi {
     suspend fun login(@Body request: LoginRequest): Response<AuthResponse>
 
     @GET("photos/feed")
-    suspend fun getFeed(): Response<List<FeedItem>>
+    suspend fun getFeed(@Query("refresh") refresh: Boolean = false): Response<List<FeedItem>>
 
     @Multipart
     @POST("photos")
@@ -44,7 +45,7 @@ interface EmberApi {
     ): Response<PhotoUploadResponseDto>
 
     @GET("friends")
-    suspend fun getFriends(): Response<List<FriendSummaryDto>>
+    suspend fun getFriends(@Query("refresh") refresh: Boolean = false): Response<List<FriendSummaryDto>>
 
     @GET("friends/pending")
     suspend fun getPendingFriendRequests(): Response<List<PendingFriendRequestDto>>
@@ -75,6 +76,9 @@ interface EmberApi {
 
     @PATCH("users/me")
     suspend fun updateProfile(@Body request: UpdateProfileRequestDto): Response<UserProfileDto>
+
+    @GET("users/me/username-availability")
+    suspend fun checkUsernameAvailability(@Query("username") username: String): Response<UsernameAvailabilityDto>
 
     @Multipart
     @POST("users/me/photo")

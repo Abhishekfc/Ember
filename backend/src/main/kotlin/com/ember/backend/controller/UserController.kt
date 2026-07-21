@@ -1,15 +1,18 @@
 package com.ember.backend.controller
 
 import com.ember.backend.dto.UpdateProfileRequest
+import com.ember.backend.dto.UsernameAvailability
 import com.ember.backend.dto.UserProfile
 import com.ember.backend.security.AuthenticatedUser
 import com.ember.backend.service.UserService
+import jakarta.validation.Valid
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
@@ -25,8 +28,14 @@ class UserController(private val userService: UserService) {
     @PatchMapping
     fun updateProfile(
         @AuthenticationPrincipal me: AuthenticatedUser,
-        @RequestBody request: UpdateProfileRequest,
+        @Valid @RequestBody request: UpdateProfileRequest,
     ): UserProfile = userService.updateProfile(me.id, request)
+
+    @GetMapping("/username-availability")
+    fun checkUsernameAvailability(
+        @AuthenticationPrincipal me: AuthenticatedUser,
+        @RequestParam username: String,
+    ): UsernameAvailability = userService.checkUsernameAvailability(me.id, username)
 
     @PostMapping("/photo", consumes = ["multipart/form-data"])
     fun updatePhoto(

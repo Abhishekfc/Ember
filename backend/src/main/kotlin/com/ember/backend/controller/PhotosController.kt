@@ -29,5 +29,8 @@ class PhotosController(private val photoService: PhotoService) {
         ResponseEntity.status(HttpStatus.CREATED).body(photoService.upload(me.id, file, recipientIds))
 
     @GetMapping("/feed")
-    fun feed(@AuthenticationPrincipal me: AuthenticatedUser): List<FeedItem> = photoService.getFeed(me.id)
+    fun feed(
+        @AuthenticationPrincipal me: AuthenticatedUser,
+        @RequestParam(defaultValue = "false") refresh: Boolean,
+    ): List<FeedItem> = photoService.getFeed(me.id, forceRefresh = refresh)
 }

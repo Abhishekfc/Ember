@@ -48,7 +48,7 @@ fun ThemeScreen(
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize)),
     ) {
-        Column(modifier = Modifier.padding(top = 60.dp, start = 20.dp, end = 20.dp)) {
+        Column(modifier = Modifier.padding(top = 32.dp, start = 20.dp, end = 20.dp)) {
             Text(
                 text = "Theme",
                 fontFamily = typography.display,

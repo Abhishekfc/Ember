@@ -100,7 +100,7 @@ fun FriendsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 68.dp, start = 20.dp, end = 20.dp),
+                    .padding(top = 32.dp, start = 20.dp, end = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -162,7 +162,7 @@ fun FriendsScreen(
                 // covered by the full-screen spinner instead, so the pull indicator doesn't
                 // animate in from the top on every app launch.
                 isRefreshing = viewModel.isLoading && (viewModel.filteredFriends.isNotEmpty() || viewModel.pendingRequests.isNotEmpty()),
-                onRefresh = viewModel::loadFriends,
+                onRefresh = { viewModel.loadFriends(isPullRefresh = true) },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {

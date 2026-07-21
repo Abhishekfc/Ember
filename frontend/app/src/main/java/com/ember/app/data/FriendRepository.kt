@@ -13,8 +13,8 @@ import retrofit2.Response
 class FriendRepository(private val api: EmberApi) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getFriends(): Result<List<FriendSummaryDto>> = safeCall {
-        handle(api.getFriends()) { "Couldn't load your friends (${it})" }
+    suspend fun getFriends(forceRefresh: Boolean = false): Result<List<FriendSummaryDto>> = safeCall {
+        handle(api.getFriends(refresh = forceRefresh)) { "Couldn't load your friends (${it})" }
     }
 
     suspend fun getPendingRequests(): Result<List<PendingFriendRequestDto>> = safeCall {

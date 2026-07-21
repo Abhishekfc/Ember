@@ -87,7 +87,7 @@ fun SettingsScreen(
                 fontFamily = typography.display,
                 fontSize = 22.sp,
                 color = colors.cream,
-                modifier = Modifier.padding(top = 68.dp, start = 20.dp, end = 20.dp, bottom = 22.dp),
+                modifier = Modifier.padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 22.dp),
             )
 
             Column(

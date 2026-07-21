@@ -43,11 +43,11 @@ class FriendsViewModel(private val repository: FriendRepository) : ViewModel() {
         searchQuery = value
     }
 
-    fun loadFriends() {
+    fun loadFriends(isPullRefresh: Boolean = false) {
         viewModelScope.launch {
             isLoading = true
             errorMessage = null
-            repository.getFriends().fold(
+            repository.getFriends(forceRefresh = isPullRefresh).fold(
                 onSuccess = { friends = it },
                 onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
             )
