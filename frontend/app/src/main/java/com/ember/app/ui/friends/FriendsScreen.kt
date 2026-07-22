@@ -58,8 +58,8 @@ import com.ember.app.ui.components.BottomNavDock
 import com.ember.app.ui.components.NavDestination
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 
 /** Signature device for this screen: a friend's ring literally warms up with their streak,
  * rather than a numeric badge doing all the work — 0 is unlit, low streaks glow one colour,
@@ -80,11 +80,11 @@ fun FriendsScreen(
     onCameraClick: () -> Unit,
     onFindPeopleClick: () -> Unit,
     onFriendClick: (FriendSummaryDto) -> Unit,
+    hazeState: HazeState,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
-    val hazeState = rememberHazeState()
     val rowShape = RoundedCornerShape(20.dp)
     val searchShape = RoundedCornerShape(16.dp)
     val isSearching = viewModel.searchQuery.isNotBlank()

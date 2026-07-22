@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -101,21 +100,8 @@ fun BottomNavDock(
                         base.background(colors.panel)
                     }
                 }
-                // A flat single-tone border reads as a plain outline; a top-to-bottom fade —
-                // brighter where the glass would catch light, fading out toward the bottom
-                // edge — is what actually sells the "real frosted glass" material instead of
-                // just a translucent rectangle with a stroke around it.
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        if (colors.isLight) {
-                            listOf(Color.Black.copy(alpha = 0.14f), Color.Black.copy(alpha = 0.04f))
-                        } else {
-                            listOf(Color.White.copy(alpha = 0.32f), Color.White.copy(alpha = 0.08f))
-                        },
-                    ),
-                    shape = dockShape,
-                )
+
+
                 // Without this, only the individual icons themselves are actually clickable —
                 // a tap landing in the gaps between them (or the pill's own padding) falls
                 // straight through to whatever content is scrolled underneath at those same
@@ -137,9 +123,11 @@ fun BottomNavDock(
     }
 }
 
-/** The one bold element in an otherwise quiet, monochrome row — sized as the dock's primary
- * action (44dp+ touch target, same accessibility floor as every other control here) rather
- * than a small icon that happened to get a gradient. */
+/** The one bold, warm element in an otherwise monochrome row — every other accent (the active
+ * tab, the border) was pulled back to neutral specifically so this button is the single thing
+ * carrying brand color, rather than splitting that signature across two competing spots. Sized
+ * as the dock's primary action (44dp+ touch target, same accessibility floor as every other
+ * control here) rather than a small icon that happened to get a gradient. */
 @Composable
 private fun CameraButton(onCameraClick: () -> Unit) {
     val colors = EmberTheme.colors
@@ -148,10 +136,10 @@ private fun CameraButton(onCameraClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(54.dp)
-            .shadow(6.dp, CircleShape, ambientColor = colors.glow.copy(alpha = 0.45f), spotColor = colors.glow.copy(alpha = 0.45f))
+            .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.35f))
             .clip(CircleShape)
             .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx))
-            .clickable(onClick = onCameraClick),
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onCameraClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -163,6 +151,10 @@ private fun CameraButton(onCameraClick: () -> Unit) {
     }
 }
 
+/** No background wash behind the active icon — that would be a second, competing accent on top
+ * of the camera button's gradient. The active state reads through weight and contrast alone:
+ * filled glyph at full-strength `cream` versus an outlined glyph in `muted`, the same neutral
+ * pairing the rest of the app already uses for primary-vs-secondary text. */
 @Composable
 private fun NavItem(
     destination: NavDestination,
@@ -173,20 +165,11 @@ private fun NavItem(
 ) {
     val colors = EmberTheme.colors
     val isActive = destination == active
-    val dimColor = if (colors.isLight) Color.Black else Color.White
 
-    // Both the tint and the background wash ease between states instead of snapping the
-    // instant you switch tabs — a small thing, but an instant color swap is what makes an
-    // otherwise-clean nav bar read as unfinished.
     val tint by animateColorAsState(
-        targetValue = if (isActive) colors.glow else dimColor.copy(alpha = 0.45f),
+        targetValue = if (isActive) colors.cream else colors.muted,
         animationSpec = tween(200),
         label = "navItemTint",
-    )
-    val backgroundTint by animateColorAsState(
-        targetValue = if (isActive) colors.glow.copy(alpha = 0x1A / 255f) else Color.Transparent,
-        animationSpec = tween(200),
-        label = "navItemBackground",
     )
 
     Box(
@@ -195,8 +178,7 @@ private fun NavItem(
         modifier = Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(backgroundTint)
-            .clickable { onNavigate(destination) },
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigate(destination) },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

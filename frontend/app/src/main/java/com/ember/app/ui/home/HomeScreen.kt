@@ -78,8 +78,8 @@ import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.CourgetteFontFamily
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,11 +90,11 @@ fun HomeScreen(
     onCameraClick: () -> Unit,
     onAddFriendClick: () -> Unit,
     onProfileClick: () -> Unit,
+    hazeState: HazeState,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
-    val hazeState = rememberHazeState()
 
     // Tapping the featured photo throws everything else out of focus so the photo itself is
     // the only sharp thing on screen — tapping again brings the rest back. Starting a swipe on
@@ -610,8 +610,10 @@ private fun FeaturedPhotoCard(
 }
 
 /** Fills the same footprint the featured photo card would occupy (rather than a stray line of
- * text floating in empty space) with a glowing placeholder and a direct CTA into the camera —
- * matching Locket's "the frame is always there, waiting" empty state instead of a blank screen. */
+ * text floating in empty space), matching Locket's "the frame is always there, waiting" empty
+ * state instead of a blank screen. Deliberately quiet — a plain outlined panel and a plain icon,
+ * not a glowing card — so the one gradient CTA button beneath it is the only spot of color on
+ * the whole screen instead of competing with a colored card and a colored badge. */
 @Composable
 private fun EmptyFeedState(onCameraClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
@@ -623,22 +625,18 @@ private fun EmptyFeedState(onCameraClick: () -> Unit, modifier: Modifier = Modif
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.8f)
-                .shadow(20.dp, cardShape, ambientColor = colors.glow.copy(alpha = 0.25f), spotColor = colors.glow.copy(alpha = 0.25f))
                 .clip(cardShape)
-                .background(Brush.radialGradient(listOf(colors.glow.copy(alpha = 0.22f), colors.panel)))
+                .background(colors.panel)
                 .border(1.dp, colors.border, cardShape),
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(colors.glow.copy(alpha = 0.16f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.PhotoCamera, contentDescription = null, tint = colors.glow, modifier = Modifier.size(30.dp))
-                }
+                Icon(
+                    Icons.Filled.PhotoCamera,
+                    contentDescription = null,
+                    tint = colors.mutedDim,
+                    modifier = Modifier.size(34.dp),
+                )
                 Text(
                     text = "No photos yet",
                     fontFamily = typography.display,
@@ -678,6 +676,18 @@ private fun EmptyFeedState(onCameraClick: () -> Unit, modifier: Modifier = Modif
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
+
+        // A plain caption, not another bordered/badged card — the button above is already the
+        // one moment of color and shape on this screen; this just adds the one extra fact worth
+        // knowing (photos glow on the widget too), in the same quiet register as the subtitle.
+        Text(
+            text = "Tip: add the Ember widget to see photos glow on your home screen too",
+            fontFamily = typography.body,
+            fontSize = 11.5.sp,
+            color = colors.mutedDim,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        )
     }
 }
 

@@ -6,6 +6,7 @@ import com.ember.backend.service.ActivityService
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController
 class ActivityController(private val activityService: ActivityService) {
 
     @GetMapping
-    fun getActivity(@AuthenticationPrincipal me: AuthenticatedUser): List<ActivityEvent> =
-        activityService.getActivity(me.id)
+    fun getActivity(
+        @AuthenticationPrincipal me: AuthenticatedUser,
+        @RequestParam(defaultValue = "false") refresh: Boolean,
+    ): List<ActivityEvent> = activityService.getActivity(me.id, forceRefresh = refresh)
 }

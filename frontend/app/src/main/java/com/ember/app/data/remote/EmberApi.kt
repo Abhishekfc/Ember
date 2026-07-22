@@ -69,7 +69,7 @@ interface EmberApi {
     suspend fun removeFriend(@Path("friendshipId") friendshipId: String): Response<Unit>
 
     @GET("activity")
-    suspend fun getActivity(): Response<List<ActivityEventDto>>
+    suspend fun getActivity(@Query("refresh") refresh: Boolean = false): Response<List<ActivityEventDto>>
 
     @GET("users/me")
     suspend fun getMyProfile(): Response<UserProfileDto>

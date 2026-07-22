@@ -129,6 +129,8 @@ class FriendService(
             "Friend request sent: from userId={} ({}) to userId={} ({})",
             requester.id, requester.email, addressee.id, addressee.email,
         )
+        // Only the addressee sees a REQUEST_INCOMING event for this.
+        cacheManager.getCache("activity")?.evict(addressee.id.toString())
         return PendingFriendRequest(
             friendshipId = friendship.id,
             requesterId = requester.id,
@@ -159,6 +161,8 @@ class FriendService(
             friendship.requester.id, friendship.requester.email, friendship.addressee.id, friendship.addressee.email,
         )
         evictFriendsCache(friendship.requester.id, friendship.addressee.id)
+        // Only the original requester gets a REQUEST_ACCEPTED event for this.
+        cacheManager.getCache("activity")?.evict(friendship.requester.id.toString())
 
         return FriendSummary(
             friendshipId = friendship.id,
@@ -227,6 +231,13 @@ class FriendService(
         // showing up immediately rather than lingering until the TTL catches up.
         evictFriendsCache(friendship.requester.id, friendship.addressee.id)
         cacheManager.getCache("feed")?.let { cache ->
+            cache.evict(friendship.requester.id.toString())
+            cache.evict(friendship.addressee.id.toString())
+        }
+        // This same endpoint also covers declining/cancelling a still-PENDING request (no status
+        // check above) — either way, whichever side had a REQUEST_INCOMING or STREAK_EXPIRING
+        // entry for this friendship shouldn't keep seeing it.
+        cacheManager.getCache("activity")?.let { cache ->
             cache.evict(friendship.requester.id.toString())
             cache.evict(friendship.addressee.id.toString())
         }
