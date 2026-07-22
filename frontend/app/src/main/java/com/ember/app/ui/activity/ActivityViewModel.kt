@@ -22,11 +22,11 @@ class ActivityViewModel(private val repository: ActivityRepository) : ViewModel(
         loadActivity()
     }
 
-    fun loadActivity() {
+    fun loadActivity(isPullRefresh: Boolean = false) {
         viewModelScope.launch {
             isLoading = true
             errorMessage = null
-            repository.getActivity().fold(
+            repository.getActivity(forceRefresh = isPullRefresh).fold(
                 onSuccess = { events = it },
                 onFailure = { errorMessage = it.message ?: "Couldn't load activity" },
             )

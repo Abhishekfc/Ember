@@ -106,9 +106,14 @@ private val DmSerifDisplayFontFamily = FontFamily(
 private val emberDefinition = EmberThemeDefinition(
     key = ThemeKey.EMBER,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(Color(0xFF241F42), Color(0xFF0D0B18)), 0.20f, 0.0f),
+        background = EmberBackground.Radial(listOf(Color(0xFF0E0D14), Color(0xFF09080D)), 0.20f, 0.0f),
         panelBackground = EmberBackground.Radial(listOf(Color(0xFF2C2650), Color(0xFF0D0B18)), 0.30f, 0.0f),
-        panel = Color(0xFF1D1A33),
+        // Clearly lighter than either background stop (not sandwiched between them) — a radial
+        // background's brightness varies by position on screen, so a panel color tuned to only
+        // sit "between" the two stops can end up blending into whichever part of the gradient a
+        // given card happens to land on. Comfortably brighter than the lightest stop keeps panel
+        // edges legible regardless of where on screen they scroll to.
+        panel = Color(0xFF242329),
         cream = Color(0xFFFBF8F3),
         muted = Color(0xFF9B93B8),
         mutedDim = Color(0xFF6B6488),
@@ -144,9 +149,9 @@ private val noirDefinition = EmberThemeDefinition(
 private val auroraDefinition = EmberThemeDefinition(
     key = ThemeKey.AURORA,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(Color(0xFF0E3B3A), Color(0xFF061417)), 0.25f, 0.0f),
+        background = EmberBackground.Radial(listOf(Color(0xFF0A100F), Color(0xFF070B0A)), 0.25f, 0.0f),
         panelBackground = EmberBackground.Radial(listOf(Color(0xFF123F42), Color(0xFF061417)), 0.30f, 0.0f),
-        panel = Color(0xFF0D2B2E),
+        panel = Color(0xFF202826),
         cream = Color(0xFFE8FBF6),
         muted = Color(0xFF7FA8A3),
         mutedDim = Color(0xFF4C6E6A),
@@ -179,20 +184,26 @@ private val polaroidDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = DmSerifDisplayFontFamily, body = InterFontFamily),
 )
 
+// Redesigned per user feedback ("too bright", palette "not good") — the original was a near-white
+// pale-pink background with two near-identical pale peach accents (glow2 and violet were
+// literally the same color, so the streak ring's ember-to-violet "blaze" never actually showed a
+// violet). Deeper, warmer cream reads as sunlit wood/linen rather than a glary near-white; a
+// richer terracotta + gold pair gives real contrast against that cream instead of pale-on-pale;
+// a genuine dusty plum gives the high-streak blaze an actual third hue to sweep through.
 private val sunroomDefinition = EmberThemeDefinition(
     key = ThemeKey.SUNROOM,
     colors = EmberColors(
-        background = EmberBackground.Linear(listOf(Color(0xFFFDEFEA), Color(0xFFFBE4D8))),
-        panelBackground = EmberBackground.Linear(listOf(Color(0xFFFFF8F4), Color(0xFFFCEBE0))),
-        panel = Color(0xFFFFFFFF),
-        cream = Color(0xFF3D2E28),
-        muted = Color(0xFFB08A7A),
-        mutedDim = Color(0xFFC7A695),
-        glow = Color(0xFFFF9E7D),
-        glow2 = Color(0xFFFFC49B),
-        violet = Color(0xFFFFC49B),
-        accentText = Color(0xFF3D2E28),
-        border = blackBorder(0.07f),
+        background = EmberBackground.Linear(listOf(Color(0xFFF7E9D7), Color(0xFFF0D9BE))),
+        panelBackground = EmberBackground.Linear(listOf(Color(0xFFFCF3E6), Color(0xFFF6E7D2))),
+        panel = Color(0xFFFFFDF8),
+        cream = Color(0xFF3A281F),
+        muted = Color(0xFFA0806C),
+        mutedDim = Color(0xFFC2A084),
+        glow = Color(0xFFD46A3D),
+        glow2 = Color(0xFFE8A94F),
+        violet = Color(0xFF9B6B8C),
+        accentText = Color(0xFFFFF8F0),
+        border = blackBorder(0.09f),
         isLight = true,
     ),
     typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
@@ -201,9 +212,9 @@ private val sunroomDefinition = EmberThemeDefinition(
 private val cyberDefinition = EmberThemeDefinition(
     key = ThemeKey.CYBER,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(Color(0xFF1A0B2E), Color(0xFF05020B)), 0.25f, 0.0f),
+        background = EmberBackground.Radial(listOf(Color(0xFF0E0B14), Color(0xFF08060D)), 0.25f, 0.0f),
         panelBackground = EmberBackground.Radial(listOf(Color(0xFF22103D), Color(0xFF05020B)), 0.30f, 0.0f),
-        panel = Color(0xFF150A28),
+        panel = Color(0xFF252029),
         cream = Color(0xFFF3E8FF),
         muted = Color(0xFF8A72B8),
         mutedDim = Color(0xFF5A4880),
@@ -220,9 +231,9 @@ private val cyberDefinition = EmberThemeDefinition(
 private val botanicaDefinition = EmberThemeDefinition(
     key = ThemeKey.BOTANICA,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(Color(0xFF1B3B2E), Color(0xFF0A1712)), 0.20f, 0.0f),
+        background = EmberBackground.Radial(listOf(Color(0xFF0C110D), Color(0xFF080B09)), 0.20f, 0.0f),
         panelBackground = EmberBackground.Radial(listOf(Color(0xFF204536), Color(0xFF0A1712)), 0.30f, 0.0f),
-        panel = Color(0xFF163024),
+        panel = Color(0xFF232823),
         cream = Color(0xFFF0EAD8),
         muted = Color(0xFF8FA894),
         mutedDim = Color(0xFF587060),

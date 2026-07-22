@@ -9,8 +9,8 @@ import retrofit2.Response
 class ActivityRepository(private val api: EmberApi) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getActivity(): Result<List<ActivityEventDto>> = safeCall {
-        val response = api.getActivity()
+    suspend fun getActivity(forceRefresh: Boolean = false): Result<List<ActivityEventDto>> = safeCall {
+        val response = api.getActivity(refresh = forceRefresh)
         val body = response.body()
         if (response.isSuccessful && body != null) {
             Result.success(body)

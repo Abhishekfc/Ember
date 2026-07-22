@@ -51,8 +51,8 @@ import com.ember.app.ui.components.BottomNavDock
 import com.ember.app.ui.components.NavDestination
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -65,11 +65,11 @@ fun ActivityScreen(
     viewModel: ActivityViewModel,
     onNavigate: (NavDestination) -> Unit,
     onCameraClick: () -> Unit,
+    hazeState: HazeState,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
-    val hazeState = rememberHazeState()
 
     val groups = remember(viewModel.events) { groupByDay(viewModel.events) }
     val todayCount = remember(viewModel.events) { groups.firstOrNull { it.first == "Today" }?.second?.size ?: 0 }
@@ -102,7 +102,7 @@ fun ActivityScreen(
                 // covered by the full-screen spinner instead, so the pull indicator doesn't
                 // animate in from the top on every app launch.
                 isRefreshing = viewModel.isLoading && viewModel.events.isNotEmpty(),
-                onRefresh = viewModel::loadActivity,
+                onRefresh = { viewModel.loadActivity(isPullRefresh = true) },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {

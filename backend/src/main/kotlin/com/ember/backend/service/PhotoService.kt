@@ -93,6 +93,12 @@ class PhotoService(
             cache.evict(senderId.toString())
             recipientIds.forEach { cache.evict(it.toString()) }
         }
+        // Recipients get a new PHOTO_RECEIVED event; the sender's own streak-expiring risk can
+        // also change the moment they send (today's exchange is now covered), so both sides.
+        cacheManager.getCache("activity")?.let { cache ->
+            cache.evict(senderId.toString())
+            recipientIds.forEach { cache.evict(it.toString()) }
+        }
 
         return PhotoUploadResponse(
             photoId = photo.id,

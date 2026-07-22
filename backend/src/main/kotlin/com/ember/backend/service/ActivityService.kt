@@ -5,6 +5,7 @@ import com.ember.backend.dto.ActivityEventType
 import com.ember.backend.model.FriendshipStatus
 import com.ember.backend.repository.FriendshipRepository
 import com.ember.backend.repository.PhotoRecipientRepository
+import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
@@ -20,9 +21,25 @@ class ActivityService(
     private val friendshipRepository: FriendshipRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
     private val r2StorageService: R2StorageService,
+    private val cacheManager: CacheManager,
 ) {
 
-    fun getActivity(userId: UUID): List<ActivityEvent> {
+    /** Cached per-user, same read-bypass-but-rewrite-on-[forceRefresh] pattern as
+     * [FriendService.getFriends] — this assembles from three separate repository queries plus a
+     * per-friend streak calculation, so on a feed with several friends it's the most expensive
+     * of the three cached endpoints to rebuild from scratch on every tab open. Evicted wherever
+     * something that can produce a new event happens: a photo upload (PhotoService), a friend
+     * request sent or accepted (FriendService) — the 30s TTL is the safety net for the rest. */
+    fun getActivity(userId: UUID, forceRefresh: Boolean = false): List<ActivityEvent> {
+        val cache = cacheManager.getCache("activity")
+        val cacheKey = userId.toString()
+        if (!forceRefresh) {
+            cache?.get(cacheKey, List::class.java)?.let {
+                @Suppress("UNCHECKED_CAST")
+                return it as List<ActivityEvent>
+            }
+        }
+
         val events = mutableListOf<ActivityEvent>()
 
         // Consecutive photos from the same sender collapse into one entry ("Priya sent you 3
@@ -111,6 +128,8 @@ class ActivityService(
             }
         }
 
-        return events.sortedByDescending { it.createdAt }.take(ACTIVITY_FEED_LIMIT)
+        val result = events.sortedByDescending { it.createdAt }.take(ACTIVITY_FEED_LIMIT)
+        cache?.put(cacheKey, result)
+        return result
     }
 }

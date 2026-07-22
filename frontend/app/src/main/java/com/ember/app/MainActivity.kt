@@ -55,10 +55,12 @@ import com.ember.app.ui.settings.EmberGoldScreen
 import com.ember.app.ui.settings.SettingsScreen
 import com.ember.app.ui.theme.EmberAppTheme
 import com.ember.app.ui.theme.EmberTheme
+import com.ember.app.ui.theme.ThemeKey
 import com.ember.app.ui.theme.ThemeScreen
 import com.ember.app.ui.theme.ThemeViewModel
 import com.ember.app.widget.WidgetPhotoSync
 import com.ember.app.widget.WidgetUpdateWorker
+import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
 
 /** Screens reached from within a tab (Settings -> Theme, Friends -> Find People / Friend
@@ -91,10 +93,17 @@ class MainActivity : ComponentActivity() {
                     initializer { ThemeViewModel(themePreferenceStore) }
                 },
             )
+            // Non-null only while ThemeScreen is being browsed with an unapplied pick staged —
+            // lets the whole app (this screen included) live-preview a theme before it's
+            // actually chosen, without touching the persisted selectedTheme until Apply is
+            // tapped. ThemeScreen clears this back to null itself, both on Apply and whenever
+            // it leaves composition (back button, navigating away) so an unapplied preview never
+            // lingers past the screen that was browsing it.
+            var previewThemeKey by remember { mutableStateOf<ThemeKey?>(null) }
 
             // Hoisted above EmberAppTheme so picking a theme on ThemeScreen re-themes the
             // whole app immediately, not just that screen.
-            EmberAppTheme(themeKey = themeViewModel.selectedTheme) {
+            EmberAppTheme(themeKey = previewThemeKey ?: themeViewModel.selectedTheme) {
                 val loginViewModel: LoginViewModel = viewModel(
                     factory = viewModelFactory {
                         initializer { LoginViewModel(authRepository) }
@@ -161,6 +170,14 @@ class MainActivity : ComponentActivity() {
                     }
                     val onCameraClick = { nestedScreen = NestedScreen.CAMERA }
 
+                    // Hoisted rather than let each tab screen create its own: real-time backdrop
+                    // blur needs to set up a GPU render-effect pipeline (shader compile, capture
+                    // buffers) the first time it runs. Each tab creating its own HazeState meant
+                    // that pipeline was torn down and rebuilt from scratch on every single tab
+                    // switch — a real, consistent stutter on every nav tap, not specific to any
+                    // one screen. One shared instance keeps it alive across navigation.
+                    val hazeState = rememberHazeState()
+
                     // Hoisted (rather than declared inside their respective tab branches below)
                     // so they survive navigating into nested screens and back, and so they can
                     // be refreshed from elsewhere: FriendsViewModel after a friend is removed,
@@ -184,6 +201,16 @@ class MainActivity : ComponentActivity() {
                                     },
                                 )
                             }
+                        },
+                    )
+                    // Also hoisted, for the same reason: created here means its fetch starts as
+                    // soon as the app opens, in the background, rather than only starting the
+                    // moment the user first taps the Activity tab — that lazy-create pattern is
+                    // what made Activity specifically feel slower to open than Home or Friends,
+                    // whose ViewModels (and therefore their network calls) were already hoisted.
+                    val activityViewModel: ActivityViewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer { ActivityViewModel(activityRepository) }
                         },
                     )
 
@@ -249,7 +276,10 @@ class MainActivity : ComponentActivity() {
                             MyProfileScreen(viewModel = myProfileViewModel, onClose = { nestedScreen = null })
                         }
 
-                        nestedScreen == NestedScreen.THEME -> ThemeScreen(viewModel = themeViewModel)
+                        nestedScreen == NestedScreen.THEME -> ThemeScreen(
+                            viewModel = themeViewModel,
+                            onPreview = { previewThemeKey = it },
+                        )
 
                         nestedScreen == NestedScreen.GOLD -> EmberGoldScreen()
 
@@ -289,6 +319,9 @@ class MainActivity : ComponentActivity() {
                             val notificationsEnabled by notificationPreferenceStore.enabled
                                 .collectAsState(initial = true)
                             SettingsScreen(
+                                displayName = homeViewModel.userName,
+                                username = homeViewModel.username,
+                                profilePhotoUrl = homeViewModel.profilePhotoUrl,
                                 currentTheme = themeViewModel.selectedTheme,
                                 notificationsEnabled = notificationsEnabled,
                                 onNotificationsChange = { enabled ->
@@ -296,22 +329,20 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigate = onNavigate,
                                 onCameraClick = onCameraClick,
+                                onProfileClick = { nestedScreen = NestedScreen.PROFILE },
                                 onThemeClick = { nestedScreen = NestedScreen.THEME },
                                 onGoldClick = { nestedScreen = NestedScreen.GOLD },
                                 onSignOut = onSignOut,
+                                hazeState = hazeState,
                             )
                         }
 
                         activeTab == NavDestination.ACTIVITY -> {
-                            val activityViewModel: ActivityViewModel = viewModel(
-                                factory = viewModelFactory {
-                                    initializer { ActivityViewModel(activityRepository) }
-                                },
-                            )
                             ActivityScreen(
                                 viewModel = activityViewModel,
                                 onNavigate = onNavigate,
                                 onCameraClick = onCameraClick,
+                                hazeState = hazeState,
                             )
                         }
 
@@ -324,6 +355,7 @@ class MainActivity : ComponentActivity() {
                                 selectedFriend = friend
                                 nestedScreen = NestedScreen.FRIEND_PROFILE
                             },
+                            hazeState = hazeState,
                         )
 
                         else -> HomeScreen(
@@ -332,6 +364,7 @@ class MainActivity : ComponentActivity() {
                             onCameraClick = onCameraClick,
                             onAddFriendClick = { nestedScreen = NestedScreen.FIND_PEOPLE },
                             onProfileClick = { nestedScreen = NestedScreen.PROFILE },
+                            hazeState = hazeState,
                         )
                     }
                 }

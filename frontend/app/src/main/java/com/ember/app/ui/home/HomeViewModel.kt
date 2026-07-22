@@ -41,6 +41,12 @@ class HomeViewModel(
      * piggybacking on the same "fetch when the screen normally would" principle as the feed. */
     var profilePhotoUrl by mutableStateOf<String?>(null)
         private set
+
+    /** The signed-in user's @handle — fetched alongside [profilePhotoUrl] from the same
+     * getMyProfile() call, reused as-is by Settings' profile header so it doesn't need its own
+     * network round-trip just to show who's signed in. */
+    var username by mutableStateOf<String?>(null)
+        private set
     var isLoading by mutableStateOf(true)
         private set
 
@@ -94,6 +100,7 @@ class HomeViewModel(
     fun applyProfileUpdate(profile: UserProfileDto) {
         userName = profile.displayName
         profilePhotoUrl = profile.profilePhotoUrl
+        username = profile.username
     }
 
     val greeting: String = run {
@@ -115,7 +122,12 @@ class HomeViewModel(
     init {
         loadFeed()
         viewModelScope.launch { userName = tokenStore.displayName.first() }
-        viewModelScope.launch { userRepository.getMyProfile().onSuccess { profilePhotoUrl = it.profilePhotoUrl } }
+        viewModelScope.launch {
+            userRepository.getMyProfile().onSuccess {
+                profilePhotoUrl = it.profilePhotoUrl
+                username = it.username
+            }
+        }
         viewModelScope.launch { seenLatestPhotoByFriend.putAll(seenPhotoStore.current()) }
     }
 
