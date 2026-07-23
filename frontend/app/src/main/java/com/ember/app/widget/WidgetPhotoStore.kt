@@ -40,4 +40,18 @@ class WidgetPhotoStore(private val context: Context) {
             it[filePathKey] = state.localFilePath
         }
     }
+
+    /** Called on sign-out — without this, a friend's private photo (and their name) keeps
+     * rendering on the home screen indefinitely after "signing out," since the widget reads
+     * straight from this store independent of the app's own signed-in state. */
+    suspend fun clear() {
+        val existing = current()
+        context.emberDataStore.edit {
+            it.remove(photoIdKey)
+            it.remove(senderNameKey)
+            it.remove(createdAtKey)
+            it.remove(filePathKey)
+        }
+        existing?.localFilePath?.let { java.io.File(it).delete() }
+    }
 }

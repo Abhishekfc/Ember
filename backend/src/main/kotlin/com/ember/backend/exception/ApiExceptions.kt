@@ -18,3 +18,9 @@ class ResourceNotFoundException(message: String) : ApiException(HttpStatus.NOT_F
 class InvalidFriendRequestException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
 
 class SubscriptionVerificationException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
+
+class PurchaseTokenAlreadyClaimedException :
+    ApiException(HttpStatus.CONFLICT, "This purchase is already linked to a different account")
+
+class RateLimitExceededException :
+    ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many attempts — please try again later")

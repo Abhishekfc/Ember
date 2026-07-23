@@ -42,8 +42,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import com.ember.app.ui.components.BottomNavDock
-import com.ember.app.ui.components.NavDestination
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 import com.ember.app.ui.theme.ThemeKey
@@ -65,7 +63,6 @@ fun SettingsScreen(
     currentTheme: ThemeKey,
     notificationsEnabled: Boolean,
     onNotificationsChange: (Boolean) -> Unit,
-    onNavigate: (NavDestination) -> Unit,
     onCameraClick: () -> Unit,
     onProfileClick: () -> Unit,
     onThemeClick: () -> Unit,
@@ -101,10 +98,14 @@ fun SettingsScreen(
             .background(colors.background.asBrush(screenSize)),
     ) {
         Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState)) {
+            // fontSize matches Friends'/Activity's own page title exactly (26sp) — this was
+            // 22sp, noticeably smaller than either, which is what made Settings read as
+            // misaligned with the rest of the app when swiping directly between tabs even
+            // though its top/side padding already matched them.
             Text(
                 text = "Settings",
                 fontFamily = typography.display,
-                fontSize = 22.sp,
+                fontSize = 26.sp,
                 color = colors.cream,
                 modifier = Modifier.padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 22.dp),
             )
@@ -225,13 +226,6 @@ fun SettingsScreen(
             }
         }
 
-        BottomNavDock(
-            active = NavDestination.SETTINGS,
-            onNavigate = onNavigate,
-            onCameraClick = onCameraClick,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            hazeState = hazeState,
-        )
     }
 }
 

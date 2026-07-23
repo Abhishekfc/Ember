@@ -80,14 +80,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
+import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 import java.io.File
 import java.io.FileOutputStream
+import java.lang.ref.WeakReference
 
 @Composable
 fun CameraScreen(
@@ -95,7 +98,7 @@ fun CameraScreen(
     onClose: () -> Unit,
     onOpenRecipientPicker: () -> Unit,
     onUpgradeToGold: () -> Unit,
-    onSent: () -> Unit,
+    onSent: (PhotoUploadResponseDto) -> Unit,
 ) {
     val colors = EmberTheme.colors
     val context = LocalContext.current
@@ -278,28 +281,15 @@ private fun LiveCameraStage() {
     }
 
     if (hasCameraPermission) {
-        // A remembered, stable PreviewView plus a rebind keyed specifically on lensFacing —
-        // AndroidView's own `update` block re-runs on *every* recomposition of this composable,
-        // not just when the lens actually changes (any unrelated state change elsewhere on the
-        // capture screen would also silently trigger an extra unbind/rebind here). That's what
-        // made the flip button unreliable: the rebind meant to apply the new lens could race
-        // against another one firing for an unrelated reason, so the switch sometimes only
-        // visibly took effect the next time this screen was reopened fresh. Scoping the rebind
-        // to LaunchedEffect(lensFacing) means it fires exactly once per actual flip, no more.
-        val previewView = remember { PreviewView(context) }
+        // The PreviewView and its binding live in CameraSession, not in a remember{} scoped to
+        // this composition — see that object's own doc comment for why (Camera is a pager page,
+        // disposed and recomposed on every scroll away and back, not a screen only ever created
+        // once). bindIfNeeded is still keyed on lensFacing here so a flip is picked up the
+        // moment it changes, but it no-ops immediately if this lens is already bound, rather
+        // than unconditionally re-fetching the provider and rebinding on every re-entry.
+        val previewView = remember { CameraSession.previewViewFor(context) }
         LaunchedEffect(CameraSession.lensFacing) {
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-            cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build().also {
-                    it.surfaceProvider = previewView.surfaceProvider
-                }
-                val selector = CameraSelector.Builder().requireLensFacing(CameraSession.lensFacing).build()
-                runCatching {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, CameraSession.imageCapture)
-                }
-            }, ContextCompat.getMainExecutor(context))
+            CameraSession.bindIfNeeded(context, lifecycleOwner)
         }
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { previewView })
     } else {
@@ -316,10 +306,53 @@ private fun LiveCameraStage() {
 
 /** Holds camera state that must survive the capture->preview->retake round trip and be shared
  * between the viewfinder and the shutter button without threading it through every composable.
- * lensFacing is Compose state so the viewfinder rebinds when the flip button changes it. */
+ * lensFacing is Compose state so the viewfinder rebinds when the flip button changes it.
+ *
+ * Also holds the actual [PreviewView] and tracks which lens it's currently bound for — Camera is
+ * one page of a swipeable pager, so this screen is disposed and freshly recomposed every time
+ * it's scrolled away from and back, not just the first time it's ever opened. Without keeping
+ * the view + binding here instead of scoped to that composition, the full
+ * ProcessCameraProvider fetch + bindToLifecycle sequence — the actual source of the "black
+ * screen for a few seconds" delay — reran on every single re-entry. Reusing the same view and
+ * only rebinding when the lens actually changes means re-entering just reattaches an
+ * already-live preview. */
 private object CameraSession {
     var lensFacing by mutableStateOf(CameraSelector.LENS_FACING_BACK)
     val imageCapture: ImageCapture = ImageCapture.Builder().build()
+
+    var previewView: PreviewView? = null
+        private set
+    private var boundForLensFacing: Int? = null
+
+    // CameraX auto-unbinds bindToLifecycle's registration the moment the bound LifecycleOwner
+    // reaches DESTROYED — which happens to the Activity on any config change the manifest
+    // doesn't declare (system dark/light toggle, font-scale, foldable resize; only
+    // screenOrientation is declared). Tracking lens alone meant that, after such a recreation,
+    // this object's state still said "already bound" for a LifecycleOwner CameraX had already
+    // silently dropped — leaving a permanently black viewfinder until the user happened to flip
+    // the lens (forcing a rebind) or restart the app. A weak reference (not a strong one) so
+    // this object never itself keeps a destroyed Activity alive.
+    private var boundLifecycleOwner: WeakReference<LifecycleOwner>? = null
+
+    fun previewViewFor(context: Context): PreviewView =
+        previewView ?: PreviewView(context.applicationContext).also { previewView = it }
+
+    fun bindIfNeeded(context: Context, lifecycleOwner: LifecycleOwner) {
+        if (boundForLensFacing == lensFacing && boundLifecycleOwner?.get() === lifecycleOwner) return
+        val view = previewView ?: return
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
+            val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
+            runCatching {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture)
+                boundForLensFacing = lensFacing
+                boundLifecycleOwner = WeakReference(lifecycleOwner)
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
 }
 
 /** A small circular icon button with a translucent backing — used for gallery/flip so they read
@@ -581,7 +614,7 @@ private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
 @Composable
 private fun PreviewControls(
     viewModel: CameraViewModel,
-    onSent: () -> Unit,
+    onSent: (PhotoUploadResponseDto) -> Unit,
 ) {
     val colors = EmberTheme.colors
     val hasRecipients = viewModel.selectedFriends.isNotEmpty()

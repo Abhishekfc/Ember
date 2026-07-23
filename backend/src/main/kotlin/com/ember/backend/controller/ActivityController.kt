@@ -1,6 +1,7 @@
 package com.ember.backend.controller
 
 import com.ember.backend.dto.ActivityEvent
+import com.ember.backend.dto.Page
 import com.ember.backend.security.AuthenticatedUser
 import com.ember.backend.service.ActivityService
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -17,5 +18,7 @@ class ActivityController(private val activityService: ActivityService) {
     fun getActivity(
         @AuthenticationPrincipal me: AuthenticatedUser,
         @RequestParam(defaultValue = "false") refresh: Boolean,
-    ): List<ActivityEvent> = activityService.getActivity(me.id, forceRefresh = refresh)
+        @RequestParam(defaultValue = "0") offset: Int,
+        @RequestParam(defaultValue = "30") limit: Int,
+    ): Page<ActivityEvent> = activityService.getActivity(me.id, offset = offset, limit = limit, forceRefresh = refresh)
 }

@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,8 +48,6 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.ActivityEventDto
 import com.ember.app.data.remote.dto.ActivityEventType
-import com.ember.app.ui.components.BottomNavDock
-import com.ember.app.ui.components.NavDestination
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
 import dev.chrisbanes.haze.HazeState
@@ -63,7 +62,6 @@ import java.util.Locale
 @Composable
 fun ActivityScreen(
     viewModel: ActivityViewModel,
-    onNavigate: (NavDestination) -> Unit,
     onCameraClick: () -> Unit,
     hazeState: HazeState,
 ) {
@@ -159,18 +157,25 @@ fun ActivityScreen(
                                 ActivityRow(event)
                             }
                         }
+
+                        // Composed only once the user has actually scrolled near the end
+                        // (LazyColumn doesn't compose items far outside the viewport), which is
+                        // what triggers the fetch — not a fixed scroll-position threshold.
+                        if (viewModel.hasMore) {
+                            item(key = "load-more") {
+                                LaunchedEffect(Unit) { viewModel.loadMoreActivity() }
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(color = colors.glow, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-
-        BottomNavDock(
-            active = NavDestination.ACTIVITY,
-            onNavigate = onNavigate,
-            onCameraClick = onCameraClick,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            hazeState = hazeState,
-        )
     }
 }
 

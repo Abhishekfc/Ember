@@ -54,12 +54,14 @@ class AuthService(
     fun login(request: LoginRequest): AuthResponse {
         val normalizedEmail = request.email.trim().lowercase()
         val user = userRepository.findByEmail(normalizedEmail)
-        if (user == null) {
-            logger.info("Login failed, no account for email: {}", normalizedEmail)
-            throw InvalidCredentialsException()
-        }
-        if (!passwordEncoder.matches(request.password, user.passwordHash)) {
-            logger.info("Login failed, wrong password: userId={} email={}", user.id, user.email)
+        // Always runs a real BCrypt comparison, even when no account matched — comparing against
+        // a fixed dummy hash rather than short-circuiting on `user == null`. BCrypt is
+        // deliberately slow (tens of ms), so skipping it made "no such email" measurably faster
+        // than "wrong password," letting an attacker enumerate valid emails purely from response
+        // timing, with no rate limiting standing in the way.
+        val passwordMatches = passwordEncoder.matches(request.password, user?.passwordHash ?: DUMMY_PASSWORD_HASH)
+        if (user == null || !passwordMatches) {
+            logger.info("Login failed for email: {}", normalizedEmail)
             throw InvalidCredentialsException()
         }
         logger.info("User logged in: userId={} email={}", user.id, user.email)
@@ -70,5 +72,11 @@ class AuthService(
             displayName = user.displayName,
             username = user.username,
         )
+    }
+
+    private companion object {
+        // Not a real account's hash — just a well-formed BCrypt digest to compare against so a
+        // nonexistent-user login takes the same amount of work as a real wrong-password check.
+        const val DUMMY_PASSWORD_HASH = "\$2a\$12\$Eck.aaxqRvwDl.4Ll6uuBu.FfCLaTEvIA0UBU78kfZSiUJwqI7nVm"
     }
 }

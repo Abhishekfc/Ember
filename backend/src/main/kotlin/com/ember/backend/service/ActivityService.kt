@@ -2,6 +2,7 @@ package com.ember.backend.service
 
 import com.ember.backend.dto.ActivityEvent
 import com.ember.backend.dto.ActivityEventType
+import com.ember.backend.dto.Page
 import com.ember.backend.model.FriendshipStatus
 import com.ember.backend.repository.FriendshipRepository
 import com.ember.backend.repository.PhotoRecipientRepository
@@ -14,7 +15,6 @@ import java.time.ZoneOffset
 import java.util.UUID
 
 private const val RECENT_PHOTOS_LIMIT = 20
-private const val ACTIVITY_FEED_LIMIT = 30
 
 @Service
 class ActivityService(
@@ -30,16 +30,29 @@ class ActivityService(
      * of the three cached endpoints to rebuild from scratch on every tab open. Evicted wherever
      * something that can produce a new event happens: a photo upload (PhotoService), a friend
      * request sent or accepted (FriendService) — the 30s TTL is the safety net for the rest. */
-    fun getActivity(userId: UUID, forceRefresh: Boolean = false): List<ActivityEvent> {
+    fun getActivity(userId: UUID, offset: Int = 0, limit: Int = 30, forceRefresh: Boolean = false): Page<ActivityEvent> {
         val cache = cacheManager.getCache("activity")
         val cacheKey = userId.toString()
-        if (!forceRefresh) {
-            cache?.get(cacheKey, List::class.java)?.let {
+        val events = if (!forceRefresh) {
+            // See PhotoService.getFeed: a cache read failure (e.g. an empty-list result that
+            // GenericJackson2JsonRedisSerializer doesn't round-trip reliably) must be treated as
+            // a miss, not allowed to fail the request.
+            runCatching { cache?.get(cacheKey, List::class.java) }.getOrNull()?.let {
                 @Suppress("UNCHECKED_CAST")
-                return it as List<ActivityEvent>
-            }
+                it as List<ActivityEvent>
+            } ?: computeActivity(userId).also { cache?.put(cacheKey, it) }
+        } else {
+            computeActivity(userId).also { cache?.put(cacheKey, it) }
         }
 
+        // Paginated in memory, same reasoning as FriendService.getFriends — the full,
+        // already-capped-at-ACTIVITY_FEED_LIMIT list is what's cached and evicted as a unit;
+        // this just slices the requested page out of it.
+        val page = events.drop(offset).take(limit)
+        return Page(items = page, hasMore = offset + limit < events.size)
+    }
+
+    private fun computeActivity(userId: UUID): List<ActivityEvent> {
         val events = mutableListOf<ActivityEvent>()
 
         // Consecutive photos from the same sender collapse into one entry ("Priya sent you 3
@@ -98,9 +111,19 @@ class ActivityService(
             )
         }
 
+        // One query covering every accepted friend's exchange history instead of one query per
+        // friend in the loop below.
+        val acceptedFriendIds = accepted.map { if (it.requester.id == userId) it.addressee.id else it.requester.id }
+        val timestampsByFriend = if (acceptedFriendIds.isEmpty()) {
+            emptyMap()
+        } else {
+            photoRecipientRepository.findExchangeTimestampsBatch(userId, acceptedFriendIds)
+                .groupBy({ it.otherPartyId }, { it.createdAt })
+        }
+
         accepted.forEach { friendship ->
             val friend = if (friendship.requester.id == userId) friendship.addressee else friendship.requester
-            val timestamps = photoRecipientRepository.findExchangeTimestamps(userId, friend.id)
+            val timestamps = timestampsByFriend[friend.id] ?: emptyList()
             if (timestamps.isEmpty()) return@forEach
 
             val streak = StreakCalculator.compute(timestamps)
@@ -128,8 +151,6 @@ class ActivityService(
             }
         }
 
-        val result = events.sortedByDescending { it.createdAt }.take(ACTIVITY_FEED_LIMIT)
-        cache?.put(cacheKey, result)
-        return result
+        return events.sortedByDescending { it.createdAt }
     }
 }

@@ -77,11 +77,14 @@ data class EmberThemeDefinition(
 private fun whiteBorder(alpha: Float) = Color(red = 1f, green = 1f, blue = 1f, alpha = alpha)
 private fun blackBorder(alpha: Float) = Color(red = 0f, green = 0f, blue = 0f, alpha = alpha)
 
-// Fraunces is a variable font (weights 400-600 used); each entry pins the wght axis.
+// Fraunces is a variable font (weights 400-700 used); each entry pins the wght axis.
+// Bold(700) added for headline moments (Home's hero line) that need real premium weight —
+// the font already supports it, this just registers it alongside the existing weights.
 private val FrauncesFontFamily = FontFamily(
     Font(R.font.fraunces, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.fraunces, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
     Font(R.font.fraunces, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
+    Font(R.font.fraunces, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
 
 // Inter is a variable font (weights 400-700 used).

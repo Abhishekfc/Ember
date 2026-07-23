@@ -6,11 +6,19 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ember.app.data.FriendRepository
+import com.ember.app.data.local.LocalListCache
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
 import kotlinx.coroutines.launch
 
-class FriendsViewModel(private val repository: FriendRepository) : ViewModel() {
+/** Matches the backend's own default `limit` for this endpoint — kept as one named constant,
+ * used for every page fetched (first and subsequent), rather than repeated as a bare number. */
+private const val PAGE_SIZE = 30
+
+class FriendsViewModel(
+    private val repository: FriendRepository,
+    private val localCache: LocalListCache,
+) : ViewModel() {
 
     var friends by mutableStateOf<List<FriendSummaryDto>>(emptyList())
         private set
@@ -19,6 +27,25 @@ class FriendsViewModel(private val repository: FriendRepository) : ViewModel() {
     var acceptingRequestIds by mutableStateOf<Set<String>>(emptySet())
         private set
     var isLoading by mutableStateOf(true)
+        private set
+
+    // Separate from isLoading (which starts `true` purely to show a spinner before the very
+    // first fetch runs) — using isLoading itself as loadFriends' re-entrancy guard meant the
+    // very first call from init saw it already `true` and returned immediately, before ever
+    // reaching the line that sets it back to `false`. isLoading got stuck `true` forever, and
+    // every future loadFriends call (pull-to-refresh, after pinning a friend, anything) was
+    // silently dropped for the rest of the app's session. This one starts `false` and exists
+    // purely to prevent overlapping fetches, never to drive UI.
+    private var isFetchingFriends = false
+    /** True only while fetching the *next* page — kept separate from [isLoading] so scrolling
+     * near the end of an already-loaded list shows a small inline spinner at the bottom, not
+     * the full-screen one meant for the very first load. */
+    var isLoadingMore by mutableStateOf(false)
+        private set
+    /** Whether another page exists beyond what's already in [friends] — checked (and not just
+     * inferred from list size) so a page that happens to come back exactly [PAGE_SIZE] long
+     * doesn't get mistaken for the last one. */
+    var hasMore by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
@@ -36,7 +63,13 @@ class FriendsViewModel(private val repository: FriendRepository) : ViewModel() {
         }
 
     init {
-        loadFriends()
+        // Instagram/Snapchat-style instant-on-reopen — see HomeViewModel's init for the fuller
+        // explanation. Read must complete first (not just be launched first) so there's no race
+        // between it and the fresh fetch for who sets `friends` first.
+        viewModelScope.launch {
+            localCache.read<FriendSummaryDto>(LocalListCache.KEY_FRIENDS)?.let { friends = it }
+            loadFriends()
+        }
     }
 
     fun onSearchQueryChange(value: String) {
@@ -44,16 +77,43 @@ class FriendsViewModel(private val repository: FriendRepository) : ViewModel() {
     }
 
     fun loadFriends(isPullRefresh: Boolean = false) {
+        // init's own call and a pull-to-refresh landing close together could otherwise overlap —
+        // whichever completes last wins regardless of which started later.
+        if (isFetchingFriends) return
         viewModelScope.launch {
+            isFetchingFriends = true
             isLoading = true
             errorMessage = null
-            repository.getFriends(forceRefresh = isPullRefresh).fold(
-                onSuccess = { friends = it },
+            repository.getFriends(forceRefresh = isPullRefresh, limit = PAGE_SIZE).fold(
+                onSuccess = { page ->
+                    friends = page.items
+                    hasMore = page.hasMore
+                    localCache.write(LocalListCache.KEY_FRIENDS, page.items)
+                },
                 onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
             )
             // Requests load is best-effort: a failure here shouldn't blank the friends list.
             repository.getPendingRequests().onSuccess { pendingRequests = it }
             isLoading = false
+            isFetchingFriends = false
+        }
+    }
+
+    /** Fetches the next page and appends it — called as the list scrolls near its end. A no-op
+     * if there's nothing more, or a fetch (first-load or another loadMore) is already in
+     * flight, so a fast scroll can't fire overlapping requests for the same page. */
+    fun loadMoreFriends() {
+        if (!hasMore || isLoading || isLoadingMore) return
+        viewModelScope.launch {
+            isLoadingMore = true
+            repository.getFriends(offset = friends.size, limit = PAGE_SIZE).fold(
+                onSuccess = { page -> friends = friends + page.items; hasMore = page.hasMore },
+                // Silent on failure — a failed background continuation shouldn't blank the
+                // list that's already showing or throw a scary error over it. The user can
+                // just scroll again (or pull to refresh) to retry.
+                onFailure = {},
+            )
+            isLoadingMore = false
         }
     }
 
