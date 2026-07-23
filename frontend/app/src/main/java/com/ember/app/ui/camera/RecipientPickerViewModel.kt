@@ -9,6 +9,10 @@ import com.ember.app.data.FriendRepository
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import kotlinx.coroutines.launch
 
+/** A generously high ceiling for "give me every friend to choose a recipient from" — not a real
+ * pagination page size, just far above any real user's friend count. */
+private const val RECIPIENT_PICKER_FRIENDS_LIMIT = 500
+
 class RecipientPickerViewModel(
     private val repository: FriendRepository,
     initialSelectedFriendIds: Set<String>,
@@ -31,8 +35,8 @@ class RecipientPickerViewModel(
         viewModelScope.launch {
             isLoading = true
             errorMessage = null
-            repository.getFriends().fold(
-                onSuccess = { friends = it },
+            repository.getFriends(limit = RECIPIENT_PICKER_FRIENDS_LIMIT).fold(
+                onSuccess = { page -> friends = page.items },
                 onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
             )
             isLoading = false

@@ -6,4 +6,5 @@ import java.util.UUID
 
 interface SubscriptionRepository : JpaRepository<Subscription, UUID> {
     fun findByUserId(userId: UUID): Subscription?
+    fun findByPlayPurchaseToken(playPurchaseToken: String): Subscription?
 }

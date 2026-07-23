@@ -3,6 +3,7 @@ package com.ember.backend.service
 import com.ember.backend.dto.FriendRequestRequest
 import com.ember.backend.dto.FriendSearchResult
 import com.ember.backend.dto.FriendSummary
+import com.ember.backend.dto.Page
 import com.ember.backend.dto.PendingFriendRequest
 import com.ember.backend.exception.InvalidFriendRequestException
 import com.ember.backend.exception.ResourceNotFoundException
@@ -29,6 +30,7 @@ class FriendService(
     private val photoRecipientRepository: PhotoRecipientRepository,
     private val r2StorageService: R2StorageService,
     private val cacheManager: CacheManager,
+    private val pushNotificationService: PushNotificationService,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -39,22 +41,45 @@ class FriendService(
      * [forceRefresh] (set from the Friends screen's pull-to-refresh gesture) skips the cache
      * *read* but still writes the fresh result back — see [PhotoService.getFeed] for why this
      * needs to be done by hand rather than through a plain `@Cacheable` annotation. */
-    fun getFriends(userId: UUID, forceRefresh: Boolean = false): List<FriendSummary> {
+    fun getFriends(userId: UUID, offset: Int = 0, limit: Int = 30, forceRefresh: Boolean = false): Page<FriendSummary> {
         val cache = cacheManager.getCache("friends")
         val cacheKey = userId.toString()
-        if (!forceRefresh) {
-            cache?.get(cacheKey, List::class.java)?.let {
+        val summaries = if (!forceRefresh) {
+            // See PhotoService.getFeed: a cache read failure (e.g. an empty-list result that
+            // GenericJackson2JsonRedisSerializer doesn't round-trip reliably) must be treated as
+            // a miss, not allowed to fail the request.
+            runCatching { cache?.get(cacheKey, List::class.java) }.getOrNull()?.let {
                 @Suppress("UNCHECKED_CAST")
-                return it as List<FriendSummary>
-            }
+                it as List<FriendSummary>
+            } ?: computeFriendSummaries(userId).also { cache?.put(cacheKey, it) }
+        } else {
+            computeFriendSummaries(userId).also { cache?.put(cacheKey, it) }
         }
 
-        val friendships = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
+        // Paginated in memory rather than at the query level — this whole list is already
+        // fetched (and cached) as one unit above regardless of which page is requested, since
+        // streak/pin computation needs every friendship anyway; slicing it here means the
+        // *response* stays small without a separate DB-level pagination path for what's a
+        // per-user list that's realistically never huge.
+        val page = summaries.drop(offset).take(limit)
+        return Page(items = page, hasMore = offset + limit < summaries.size)
+    }
 
-        val summaries = friendships.map { friendship ->
+    private fun computeFriendSummaries(userId: UUID): List<FriendSummary> {
+        val friendships = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
+        if (friendships.isEmpty()) return emptyList()
+
+        val friendIds = friendships.map { if (it.requester.id == userId) it.addressee.id else it.requester.id }
+        // One query for every friend's exchange history instead of one query per friend — this
+        // used to be the single biggest N+1 in the app, since it ran on every cache-miss load of
+        // the Friends tab for every friend the user has.
+        val timestampsByFriend = photoRecipientRepository.findExchangeTimestampsBatch(userId, friendIds)
+            .groupBy({ it.otherPartyId }, { it.createdAt })
+
+        return friendships.map { friendship ->
             val isRequester = friendship.requester.id == userId
             val friend = if (isRequester) friendship.addressee else friendship.requester
-            val exchangeTimestamps = photoRecipientRepository.findExchangeTimestamps(userId, friend.id)
+            val exchangeTimestamps = timestampsByFriend[friend.id] ?: emptyList()
 
             FriendSummary(
                 friendshipId = friendship.id,
@@ -69,9 +94,6 @@ class FriendService(
                 streak = StreakCalculator.compute(exchangeTimestamps),
             )
         }
-
-        cache?.put(cacheKey, summaries)
-        return summaries
     }
 
     fun getPendingRequests(userId: UUID): List<PendingFriendRequest> =
@@ -92,12 +114,20 @@ class FriendService(
         val trimmed = query.trim()
         if (trimmed.length < 2) return emptyList()
 
-        return userRepository.search(userId, trimmed, PageRequest.of(0, SEARCH_RESULT_LIMIT)).map { user ->
+        val results = userRepository.search(userId, trimmed, PageRequest.of(0, SEARCH_RESULT_LIMIT))
+        if (results.isEmpty()) return emptyList()
+
+        // One query covering every result instead of one findBetween call per result.
+        val resultIds = results.map { it.id }
+        val relatedIds = friendshipRepository.findAllBetween(userId, resultIds)
+            .mapTo(mutableSetOf()) { if (it.requester.id == userId) it.addressee.id else it.requester.id }
+
+        return results.map { user ->
             FriendSearchResult(
                 userId = user.id,
                 displayName = user.displayName,
                 username = user.username,
-                requested = friendshipRepository.findBetween(userId, user.id) != null,
+                requested = user.id in relatedIds,
             )
         }
     }
@@ -131,6 +161,7 @@ class FriendService(
         )
         // Only the addressee sees a REQUEST_INCOMING event for this.
         cacheManager.getCache("activity")?.evict(addressee.id.toString())
+        pushNotificationService.notifyFriendRequestReceived(requester.displayName, addressee.id)
         return PendingFriendRequest(
             friendshipId = friendship.id,
             requesterId = requester.id,
@@ -163,6 +194,7 @@ class FriendService(
         evictFriendsCache(friendship.requester.id, friendship.addressee.id)
         // Only the original requester gets a REQUEST_ACCEPTED event for this.
         cacheManager.getCache("activity")?.evict(friendship.requester.id.toString())
+        pushNotificationService.notifyFriendRequestAccepted(friendship.addressee.displayName, friendship.requester.id)
 
         return FriendSummary(
             friendshipId = friendship.id,

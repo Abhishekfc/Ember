@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,8 +55,6 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
-import com.ember.app.ui.components.BottomNavDock
-import com.ember.app.ui.components.NavDestination
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
 import dev.chrisbanes.haze.HazeState
@@ -76,7 +75,6 @@ private fun streakRingBrush(colors: com.ember.app.ui.theme.EmberColors, streak: 
 @Composable
 fun FriendsScreen(
     viewModel: FriendsViewModel,
-    onNavigate: (NavDestination) -> Unit,
     onCameraClick: () -> Unit,
     onFindPeopleClick: () -> Unit,
     onFriendClick: (FriendSummaryDto) -> Unit,
@@ -252,18 +250,28 @@ fun FriendsScreen(
                         itemsIndexed(viewModel.filteredFriends, key = { _, f -> f.friendshipId }) { index, friend ->
                             FriendRow(friend, seed = index, shape = rowShape, onClick = { onFriendClick(friend) })
                         }
+
+                        // Search operates only over what's already loaded (client-side
+                        // filtering), so there's nothing to page in while searching — the
+                        // sentinel only appears for the plain, unfiltered list. Composed only
+                        // once the user has actually scrolled near the end (LazyColumn doesn't
+                        // compose items far outside the viewport), which is what triggers the
+                        // fetch — not a fixed scroll-position threshold.
+                        if (!isSearching && viewModel.hasMore) {
+                            item(key = "load-more") {
+                                LaunchedEffect(Unit) { viewModel.loadMoreFriends() }
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(color = colors.glow, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-
-        BottomNavDock(
-            active = NavDestination.FRIENDS,
-            onNavigate = onNavigate,
-            onCameraClick = onCameraClick,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            hazeState = hazeState,
-        )
     }
 }
 

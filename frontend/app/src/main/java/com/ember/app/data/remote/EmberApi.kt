@@ -2,12 +2,15 @@ package com.ember.app.data.remote
 
 import com.ember.app.data.remote.dto.ActivityEventDto
 import com.ember.app.data.remote.dto.AuthResponse
+import com.ember.app.data.remote.dto.DeviceTokenRequestDto
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.FriendAcceptBody
 import com.ember.app.data.remote.dto.FriendRequestBody
 import com.ember.app.data.remote.dto.FriendSearchResultDto
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.LoginRequest
+import com.ember.app.data.remote.dto.MemoryPhotoDto
+import com.ember.app.data.remote.dto.PageDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
 import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import com.ember.app.data.remote.dto.RegisterRequest
@@ -37,6 +40,15 @@ interface EmberApi {
     @GET("photos/feed")
     suspend fun getFeed(@Query("refresh") refresh: Boolean = false): Response<List<FeedItem>>
 
+    // start/end are ISO-8601 instant strings (see PhotoRepository.getMemoriesForRange) — one
+    // calendar month's local-time boundaries, computed client-side and converted to UTC, so the
+    // server never has to guess which timezone "this month" means.
+    @GET("photos/memories")
+    suspend fun getMemories(
+        @Query("start") start: String,
+        @Query("end") end: String,
+    ): Response<List<MemoryPhotoDto>>
+
     @Multipart
     @POST("photos")
     suspend fun uploadPhoto(
@@ -44,8 +56,15 @@ interface EmberApi {
         @Part recipientIds: List<MultipartBody.Part>,
     ): Response<PhotoUploadResponseDto>
 
+    @POST("photos/{photoId}/seen")
+    suspend fun markPhotoSeen(@Path("photoId") photoId: String): Response<Unit>
+
     @GET("friends")
-    suspend fun getFriends(@Query("refresh") refresh: Boolean = false): Response<List<FriendSummaryDto>>
+    suspend fun getFriends(
+        @Query("refresh") refresh: Boolean = false,
+        @Query("offset") offset: Int = 0,
+        @Query("limit") limit: Int = 30,
+    ): Response<PageDto<FriendSummaryDto>>
 
     @GET("friends/pending")
     suspend fun getPendingFriendRequests(): Response<List<PendingFriendRequestDto>>
@@ -69,7 +88,11 @@ interface EmberApi {
     suspend fun removeFriend(@Path("friendshipId") friendshipId: String): Response<Unit>
 
     @GET("activity")
-    suspend fun getActivity(@Query("refresh") refresh: Boolean = false): Response<List<ActivityEventDto>>
+    suspend fun getActivity(
+        @Query("refresh") refresh: Boolean = false,
+        @Query("offset") offset: Int = 0,
+        @Query("limit") limit: Int = 30,
+    ): Response<PageDto<ActivityEventDto>>
 
     @GET("users/me")
     suspend fun getMyProfile(): Response<UserProfileDto>
@@ -86,4 +109,7 @@ interface EmberApi {
 
     @GET("subscription/status")
     suspend fun getSubscriptionStatus(): Response<SubscriptionStatusDto>
+
+    @POST("devices/register")
+    suspend fun registerDevice(@Body request: DeviceTokenRequestDto): Response<Unit>
 }

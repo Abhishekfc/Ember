@@ -19,6 +19,7 @@ import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
 import com.ember.app.data.SubscriptionRepository
 import com.ember.app.data.remote.dto.FriendSummaryDto
+import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,6 +29,10 @@ import java.io.FileOutputStream
 /** Where the caption sits vertically, as a fraction of image height — must match where the
  * preview overlay draws it so what you see is what your friend gets. */
 internal const val CAPTION_Y_FRACTION = 0.72f
+
+/** A generously high ceiling for "give me every friend to choose a recipient from" — not a real
+ * pagination page size, just far above any real user's friend count. */
+private const val RECIPIENT_PICKER_FRIENDS_LIMIT = 500
 
 class CameraViewModel(
     private val friendRepository: FriendRepository,
@@ -60,7 +65,12 @@ class CameraViewModel(
         private set
 
     init {
-        loadFriends()
+        // Deliberately NOT loadFriends() here — this ViewModel now lives for the whole app
+        // session (Camera is a pager page, not a screen only created on demand), so anything
+        // fired from init runs on every single cold start whether or not Camera is ever opened
+        // that session. loadFriends() is a limit=500 "give me everyone" fetch for the recipient
+        // picker specifically — MainActivity calls it once, lazily, the first time the user
+        // actually reaches the Camera page (see its own comment for why), not here.
         viewModelScope.launch {
             subscriptionRepository.getStatus().onSuccess { isGoldMember = it.isActive }
         }
@@ -82,22 +92,37 @@ class CameraViewModel(
     val hasPinnedSelected: Boolean
         get() = friends.any { it.friendId in selectedRecipientIds && it.pinnedByMe }
 
+    /** Reuses a friend list Friends' own tab has already fetched, when it's known to already be
+     * complete (see MainActivity — only used when FriendsViewModel has loaded everything, i.e.
+     * `hasMore == false`), instead of this ViewModel firing its own separate, mostly-redundant
+     * network call for what's very often the exact same data. [loadFriends] below remains the
+     * fallback for whenever that isn't the case (Friends hasn't loaded yet, or genuinely has more
+     * than a page of friends). */
+    fun provideFriends(list: List<FriendSummaryDto>) {
+        applyFriends(list)
+    }
+
     fun loadFriends() {
         viewModelScope.launch {
-            friendRepository.getFriends().fold(
-                onSuccess = { list ->
-                    friends = list
-                    // Default to the pinned partner if there is one — never to "everyone" with
-                    // no explicit choice. A silent reply-all default is exactly the kind of
-                    // invisible behavior that makes a send flow feel unsafe rather than just
-                    // unpolished: nothing should leave the device to a friend the user never
-                    // actually picked.
-                    if (selectedRecipientIds.isEmpty()) {
-                        selectedRecipientIds = list.filter { it.pinnedByMe }.map { it.friendId }.toSet()
-                    }
-                },
+            // The recipient picker needs every friend to choose from, not a scrollable page of
+            // them — RECIPIENT_PICKER_FRIENDS_LIMIT is a generously high ceiling, not a real
+            // pagination boundary.
+            friendRepository.getFriends(limit = RECIPIENT_PICKER_FRIENDS_LIMIT).fold(
+                onSuccess = { page -> applyFriends(page.items) },
                 onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
             )
+        }
+    }
+
+    // Shared by provideFriends and loadFriends so both paths apply the exact same "default to the
+    // pinned partner" rule below — never to "everyone" with no explicit choice. A silent
+    // reply-all default is exactly the kind of invisible behavior that makes a send flow feel
+    // unsafe rather than just unpolished: nothing should leave the device to a friend the user
+    // never actually picked.
+    private fun applyFriends(list: List<FriendSummaryDto>) {
+        friends = list
+        if (selectedRecipientIds.isEmpty()) {
+            selectedRecipientIds = list.filter { it.pinnedByMe }.map { it.friendId }.toSet()
         }
     }
 
@@ -135,7 +160,12 @@ class CameraViewModel(
         captionText = ""
     }
 
-    fun sendCaptured(onSuccess: () -> Unit) {
+    fun sendCaptured(onSuccess: (PhotoUploadResponseDto) -> Unit) {
+        // Guards the top of the function itself, not just the button's own `enabled` — enabled
+        // only takes effect once Compose recomposes after isSending flips true, so a fast
+        // double-tap landing inside that window could otherwise launch this twice and send the
+        // same photo to every recipient twice over.
+        if (isSending) return
         val file = capturedFile ?: return
         if (selectedRecipientIds.isEmpty()) {
             errorMessage = "Select at least one friend first"
@@ -148,10 +178,15 @@ class CameraViewModel(
                 runCatching { bakeCaptionIntoPhoto(file, captionText) }.getOrDefault(file)
             }
             photoRepository.uploadPhoto(toSend, selectedRecipientIds.toList()).fold(
-                onSuccess = {
+                onSuccess = { response ->
+                    // Cleans up the cache file(s) now that they've actually been sent — this
+                    // used to only drop the in-memory reference, leaving every sent photo (plus
+                    // its captioned copy, when there was a caption) on disk forever.
+                    file.delete()
+                    if (toSend != file) toSend.delete()
                     capturedFile = null
                     captionText = ""
-                    onSuccess()
+                    onSuccess(response)
                 },
                 onFailure = { errorMessage = it.message ?: "Couldn't send your photo" },
             )
@@ -182,8 +217,14 @@ private fun bakeCaptionIntoPhoto(file: File, caption: String): File {
     } else {
         decoded
     }
+    // A capture is a full-resolution bitmap (tens of MB decoded) — up to three can transiently
+    // exist here (decoded, upright, bitmap) if left to GC alone, and retake/re-caption repeats
+    // this every time in one Camera session. Recycling each intermediate the moment it's
+    // superseded keeps at most two full-resolution bitmaps live at once instead of three.
+    if (upright !== decoded) decoded.recycle()
 
     val bitmap = if (upright.isMutable) upright else upright.copy(Bitmap.Config.ARGB_8888, true)
+    if (bitmap !== upright) upright.recycle()
     val canvas = Canvas(bitmap)
 
     val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {

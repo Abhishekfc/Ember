@@ -2,6 +2,7 @@ package com.ember.backend.dto
 
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
+import java.time.Instant
 import java.util.UUID
 
 data class UserProfile(
@@ -10,9 +11,13 @@ data class UserProfile(
     val username: String,
     val email: String,
     val profilePhotoUrl: String?,
+    // Backs the Memories grid's "don't let 'previous month' go back further than this account
+    // ever existed" limit (see HomeViewModel.canGoToPreviousMonth on the Android client).
+    val createdAt: Instant,
 )
 
 data class UpdateProfileRequest(
+    @field:Size(max = 100)
     val displayName: String?,
     // Same constraints as RegisterRequest.username — previously unvalidated here, meaning a
     // profile update could set a username registration itself would have rejected.

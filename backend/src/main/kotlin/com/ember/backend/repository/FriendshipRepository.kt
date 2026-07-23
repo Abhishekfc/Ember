@@ -32,4 +32,35 @@ interface FriendshipRepository : JpaRepository<Friendship, UUID> {
         @Param("userId1") userId1: UUID,
         @Param("userId2") userId2: UUID,
     ): Friendship?
+
+    /** Batched form of [findBetween] for checking many recipients against one sender at once
+     * (used by PhotoService.upload) — one query instead of one per recipient. */
+    @Query(
+        """
+        select f from Friendship f
+        where f.status = :status
+        and ((f.requester.id = :userId and f.addressee.id in :otherIds)
+          or (f.addressee.id = :userId and f.requester.id in :otherIds))
+        """
+    )
+    fun findAllWithStatusBetween(
+        @Param("userId") userId: UUID,
+        @Param("otherIds") otherIds: Collection<UUID>,
+        @Param("status") status: FriendshipStatus,
+    ): List<Friendship>
+
+    /** Same as [findAllWithStatusBetween] but regardless of status — used by
+     * FriendService.searchUsers to flag every result that already has *any* relationship
+     * (pending or accepted) with one query instead of one [findBetween] call per search result. */
+    @Query(
+        """
+        select f from Friendship f
+        where (f.requester.id = :userId and f.addressee.id in :otherIds)
+           or (f.addressee.id = :userId and f.requester.id in :otherIds)
+        """
+    )
+    fun findAllBetween(
+        @Param("userId") userId: UUID,
+        @Param("otherIds") otherIds: Collection<UUID>,
+    ): List<Friendship>
 }

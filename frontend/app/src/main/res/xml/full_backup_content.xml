@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pre-API-31 equivalent of data_extraction_rules.xml — same exclusions, older syntax.
+     Also what `adb backup` (no root required, just USB debugging) reads on any API level. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="ember_secure_prefs.xml" />
+    <exclude domain="file" path="datastore/ember_prefs.preferences_pb" />
+</full-backup-content>

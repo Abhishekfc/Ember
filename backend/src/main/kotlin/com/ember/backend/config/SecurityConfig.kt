@@ -21,8 +21,12 @@ class SecurityConfig(
     private val requestLoggingFilter: RequestLoggingFilter,
 ) {
 
+    // Explicit strength, not the framework default (10) — 12 keeps pace with current OWASP
+    // guidance for how expensive an offline brute-force should be if the users table is ever
+    // exfiltrated. Written down here so a future refactor can't silently drop back to the
+    // BCryptPasswordEncoder() default by omitting the argument.
     @Bean
-    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
+    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder(12)
 
     // RequestLoggingFilter is added explicitly to the security chain below (after JWT auth
     // resolves the caller) instead of letting Spring Boot auto-register it a second time.

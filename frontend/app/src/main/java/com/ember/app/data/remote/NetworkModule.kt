@@ -1,6 +1,7 @@
 package com.ember.app.data.remote
 
 import android.content.Context
+import com.ember.app.BuildConfig
 import com.ember.app.data.local.TokenStore
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -12,14 +13,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
-
-/**
- * Points at the device's own "localhost". For a USB-connected physical device this relies on
- * `adb reverse tcp:8080 tcp:8080`, which tunnels that back to the host machine's localhost:8080.
- * An emulator would instead need 10.0.2.2 (its special host-loopback alias, no adb reverse
- * required); production needs the real deployed backend URL.
- */
-private const val BASE_URL = "http://localhost:8080/"
+import java.util.concurrent.TimeUnit
 
 private val json = Json { ignoreUnknownKeys = true }
 
@@ -59,13 +53,31 @@ class NetworkModule(context: Context) {
     }
 
     private val okHttpClient = OkHttpClient.Builder()
+        // OkHttp's default is 10s connect/read/write — too tight for a photo upload: the backend
+        // does an R2 object-storage write, push-notification fanout, and cache eviction all
+        // synchronously before it responds (see PhotoService.upload), which can occasionally run
+        // past 10s on a dev machine tunneled through adb reverse. When that timeout fires
+        // client-side, the upload has usually already landed server-side — the send just reports
+        // a failure for a photo that shows up fine on the next refresh.
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .addInterceptor(authInterceptor)
         .addInterceptor(sessionExpiryInterceptor)
-        .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+        .apply {
+            // Ran unconditionally in every build variant before, including release — full
+            // request/response lines (URLs, query strings, status, timing) shipped to Logcat in
+            // production with no way to disable it short of editing code. Gating it here also
+            // means a future bump to a more verbose level (HEADERS/BODY, which would include the
+            // bearer token and full response payloads) can only ever affect debug builds.
+            if (BuildConfig.DEBUG) {
+                addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            }
+        }
         .build()
 
     private val retrofit = Retrofit.Builder()
-        .baseUrl(BASE_URL)
+        .baseUrl(BuildConfig.BASE_URL)
         .client(okHttpClient)
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()

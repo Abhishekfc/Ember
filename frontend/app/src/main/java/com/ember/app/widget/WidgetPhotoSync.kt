@@ -30,9 +30,27 @@ object WidgetPhotoSync {
             ?: return
 
         val (senderName, photo) = latest
+        applyLatestPhoto(context, senderName = senderName, photoId = photo.photoId, createdAtIso = photo.createdAt, photoUrl = photo.photoUrl)
+    }
+
+    /** Called directly from EmberFirebaseMessagingService's data-only NEW_PHOTO push — unlike
+     * [sync], this never touches the network for anything but the image bytes themselves: the
+     * push payload already carries everything else needed (sender name, photo id, timestamp,
+     * URL), so there's no feed refetch involved in updating the widget at all. */
+    suspend fun syncFromPush(context: Context, photoId: String, photoUrl: String, senderName: String, createdAtIso: String) {
+        applyLatestPhoto(context, senderName = senderName, photoId = photoId, createdAtIso = createdAtIso, photoUrl = photoUrl)
+    }
+
+    private suspend fun applyLatestPhoto(context: Context, senderName: String, photoId: String, createdAtIso: String, photoUrl: String) {
         val store = WidgetPhotoStore(context)
-        if (store.current()?.photoId != photo.photoId) {
-            val bitmap = fetchBitmap(context, photo.photoUrl)
+        val current = store.current()
+        // Guards against both an exact repeat (FCM's at-least-once delivery can redeliver the
+        // same push) and an out-of-order arrival (two pushes landing out of sequence shouldn't
+        // let the older one clobber a newer one already applied) — ISO-8601 UTC timestamps
+        // compare correctly as plain strings.
+        val isNewer = current == null || (photoId != current.photoId && createdAtIso >= current.createdAtIso)
+        if (isNewer) {
+            val bitmap = fetchBitmap(context, photoUrl)
             if (bitmap != null) {
                 val file = File(context.filesDir, "widget_photo.jpg")
                 val saved = runCatching {
@@ -42,9 +60,9 @@ object WidgetPhotoSync {
                 if (saved) {
                     store.save(
                         WidgetPhotoState(
-                            photoId = photo.photoId,
+                            photoId = photoId,
                             senderName = senderName,
-                            createdAtIso = photo.createdAt,
+                            createdAtIso = createdAtIso,
                             localFilePath = file.absolutePath,
                         ),
                     )

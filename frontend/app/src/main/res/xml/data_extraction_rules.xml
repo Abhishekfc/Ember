@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 31+. Excludes the JWT (encrypted, but Auto Backup to Google Drive over Wi-Fi could
+     otherwise still carry the file to a Google account, later restorable onto a different
+     device) and the plain-DataStore cache (email + friends' names/photo URLs, per the
+     production audit). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="ember_secure_prefs.xml" />
+        <exclude domain="file" path="datastore/ember_prefs.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="ember_secure_prefs.xml" />
+        <exclude domain="file" path="datastore/ember_prefs.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

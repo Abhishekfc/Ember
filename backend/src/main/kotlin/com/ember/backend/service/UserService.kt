@@ -40,17 +40,23 @@ class UserService(
         if (contentType == null || contentType !in ALLOWED_CONTENT_TYPES) {
             throw InvalidFriendRequestException("Unsupported content type: $contentType")
         }
+        // Sniffs the actual bytes rather than trusting the client-declared Content-Type, which a
+        // raw API call can set to anything regardless of what's actually in the file.
+        val detectedType = ImageContentSniffer.detect(file.bytes)
+        if (detectedType == null || detectedType !in ALLOWED_CONTENT_TYPES) {
+            throw InvalidFriendRequestException("File content doesn't match a supported image type")
+        }
 
         val user = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found") }
 
-        val extension = when (contentType) {
+        val extension = when (detectedType) {
             "image/png" -> "png"
             "image/webp" -> "webp"
             else -> "jpg"
         }
         val storageKey = "profile-photos/$userId/${UUID.randomUUID()}.$extension"
-        r2StorageService.upload(storageKey, contentType, file.bytes)
+        r2StorageService.upload(storageKey, detectedType, file.bytes)
 
         user.profilePhotoStorageKey = storageKey
         userRepository.save(user)
@@ -123,5 +129,6 @@ class UserService(
         username = username,
         email = email,
         profilePhotoUrl = profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
+        createdAt = createdAt,
     )
 }

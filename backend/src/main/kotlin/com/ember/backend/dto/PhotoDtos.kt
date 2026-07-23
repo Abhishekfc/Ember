@@ -10,10 +10,14 @@ data class PhotoUploadResponse(
     val recipientIds: List<UUID>,
 )
 
+/** [seen] is scoped to the single (photo, recipient) pair this entry represents — when a photo
+ * is sent to several people, each of their own feeds reports their own independent seen state
+ * for it, never a shared/combined one. */
 data class PhotoEntry(
     val photoId: UUID,
     val photoUrl: String,
     val createdAt: Instant,
+    val seen: Boolean,
 )
 
 data class FeedItem(
@@ -21,4 +25,12 @@ data class FeedItem(
     val displayName: String,
     val photos: List<PhotoEntry>,
     val streak: Int,
+)
+
+/** One photo in the Memories grid — always one this user sent themselves, with no time-window
+ * cutoff (unlike the 24h Home feed). */
+data class MemoryPhoto(
+    val photoId: UUID,
+    val photoUrl: String,
+    val createdAt: Instant,
 )

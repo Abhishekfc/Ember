@@ -17,11 +17,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Settings
@@ -35,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
@@ -71,6 +74,19 @@ fun BottomNavDock(
     onCameraClick: () -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
+    // 0 = plain Home icon, 1 = fully morphed into the Memories/image icon — driven live by how
+    // far Home has been scrolled into its own inline Memories section, not an independent
+    // animation, so the icon tracks the scroll itself rather than snapping once it settles.
+    // Every other screen just leaves this at the default (0), showing a plain Home icon same
+    // as before.
+    //
+    // A provider, not a plain Float — the caller's scroll position changes every frame of a
+    // drag, and reading it directly at the call site would make THIS COMPOSABLE's whole
+    // recomposition scope depend on it, forcing the entire dock (plus whatever shares its
+    // recomposition scope one level up, alongside the pager itself) to recompose 60 times a
+    // second during every scroll. Reading it lazily inside HomeMemoriesNavItem's graphicsLayer
+    // (a draw-phase callback) keeps that to a cheap per-frame redraw of two small icons instead.
+    homeIconProgress: () -> Float = { 0f },
 ) {
     val colors = EmberTheme.colors
     val dockShape = RoundedCornerShape(percent = 50)
@@ -114,7 +130,7 @@ fun BottomNavDock(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            NavItem(NavDestination.HOME, Icons.Outlined.Home, Icons.Filled.Home, active, onNavigate)
+            HomeMemoriesNavItem(active, homeIconProgress, onNavigate)
             NavItem(NavDestination.FRIENDS, Icons.Outlined.People, Icons.Filled.People, active, onNavigate)
             CameraButton(onCameraClick)
             NavItem(NavDestination.ACTIVITY, Icons.Outlined.Notifications, Icons.Filled.Notifications, active, onNavigate)
@@ -147,6 +163,48 @@ private fun CameraButton(onCameraClick: () -> Unit) {
             contentDescription = "Camera",
             tint = colors.accentText,
             modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+/** The Home slot specifically: Memories lives inline inside Home's own scrollable content now
+ * (see HomeScreen), so this icon morphs between a house and an image glyph as [progress] moves
+ * from 0 (top of Home) to 1 (scrolled into Memories) — two crossfaded icons rather than a hard
+ * swap, so the icon tracks the live scroll the same way the content itself does, not a snap once
+ * it settles. */
+@Composable
+private fun HomeMemoriesNavItem(
+    active: NavDestination,
+    progress: () -> Float,
+    onNavigate: (NavDestination) -> Unit,
+) {
+    val colors = EmberTheme.colors
+    val isActive = active == NavDestination.HOME
+
+    val tint by animateColorAsState(
+        targetValue = if (isActive) colors.cream else colors.muted,
+        animationSpec = tween(200),
+        label = "homeMemoriesNavItemTint",
+    )
+
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigate(NavDestination.HOME) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (isActive) Icons.Filled.Home else Icons.Outlined.Home,
+            contentDescription = "Home",
+            tint = tint,
+            modifier = Modifier.size(20.dp).graphicsLayer { alpha = 1f - progress() },
+        )
+        Icon(
+            imageVector = if (isActive) Icons.Filled.Image else Icons.Outlined.Image,
+            contentDescription = "Memories",
+            tint = tint,
+            modifier = Modifier.size(20.dp).graphicsLayer { alpha = progress() },
         )
     }
 }
