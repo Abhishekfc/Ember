@@ -24,6 +24,12 @@ class FriendRepository(private val api: EmberApi) {
     // cache above only catches calls landing sequentially within its window.
     private val friendsSingleFlight = SingleFlight<Pair<Int, Int>, Result<PageDto<FriendSummaryDto>>>()
 
+    // See PhotoRepository.clearCache's doc comment — same reasoning, this repository outlives
+    // any one signed-in account but friendsCache's keys carry no account identity of their own.
+    fun clearCache() {
+        friendsCache.invalidateAll()
+    }
+
     suspend fun getFriends(forceRefresh: Boolean = false, offset: Int = 0, limit: Int = 30): Result<PageDto<FriendSummaryDto>> {
         val cacheKey = offset to limit
         if (!forceRefresh) {

@@ -148,7 +148,13 @@ class MainActivity : ComponentActivity() {
         // read just wasn't finished before the first frame drew. A handful of tiny local
         // Preferences reads block for a few milliseconds at most, well before there's anything on
         // screen yet to notice a delay in.
-        val initialHomeCache = runBlocking {
+        // var, not val — reset back to empty on sign-out (see onSignOut below) rather than left
+        // holding whichever account was signed in when this Activity was created. Without that
+        // reset, signing into a different account within the same process reused this same
+        // already-read snapshot as the new HomeViewModel's "instant on reopen" seed, briefly (or,
+        // combined with the repositories' own account-unaware TTL caches below, not so briefly)
+        // showing the previous account's feed/memories/profile until a later fetch overwrote it.
+        var initialHomeCache = runBlocking {
             InitialHomeCache(
                 feedItems = localListCache.read<FeedItem>(LocalListCache.KEY_FEED) ?: emptyList(),
                 memories = localListCache.read<MemoryPhotoDto>(LocalListCache.KEY_MEMORIES) ?: emptyList(),
@@ -211,6 +217,21 @@ class MainActivity : ComponentActivity() {
                     // signing in on the same device would briefly see this account's cached
                     // feed/friends/activity/memories before the fresh fetch overwrites them.
                     coroutineScope.launch { localListCache.clearAll() }
+                    // Reset alongside LocalListCache itself (see this var's own doc comment at
+                    // declaration) — otherwise the next HomeViewModel constructed after signing
+                    // back in still seeds from this account's already-read-into-memory snapshot,
+                    // which clearAll() (an on-disk clear) has no effect on.
+                    initialHomeCache = InitialHomeCache()
+                    // These repositories are process-wide singletons (see EmberApplication) that
+                    // outlive any one signed-in account, but their TTL caches are keyed without
+                    // any account identity — without clearing them here, signing into a different
+                    // account within that ~30s window could serve the *previous* account's feed/
+                    // friends/activity straight out of cache on what looks like a normal fetch,
+                    // not fixable by anything short of a force-refresh (or, as reported, waiting
+                    // out the TTL) otherwise.
+                    photoRepository.clearCache()
+                    friendRepository.clearCache()
+                    activityRepository.clearCache()
                     // The widget reads its cached photo independent of sign-in state — without
                     // this, a friend's private photo (and their name) keeps rendering on the
                     // home screen indefinitely after "signing out."

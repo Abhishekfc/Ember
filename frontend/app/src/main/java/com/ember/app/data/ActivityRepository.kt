@@ -14,11 +14,17 @@ class ActivityRepository(private val api: EmberApi) {
     // PhotoRepository.feedCache/FriendRepository.friendsCache for the same reasoning. Activity
     // has no other mutation method in this repository (friend/photo actions that affect it live
     // in FriendRepository/PhotoRepository), so there's no separate invalidation call site needed
-    // here beyond the TTL itself.
+    // here beyond the TTL itself and sign-out (see clearCache below).
     private val activityCache = TtlCache<Pair<Int, Int>, PageDto<ActivityEventDto>>(ttlMillis = 30_000)
     // Coalesces truly-concurrent getActivity() calls for the same (offset, limit) — the TTL
     // cache above only catches calls landing sequentially within its window.
     private val activitySingleFlight = SingleFlight<Pair<Int, Int>, Result<PageDto<ActivityEventDto>>>()
+
+    // See PhotoRepository.clearCache's doc comment — same reasoning, this repository outlives
+    // any one signed-in account but activityCache's keys carry no account identity of their own.
+    fun clearCache() {
+        activityCache.invalidateAll()
+    }
 
     suspend fun getActivity(forceRefresh: Boolean = false, offset: Int = 0, limit: Int = 30): Result<PageDto<ActivityEventDto>> {
         val cacheKey = offset to limit
