@@ -66,7 +66,6 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -116,6 +115,11 @@ internal const val NAV_DOCK_RESERVE_DP = 110
  * Memories one. Lives here (`internal`, not `private`) rather than in MainActivity, since it's
  * really describing this screen's own Memories section, not the dock itself. */
 internal const val MEMORIES_REVEAL_SCROLL_DP = 220
+
+/** How long the very last photo in the whole carousel dwells before it's marked seen on its
+ * own — see the LaunchedEffect using this in HomeScreen's carousel branch for why this one
+ * specific page needs a fallback the rest of the carousel doesn't. */
+private const val LAST_PHOTO_DWELL_MARK_SEEN_MS = 3000L
 
 /** Home's own page — greeting header, then whichever of loading / error / empty / the featured
  * carousel applies, with the Memories grid embedded further down the same scroll (below the
@@ -450,6 +454,22 @@ fun HomeScreen(
                             previousEntry = entry
                             lastProcessedPage = pagerState.settledPage
                         }
+                    }
+
+                    // The one gap the "mark the previous entry once you've swiped away" rule
+                    // above can't cover: there's no page after the very last one to ever swipe
+                    // to, so a friend whose only (or last) photo lands there — including the
+                    // degenerate case of the whole feed being just one photo — would stay
+                    // glowing as unseen forever, no matter how long it sits on screen. This is
+                    // deliberately NOT the general dwell-based marking that was already tried and
+                    // rejected for every photo (see the comment above) — it only ever applies to
+                    // this one dead-end page, so every other photo still only clears once
+                    // actually swiped past, exactly as before.
+                    LaunchedEffect(pagerState.settledPage, entries) {
+                        if (pagerState.settledPage != entries.lastIndex) return@LaunchedEffect
+                        val entry = entries.getOrNull(pagerState.settledPage) ?: return@LaunchedEffect
+                        delay(LAST_PHOTO_DWELL_MARK_SEEN_MS)
+                        viewModel.markPhotoSeen(entry.friendId, entry.photo.photoId)
                     }
 
                     // The avatar row tracks the *live* page, same as the card — it should move
@@ -920,7 +940,6 @@ private fun FeaturedPhotoCard(
             .fillMaxWidth()
             .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
             .nestedScroll(cardNestedScrollBoundary)
-            .shadow(20.dp, cardShape, ambientColor = colors.glow.copy(alpha = 0.35f), spotColor = colors.glow.copy(alpha = 0.35f))
             .clip(cardShape)
             .background(colors.panel)
             // A plain tap (not a swipe) toggles focus mode — no ripple, since the blur

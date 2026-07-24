@@ -49,7 +49,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -515,12 +514,6 @@ internal fun DayFeaturedOverlay(
                     }
                 }
                 .nestedScroll(cardNestedScrollBoundary)
-                .shadow(
-                    20.dp * progress,
-                    cardShape,
-                    ambientColor = colors.glow.copy(alpha = 0.35f),
-                    spotColor = colors.glow.copy(alpha = 0.35f),
-                )
                 .clip(cardShape)
                 .background(colors.panel)
                 // A plain tap anywhere on the open photo closes it, matching Home's own featured
