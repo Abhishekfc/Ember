@@ -26,6 +26,16 @@ class PhotoRepository(private val api: EmberApi) {
     // TTL cache above only catches calls that land *sequentially* within its window.
     private val feedSingleFlight = SingleFlight<Unit, Result<List<FeedItem>>>()
 
+    // This repository is a process-wide singleton (see EmberApplication) that outlives any one
+    // signed-in account, but feedCache's key (Unit) doesn't carry any account identity — without
+    // clearing it on sign-out, signing into a different account within the TTL window could serve
+    // that account the *previous* one's feed straight out of cache, on what looks like a perfectly
+    // normal fresh fetch. Called from MainActivity's onSignOut, alongside the equivalent clear on
+    // FriendRepository/ActivityRepository and LocalListCache.
+    fun clearCache() {
+        feedCache.invalidateAll()
+    }
+
     suspend fun getFeed(forceRefresh: Boolean = false): Result<List<FeedItem>> {
         if (!forceRefresh) {
             feedCache.get(Unit)?.let { return Result.success(it) }

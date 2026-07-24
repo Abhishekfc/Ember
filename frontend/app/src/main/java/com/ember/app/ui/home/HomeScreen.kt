@@ -46,6 +46,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -80,6 +81,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -356,41 +358,40 @@ fun HomeScreen(
                 viewModel.feedItems.isEmpty() -> {
                     // No one's shared anything yet — rather than a dead end, this leads straight
                     // into the (still-usable) Memories grid below, so there's always something to
-                    // scroll into instead of just an empty message with nowhere to go.
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(start = 32.dp, top = 56.dp, end = 32.dp, bottom = 8.dp),
-                        contentAlignment = Alignment.Center,
+                    // look at instead of just an empty message with nowhere to go. A small icon
+                    // above the line, not just a stray sentence floating in empty space (see this
+                    // app's own empty-state convention: icon + specific copy).
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PhotoCamera,
+                            contentDescription = null,
+                            tint = colors.mutedDim,
+                            modifier = Modifier.size(26.dp),
+                        )
                         Text(
                             text = "Once a friend shares a photo with you, it'll show up here",
                             fontFamily = typography.body,
                             fontSize = 13.sp,
                             color = colors.muted,
                             textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 10.dp),
                         )
                     }
-                    MemoriesSectionLabel(
-                        modifier = Modifier
-                            .padding(start = 22.dp, end = 22.dp, top = 28.dp, bottom = 14.dp)
-                            .graphicsLayer { alpha = memoriesRevealProgress() },
-                    )
-                    // Both the label and the grid stay invisible at rest, fading in together
-                    // only once the user actually scrolls up.
-                    MemoriesGridContent(
-                        memories = viewModel.memories,
-                        selectedMonth = viewModel.selectedMonth,
+                    // Immediately visible (revealProgress = 1f), not the scroll-triggered fade-in
+                    // the real-feed case below uses — there's no featured card/avatar row above
+                    // this to scroll past, so scrollState could never reach the reveal threshold
+                    // and the whole section stayed invisible forever (the bug this replaced).
+                    HomeMemoriesSection(
+                        viewModel = viewModel,
                         onCameraClick = onCameraClick,
-                        focusState = dayFocusState,
-                        onFocusChanged = { isMemoriesFocused = it },
-                        onPreviousMonth = { viewModel.goToPreviousMonth() },
-                        onNextMonth = { viewModel.goToNextMonth() },
-                        canGoToPreviousMonth = viewModel.canGoToPreviousMonth,
-                        canGoToNextMonth = viewModel.canGoToNextMonth,
-                        isLoadingMonth = viewModel.isLoadingSelectedMonth,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer { alpha = memoriesRevealProgress() }
-                            .padding(bottom = NAV_DOCK_RESERVE_DP.dp),
+                        dayFocusState = dayFocusState,
+                        chromeBlur = chromeBlur,
+                        revealProgress = { 1f },
+                        onMemoriesFocusChanged = { isMemoriesFocused = it },
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
 
@@ -560,36 +561,16 @@ fun HomeScreen(
                     // scroll flow, landing in the gap just above the nav dock at rest, with a
                     // little breathing room below the avatar row (matching the ~20dp rhythm used
                     // between every other section on this screen) rather than sitting flush
-                    // against it.
-                    MemoriesSectionLabel(
-                        modifier = Modifier
-                            .padding(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 14.dp)
-                            .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                            .graphicsLayer { alpha = memoriesRevealProgress() },
-                    )
-                    // Both the label and the grid stay invisible at rest, fading in together
-                    // only once the user actually scrolls up.
-                    MemoriesGridContent(
-                        memories = viewModel.memories,
-                        selectedMonth = viewModel.selectedMonth,
+                    // against it. Both the label and the grid stay invisible at rest, fading in
+                    // together only once the user actually scrolls up (memoriesRevealProgress).
+                    HomeMemoriesSection(
+                        viewModel = viewModel,
                         onCameraClick = onCameraClick,
-                        focusState = dayFocusState,
-                        onFocusChanged = { isMemoriesFocused = it },
-                        onPreviousMonth = { viewModel.goToPreviousMonth() },
-                        onNextMonth = { viewModel.goToNextMonth() },
-                        canGoToPreviousMonth = viewModel.canGoToPreviousMonth,
-                        canGoToNextMonth = viewModel.canGoToNextMonth,
-                        isLoadingMonth = viewModel.isLoadingSelectedMonth,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            // Never blurred here before — the label right above it did, but the
-                            // grid itself (the bulk of what's actually on screen below the avatar
-                            // row) didn't, which is exactly why Home's card-focus blur looked like
-                            // it stopped after the avatar row instead of covering the whole page
-                            // down to the nav dock.
-                            .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                            .graphicsLayer { alpha = memoriesRevealProgress() }
-                            .padding(bottom = NAV_DOCK_RESERVE_DP.dp),
+                        dayFocusState = dayFocusState,
+                        chromeBlur = chromeBlur,
+                        revealProgress = memoriesRevealProgress,
+                        onMemoriesFocusChanged = { isMemoriesFocused = it },
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
             }
@@ -608,6 +589,51 @@ fun HomeScreen(
             onDismiss = { dayFocusState.isOpen = false },
         )
     }
+    }
+}
+
+/** The "Memories" label + grid, bundled as one unit — [HomeScreen] renders this at two different
+ * points in its status `when` (an empty feed vs. a real one), and keeping it as a single
+ * reusable composable instead of two separately-maintained call sites is what stops their
+ * modifiers/params from quietly drifting apart from each other, the way the old duplicated
+ * version already had (blur applied inconsistently between the two). [revealProgress] controls
+ * the fade-in — pass `{ 1f }` wherever this section should just be visible immediately (nothing
+ * above it to scroll past first), or the real scroll-driven lambda (`memoriesRevealProgress`)
+ * wherever that fade-as-you-scroll-up behavior is what's wanted. */
+@Composable
+private fun HomeMemoriesSection(
+    viewModel: HomeViewModel,
+    onCameraClick: () -> Unit,
+    dayFocusState: DayFocusState,
+    chromeBlur: Dp,
+    revealProgress: () -> Float,
+    onMemoriesFocusChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        MemoriesSectionLabel(
+            modifier = Modifier
+                .padding(start = 22.dp, end = 22.dp, bottom = 14.dp)
+                .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
+                .graphicsLayer { alpha = revealProgress() },
+        )
+        MemoriesGridContent(
+            memories = viewModel.memories,
+            selectedMonth = viewModel.selectedMonth,
+            onCameraClick = onCameraClick,
+            focusState = dayFocusState,
+            onFocusChanged = onMemoriesFocusChanged,
+            onPreviousMonth = { viewModel.goToPreviousMonth() },
+            onNextMonth = { viewModel.goToNextMonth() },
+            canGoToPreviousMonth = viewModel.canGoToPreviousMonth,
+            canGoToNextMonth = viewModel.canGoToNextMonth,
+            isLoadingMonth = viewModel.isLoadingSelectedMonth,
+            modifier = Modifier
+                .fillMaxWidth()
+                .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
+                .graphicsLayer { alpha = revealProgress() }
+                .padding(bottom = NAV_DOCK_RESERVE_DP.dp),
+        )
     }
 }
 
