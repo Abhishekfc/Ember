@@ -59,7 +59,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Size
@@ -194,7 +193,6 @@ fun CameraScreen(
                     .fillMaxWidth()
                     .padding(top = 18.dp, start = 22.dp, end = 22.dp)
                     .aspectRatio(0.8f)
-                    .shadow(20.dp, cardShape, ambientColor = colors.glow.copy(alpha = 0.35f), spotColor = colors.glow.copy(alpha = 0.35f))
                     .clip(cardShape)
                     .background(Color.Black),
             ) {
