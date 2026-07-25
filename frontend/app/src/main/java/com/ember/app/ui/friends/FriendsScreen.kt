@@ -305,7 +305,10 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp)
-                .aspectRatio(1.55f)
+                // 1:1, not the old 1.55 landscape ratio — the profile photo behind this card is
+                // always a square crop now (see PhotoCropScreen), so a landscape card was
+                // cropping a second time on top of an already-deliberate square, for no reason.
+                .aspectRatio(1f)
                 .clip(cardShape)
                 .background(colors.panel)
                 .clickable(onClick = onClick),

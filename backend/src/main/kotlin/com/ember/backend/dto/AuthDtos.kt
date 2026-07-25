@@ -16,7 +16,9 @@ data class RegisterRequest(
 )
 
 data class LoginRequest(
-    @field:Email @field:NotBlank val email: String,
+    // Either the account's email or its username — AuthService.login tells them apart by
+    // whether this contains an "@", so no separate "login type" flag is needed from the client.
+    @field:NotBlank val identifier: String,
     @field:NotBlank val password: String,
 )
 

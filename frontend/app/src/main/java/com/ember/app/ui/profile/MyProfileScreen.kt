@@ -1,5 +1,6 @@
 package com.ember.app.ui.profile
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,7 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -56,8 +55,6 @@ import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
-import java.io.File
-import java.io.FileOutputStream
 
 @Composable
 fun MyProfileScreen(
@@ -71,15 +68,27 @@ fun MyProfileScreen(
 
     var showNameDialog by remember { mutableStateOf(false) }
     var showUsernameDialog by remember { mutableStateOf(false) }
+    // Non-null while a just-picked photo is being cropped, before it's ever uploaded — the
+    // gallery hands back whatever aspect ratio the original photo was, and every other profile
+    // photo picker (WhatsApp, Instagram, Telegram) makes you confirm a square crop before
+    // accepting it, rather than silently using the untouched original.
+    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
 
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            val file = File(context.cacheDir, "ember_profile_photo_${System.currentTimeMillis()}.jpg")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(file).use { output -> input.copyTo(output) }
-            }
-            viewModel.uploadPhoto(file)
-        }
+        if (uri != null) pendingCropUri = uri
+    }
+
+    val cropUri = pendingCropUri
+    if (cropUri != null) {
+        PhotoCropScreen(
+            imageUri = cropUri,
+            onCancel = { pendingCropUri = null },
+            onCropped = { file ->
+                pendingCropUri = null
+                viewModel.uploadPhoto(file)
+            },
+        )
+        return
     }
 
     Column(
@@ -117,124 +126,115 @@ fun MyProfileScreen(
             modifier = Modifier.padding(top = 4.dp),
         )
 
-        // Not an avatar-plus-settings-rows layout — the same photo card every friend's send
-        // appears in on Home and Friends (same shape, shadow, bottom scrim), just standing for
-        // you instead of a moment someone sent. Name and username live directly on the card
-        // and are each independently tappable, the way the card itself already carries that
-        // information for everyone else's photos.
-        val cardShape = RoundedCornerShape(30.dp)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp)
-                .aspectRatio(0.8f)
-                .clip(cardShape)
-                .background(colors.panel)
-                .clickable {
-                    galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
+        // A plain circular avatar, not the big portrait hero card this used to be — that card
+        // borrowed Home's featured-photo shape (0.8 aspect ratio) for a photo that's a fixed
+        // square (see PhotoCropScreen) and always shown circularly everywhere else in the app
+        // (Friends rows, Home avatar row), so it never actually needed that shape, and a full-
+        // width portrait card just for a profile picture read as oversized. A circle is also the
+        // one treatment that makes the underlying image's real 1:1 crop legible at a glance.
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            val photoUrl = viewModel.profile?.profilePhotoUrl
-            if (photoUrl != null) {
-                AsyncImage(
-                    model = photoUrl,
-                    contentDescription = "Your profile photo",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Brush.radialGradient(listOf(colors.glow.copy(alpha = 0.28f), colors.panel))),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = viewModel.profile?.displayName?.firstOrNull()?.uppercase() ?: "•",
-                        fontFamily = typography.display,
-                        fontSize = 56.sp,
-                        color = colors.cream,
-                    )
-                }
-            }
-
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f))),
-            )
-
-            if (viewModel.isUploadingPhoto) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = colors.glow, strokeWidth = 2.5.dp)
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-                    .size(40.dp)
+                    .size(112.dp)
                     .clip(CircleShape)
-                    .background(colors.panel.copy(alpha = 0.7f))
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                    .background(colors.panel)
+                    .border(1.dp, colors.border, CircleShape)
                     .clickable {
                         galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.CameraAlt, contentDescription = "Change photo", tint = Color.White, modifier = Modifier.size(17.dp))
+                val photoUrl = viewModel.profile?.profilePhotoUrl
+                if (photoUrl != null) {
+                    AsyncImage(
+                        model = photoUrl,
+                        contentDescription = "Your profile photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    )
+                } else {
+                    Text(
+                        text = viewModel.profile?.displayName?.firstOrNull()?.uppercase() ?: "•",
+                        fontFamily = typography.display,
+                        fontSize = 40.sp,
+                        color = colors.cream,
+                    )
+                }
+
+                if (viewModel.isUploadingPhoto) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = colors.glow, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                    }
+                }
+
+                // Aligned to the square Box's own corner, not the circle's curve — that's what
+                // makes it sit half on, half off the avatar's edge, the same look every other
+                // app's profile-photo badge has, for free, with no extra offset math.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(colors.glow)
+                        .clickable {
+                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.CameraAlt, contentDescription = "Change photo", tint = colors.accentText, modifier = Modifier.size(15.dp))
+                }
             }
 
-            Column(
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(start = 24.dp, end = 24.dp, bottom = 22.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {
+                    .padding(top = 16.dp)
+                    .clickable {
                         viewModel.openNameEditor()
                         showNameDialog = true
                     },
-                ) {
-                    Text(
-                        text = viewModel.profile?.displayName.orEmpty(),
-                        fontFamily = typography.display,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFBF8F3),
-                    )
-                    Icon(
-                        Icons.Filled.Edit,
-                        contentDescription = "Change name",
-                        tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(start = 8.dp).size(15.dp),
-                    )
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .clickable {
-                            viewModel.openUsernameEditor()
-                            showUsernameDialog = true
-                        },
-                ) {
-                    Text(
-                        text = viewModel.profile?.username?.let { "@$it" }.orEmpty(),
-                        fontFamily = typography.body,
-                        fontSize = 13.5.sp,
-                        color = Color.White.copy(alpha = 0.75f),
-                    )
-                    Icon(
-                        Icons.Filled.Edit,
-                        contentDescription = "Change username",
-                        tint = Color.White.copy(alpha = 0.55f),
-                        modifier = Modifier.padding(start = 6.dp).size(12.dp),
-                    )
-                }
+            ) {
+                Text(
+                    text = viewModel.profile?.displayName.orEmpty(),
+                    fontFamily = typography.display,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.cream,
+                )
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "Change name",
+                    tint = colors.mutedDim,
+                    modifier = Modifier.padding(start = 8.dp).size(14.dp),
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .clickable {
+                        viewModel.openUsernameEditor()
+                        showUsernameDialog = true
+                    },
+            ) {
+                Text(
+                    text = viewModel.profile?.username?.let { "@$it" }.orEmpty(),
+                    fontFamily = typography.body,
+                    fontSize = 13.5.sp,
+                    color = colors.muted,
+                )
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "Change username",
+                    tint = colors.mutedDim,
+                    modifier = Modifier.padding(start = 6.dp).size(12.dp),
+                )
             }
         }
 

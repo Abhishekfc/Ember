@@ -16,7 +16,7 @@ class ThemePreferenceStore(private val context: Context) {
     val selectedTheme: Flow<ThemeKey> = context.emberDataStore.data.map { prefs ->
         prefs[themeKeyPref]?.let { stored ->
             runCatching { ThemeKey.valueOf(stored) }.getOrNull()
-        } ?: ThemeKey.NOIR
+        } ?: ThemeKey.EMBER
     }
 
     suspend fun currentTheme(): ThemeKey = selectedTheme.first()
