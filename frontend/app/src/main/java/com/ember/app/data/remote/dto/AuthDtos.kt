@@ -12,7 +12,9 @@ data class RegisterRequest(
 
 @Serializable
 data class LoginRequest(
-    val email: String,
+    // Either the account's email or its username — the backend tells them apart by whether
+    // this contains an "@" (see AuthService.login).
+    val identifier: String,
     val password: String,
 )
 

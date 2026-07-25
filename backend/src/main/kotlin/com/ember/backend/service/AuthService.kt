@@ -52,16 +52,24 @@ class AuthService(
     }
 
     fun login(request: LoginRequest): AuthResponse {
-        val normalizedEmail = request.email.trim().lowercase()
-        val user = userRepository.findByEmail(normalizedEmail)
+        val normalizedIdentifier = request.identifier.trim().lowercase()
+        // An "@" means an email was entered, anything else is treated as a username — the same
+        // distinction registration already enforces (usernames are restricted to
+        // letters/digits/underscore/period, see RegisterRequest, so they can never contain "@"
+        // and be mistaken for one).
+        val user = if (normalizedIdentifier.contains("@")) {
+            userRepository.findByEmail(normalizedIdentifier)
+        } else {
+            userRepository.findByUsername(normalizedIdentifier)
+        }
         // Always runs a real BCrypt comparison, even when no account matched — comparing against
         // a fixed dummy hash rather than short-circuiting on `user == null`. BCrypt is
-        // deliberately slow (tens of ms), so skipping it made "no such email" measurably faster
-        // than "wrong password," letting an attacker enumerate valid emails purely from response
-        // timing, with no rate limiting standing in the way.
+        // deliberately slow (tens of ms), so skipping it made "no such account" measurably faster
+        // than "wrong password," letting an attacker enumerate valid emails/usernames purely from
+        // response timing, with no rate limiting standing in the way.
         val passwordMatches = passwordEncoder.matches(request.password, user?.passwordHash ?: DUMMY_PASSWORD_HASH)
         if (user == null || !passwordMatches) {
-            logger.info("Login failed for email: {}", normalizedEmail)
+            logger.info("Login failed for identifier: {}", normalizedIdentifier)
             throw InvalidCredentialsException()
         }
         logger.info("User logged in: userId={} email={}", user.id, user.email)

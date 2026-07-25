@@ -19,6 +19,7 @@ import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,9 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewmodel.initializer
@@ -42,6 +45,7 @@ import com.ember.app.data.remote.dto.MemoryPhotoDto
 import com.ember.app.data.remote.dto.UserProfileDto
 import com.ember.app.ui.activity.ActivityScreen
 import com.ember.app.ui.activity.ActivityViewModel
+import com.ember.app.ui.auth.AuthPalette
 import com.ember.app.ui.auth.LoginScreen
 import com.ember.app.ui.auth.LoginViewModel
 import com.ember.app.ui.camera.CameraScreen
@@ -69,6 +73,8 @@ import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.ThemeKey
 import com.ember.app.ui.theme.ThemeScreen
 import com.ember.app.ui.theme.ThemeViewModel
+import com.ember.app.ui.theme.bottomEdgeColor
+import com.ember.app.ui.theme.topEdgeColor
 import com.ember.app.widget.EmberWidget
 import com.ember.app.widget.WidgetPhotoStore
 import com.ember.app.widget.WidgetPhotoSync
@@ -191,6 +197,24 @@ class MainActivity : ComponentActivity() {
                 var nestedScreen by remember { mutableStateOf<NestedScreen?>(null) }
                 var selectedFriend by remember { mutableStateOf<FriendSummaryDto?>(null) }
                 val appContext = LocalContext.current
+
+                // The status bar and nav bar are otherwise just whatever flat color the app's
+                // static theme XML happens to declare — a leftover indigo that matched nothing
+                // once every screen moved to its own per-theme gradient background. Recoloring
+                // them here, every time the active background actually changes, is what keeps
+                // them blending into the screen across all 8 themes (and the fixed Ember look
+                // AuthPalette uses pre-login) instead of reading as a mismatched strip. Approximate
+                // rather than exact — see topEdgeColor/bottomEdgeColor's own doc comment — but a
+                // solid strip inside a gradient's own top/bottom color is indistinguishable in
+                // practice at that size.
+                val barColors = if (authenticated) EmberTheme.colors else AuthPalette.colors
+                SideEffect {
+                    window.statusBarColor = barColors.background.topEdgeColor.toArgb()
+                    window.navigationBarColor = barColors.background.bottomEdgeColor.toArgb()
+                    val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                    insetsController.isAppearanceLightStatusBars = barColors.isLight
+                    insetsController.isAppearanceLightNavigationBars = barColors.isLight
+                }
 
                 // Camera is now a page you can swipe to rather than a screen only opened
                 // deliberately, so the multi-hundred-millisecond ProcessCameraProvider fetch

@@ -23,6 +23,10 @@ import com.ember.app.R
  */
 enum class ThemeKey(val displayName: String, val locked: Boolean) {
     EMBER("Ember", locked = false),
+    // The original warm-orange/violet "Ember" look, kept as its own free theme under a new name
+    // once EMBER itself became the icon-matched cream/black look instead — nothing was deleted,
+    // just renamed and given its own slot alongside it.
+    BLAZE("Blaze", locked = false),
     NOIR("Noir", locked = false),
     AURORA("Aurora", locked = true),
     POLAROID("Polaroid", locked = true),
@@ -46,6 +50,24 @@ sealed interface EmberBackground {
         )
     }
 }
+
+/** Solid stand-ins for the very top/bottom of this gradient — used to color the system status
+ * bar and navigation bar so they blend into the screen instead of sitting on top of it as a flat
+ * mismatched strip. Every background here is anchored/reads top-to-bottom (a [EmberBackground.Linear]
+ * is literally top-to-bottom; a [EmberBackground.Radial]'s center is always pinned to the very top
+ * edge, `centerYFraction = 0f`), so the first color is always what the top of the screen actually
+ * looks like and the last is what the bottom fades to. */
+val EmberBackground.topEdgeColor: Color
+    get() = when (this) {
+        is EmberBackground.Linear -> colors.first()
+        is EmberBackground.Radial -> colors.first()
+    }
+
+val EmberBackground.bottomEdgeColor: Color
+    get() = when (this) {
+        is EmberBackground.Linear -> colors.last()
+        is EmberBackground.Radial -> colors.last()
+    }
 
 /** One-to-one with every color field on a JSX theme object. */
 data class EmberColors(
@@ -80,7 +102,10 @@ private fun blackBorder(alpha: Float) = Color(red = 0f, green = 0f, blue = 0f, a
 // Fraunces is a variable font (weights 400-700 used); each entry pins the wght axis.
 // Bold(700) added for headline moments (Home's hero line) that need real premium weight —
 // the font already supports it, this just registers it alongside the existing weights.
-private val FrauncesFontFamily = FontFamily(
+// internal, not private — the auth/onboarding flow (see ui/auth/AuthPalette.kt) deliberately
+// pins its own typography to this family rather than reading the active EmberTheme, and reuses
+// this exact FontFamily instance instead of re-declaring the same Font(...) loading a second time.
+internal val FrauncesFontFamily = FontFamily(
     Font(R.font.fraunces, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.fraunces, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
     Font(R.font.fraunces, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
@@ -88,7 +113,7 @@ private val FrauncesFontFamily = FontFamily(
 )
 
 // Inter is a variable font (weights 400-700 used).
-private val InterFontFamily = FontFamily(
+internal val InterFontFamily = FontFamily(
     Font(R.font.inter, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.inter, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
     Font(R.font.inter, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
@@ -106,16 +131,42 @@ private val DmSerifDisplayFontFamily = FontFamily(
     Font(R.font.dm_serif_display, FontWeight.Normal),
 )
 
+// The icon-matched look: cream (sampled from the app icon, frontend/app Icon/emberAppIcon.png)
+// and black/neutral-charcoal ONLY — no purple, no gradient. glow and glow2 are set to the exact
+// same value on purpose: every shared button component blends between them
+// (Brush.horizontalGradient(listOf(colors.glow, colors.glow2))), and an identical pair renders
+// as a genuinely flat fill rather than needing a separate "is this a gradient theme" code path
+// threaded through every one of those components.
 private val emberDefinition = EmberThemeDefinition(
     key = ThemeKey.EMBER,
     colors = EmberColors(
+        background = EmberBackground.Radial(listOf(Color(0xFF141414), Color(0xFF000000)), 0.20f, 0.0f),
+        panelBackground = EmberBackground.Radial(listOf(Color(0xFF1C1C1C), Color(0xFF0A0A0A)), 0.30f, 0.0f),
+        panel = Color(0xFF1E1E1E),
+        cream = Color(0xFFEDEAE0),
+        muted = Color(0xFFA8A399),
+        mutedDim = Color(0xFF6E6A61),
+        glow = Color(0xFFEDEAE0),
+        glow2 = Color(0xFFEDEAE0),
+        // The streak ring's third "blaze" color at 7+ streak — a dark neutral rather than the
+        // usual violet slot's purple, so the high-streak sweep stays inside the cream/black
+        // family instead of introducing a hue that isn't part of this theme at all.
+        violet = Color(0xFF2A2A2A),
+        accentText = Color(0xFF17150F),
+        border = whiteBorder(0.08f),
+        isLight = false,
+    ),
+    typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
+)
+
+// The original warm-orange/violet look this same slot used before EMBER became the icon-matched
+// cream/black theme above — kept exactly as it was, just under its own name now instead of
+// being lost.
+private val blazeDefinition = EmberThemeDefinition(
+    key = ThemeKey.BLAZE,
+    colors = EmberColors(
         background = EmberBackground.Radial(listOf(Color(0xFF0E0D14), Color(0xFF09080D)), 0.20f, 0.0f),
         panelBackground = EmberBackground.Radial(listOf(Color(0xFF2C2650), Color(0xFF0D0B18)), 0.30f, 0.0f),
-        // Clearly lighter than either background stop (not sandwiched between them) — a radial
-        // background's brightness varies by position on screen, so a panel color tuned to only
-        // sit "between" the two stops can end up blending into whichever part of the gradient a
-        // given card happens to land on. Comfortably brighter than the lightest stop keeps panel
-        // edges legible regardless of where on screen they scroll to.
         panel = Color(0xFF242329),
         cream = Color(0xFFFBF8F3),
         muted = Color(0xFF9B93B8),
@@ -271,6 +322,7 @@ private val citrusDefinition = EmberThemeDefinition(
 
 fun emberThemeDefinition(key: ThemeKey): EmberThemeDefinition = when (key) {
     ThemeKey.EMBER -> emberDefinition
+    ThemeKey.BLAZE -> blazeDefinition
     ThemeKey.NOIR -> noirDefinition
     ThemeKey.AURORA -> auroraDefinition
     ThemeKey.POLAROID -> polaroidDefinition

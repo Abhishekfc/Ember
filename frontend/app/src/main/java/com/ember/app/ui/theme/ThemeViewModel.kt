@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 
 class ThemeViewModel(private val store: ThemePreferenceStore) : ViewModel() {
 
-    var selectedTheme by mutableStateOf(ThemeKey.NOIR)
+    var selectedTheme by mutableStateOf(ThemeKey.EMBER)
         private set
 
     init {

@@ -3,6 +3,7 @@ docs/
 .claude/
 PROJECT_CONTEXT.md
 FEATURE_IDEAS.md
+AUTH_SCREEN_CONTEXT.md
 test-accounts/
 frontend/Test images/
 frontend/app/google-services.json

@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.StartOffsetType
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -54,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -319,12 +322,9 @@ fun HomeScreen(
             // the parent Column is now scrollable (unbounded height), where fillMaxSize
             // collapses to zero.
             when {
-                viewModel.isLoading && viewModel.feedItems.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 200.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = colors.glow)
-                }
+                viewModel.isLoading && viewModel.feedItems.isEmpty() -> HomeSkeletonLoader(
+                    modifier = Modifier.padding(top = 6.dp),
+                )
 
                 // Only blocks the whole screen when there's truly nothing cached to fall back
                 // on — this used to run whenever errorMessage was set at all, which meant a
@@ -1079,6 +1079,115 @@ private fun FeaturedPhotoCard(
                 }
             }
         }
+    }
+}
+
+/** Cold-start loading state — shaped like the real featured card + avatar row it's about to be
+ * replaced by, rather than a generic centered spinner, so the layout doesn't visibly "jump" once
+ * data lands. A slow, flat opacity pulse (no gradient sweep, no glow) is the one animation —
+ * matches this app's own no-glow/no-glassmorphism rule while still reading clearly as "loading,"
+ * not just static gray boxes. */
+@Composable
+private fun HomeSkeletonLoader(modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        SkeletonFeaturedCard()
+        Row(
+            modifier = Modifier
+                .padding(top = 22.dp)
+                .padding(horizontal = 22.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            repeat(5) { index -> SkeletonAvatar(staggerIndex = index) }
+        }
+    }
+}
+
+/** A single, shared pulse spec every skeleton element pulls from — [staggerMillis] is the only
+ * thing that varies per call site, via [InfiniteRepeatableSpec]'s own `initialStartOffset`. That
+ * one shared rhythm is what makes several staggered elements read as one coordinated ripple
+ * instead of unrelated shapes that each happen to be animating. */
+@Composable
+private fun rememberSkeletonPulse(periodMillis: Int, staggerMillis: Int = 0): State<Float> {
+    val transition = rememberInfiniteTransition(label = "skeletonPulse")
+    return transition.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(periodMillis, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+            initialStartOffset = StartOffset(staggerMillis, StartOffsetType.FastForward),
+        ),
+        label = "skeletonAlpha",
+    )
+}
+
+/** The featured-card placeholder — pulses slowly on its own, since it's the visual anchor of the
+ * whole screen, plus a second, smaller "caption chip" in the same bottom-left spot the real
+ * card's name label sits, pulsing on a short lag behind the card itself. That lag (not a second
+ * independent rhythm) is what reads as one shape settling a beat after the other, rather than
+ * two unrelated blinking rectangles. */
+@Composable
+private fun SkeletonFeaturedCard() {
+    val colors = EmberTheme.colors
+    val cardAlpha by rememberSkeletonPulse(periodMillis = 1100)
+    val chipAlpha by rememberSkeletonPulse(periodMillis = 1100, staggerMillis = 220)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = FEATURED_CARD_SIDE_PADDING)
+            .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
+            .graphicsLayer { alpha = cardAlpha }
+            .clip(RoundedCornerShape(FEATURED_CARD_CORNER_RADIUS))
+            .background(colors.panel),
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 24.dp, bottom = 24.dp)
+                .width(84.dp)
+                .height(14.dp)
+                .graphicsLayer { alpha = chipAlpha }
+                .clip(RoundedCornerShape(7.dp))
+                .background(colors.mutedDim),
+        )
+    }
+}
+
+/** One avatar-row placeholder. [staggerIndex] delays this item's pulse relative to the ones
+ * before it (see [rememberSkeletonPulse]), so the row ripples left to right instead of every
+ * circle breathing in the same dead unison — the one thing that made the first version of this
+ * loader feel flat. A faint always-on ring (matching the real avatar's own ring treatment) plus
+ * a hair of scale riding the same pulse gives each circle a little more shape than a flat fill
+ * alone, still with no gradient or glow anywhere. */
+@Composable
+private fun SkeletonAvatar(staggerIndex: Int) {
+    val colors = EmberTheme.colors
+    val alpha by rememberSkeletonPulse(periodMillis = 760, staggerMillis = staggerIndex * 110)
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(58.dp)) {
+        Box(
+            modifier = Modifier
+                .size(58.dp)
+                .graphicsLayer {
+                    val scale = 0.94f + alpha * 0.06f
+                    scaleX = scale
+                    scaleY = scale
+                    this.alpha = alpha
+                }
+                .clip(CircleShape)
+                .border(1.5.dp, colors.border, CircleShape)
+                .background(colors.panel),
+        )
+        Box(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .width(36.dp)
+                .height(8.dp)
+                .graphicsLayer { this.alpha = alpha }
+                .clip(RoundedCornerShape(4.dp))
+                .background(colors.panel),
+        )
     }
 }
 

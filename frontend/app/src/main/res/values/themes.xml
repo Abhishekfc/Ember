@@ -1,7 +1,11 @@
 <resources>
+    <!-- Bar colors below are just the cold-start fallback shown for the instant before
+         MainActivity's first Compose frame recolors them to match whichever theme is actually
+         active (see MainActivity.kt) — near-black so that flash reads close to every dark theme
+         Ember ships (the two light themes, Polaroid/Sunroom, briefly flash dark like the rest). -->
     <style name="Theme.Ember" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#12101E</item>
-        <item name="android:statusBarColor">#12101E</item>
-        <item name="android:navigationBarColor">#12101E</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
     </style>
 </resources>

@@ -19,8 +19,9 @@ class AuthRepository(
     suspend fun register(email: String, password: String, displayName: String, username: String): Result<AuthResponse> =
         safeCall { handle(api.register(RegisterRequest(email, password, displayName, username))) }
 
-    suspend fun login(email: String, password: String): Result<AuthResponse> =
-        safeCall { handle(api.login(LoginRequest(email, password))) }
+    /** [identifier] can be either the account's email or its username — see LoginRequest. */
+    suspend fun login(identifier: String, password: String): Result<AuthResponse> =
+        safeCall { handle(api.login(LoginRequest(identifier, password))) }
 
     /** Called whenever a fresh FCM token becomes available (see EmberFirebaseMessagingService)
      * and once whenever a session becomes authenticated (fresh login, or an already-valid
