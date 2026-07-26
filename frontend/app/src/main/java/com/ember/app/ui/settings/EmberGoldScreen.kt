@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -57,6 +59,8 @@ fun EmberGoldScreen() {
             .fillMaxSize()
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize))
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 30.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

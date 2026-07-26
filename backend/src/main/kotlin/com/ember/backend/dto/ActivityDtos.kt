@@ -17,3 +17,7 @@ data class ActivityEvent(
      * was actually sent rather than just naming that something was. */
     val photoUrl: String? = null,
 )
+
+/** Backs the Activity tab's nav-dock badge dot — null means the account has never actually
+ * viewed the Activity tab (a fresh account, or one from before this existed). */
+data class ActivityLastSeen(val lastSeenAt: Instant?)

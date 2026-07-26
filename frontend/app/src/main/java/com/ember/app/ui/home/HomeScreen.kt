@@ -25,13 +25,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -54,6 +58,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -81,6 +87,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -111,8 +118,15 @@ import kotlinx.coroutines.launch
  * its inset from the true screen bottom) — kept as one named constant, reused everywhere content
  * needs to clear it, rather than a fixed padding number copied at each call site. Internal (not
  * private) so MemoriesScreen's day-featured overlay can reserve the same space when centering
- * itself against the full screen. */
-internal const val NAV_DOCK_RESERVE_DP = 110
+ * itself against the full screen. Generous on purpose: the real inset here is
+ * `navigationBarsPadding()`'s actual value, which varies a lot by device — roughly 16dp for
+ * gesture navigation up to roughly 48dp for old-style 3-button navigation, a real ~32dp swing
+ * this constant needs to cover regardless of which one a given phone uses. */
+internal const val NAV_DOCK_RESERVE_DP = 140
+
+/** Floor for the featured card's height clamp below — however short a screen gets, the card
+ * never shrinks past a size that still reads as a real photo rather than a sliver. */
+private val FEATURED_CARD_MIN_HEIGHT_DP = 240.dp
 
 /** How far the user needs to scroll before the nav dock's Home icon has fully morphed into the
  * Memories one. Lives here (`internal`, not `private`) rather than in MainActivity, since it's
@@ -156,6 +170,13 @@ fun HomeScreen(
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
+
+    // The header's own real height — measured, not guessed — so the featured card's bounded
+    // region below (see its own call site comment) knows exactly how much room is actually left,
+    // regardless of how long the greeting line runs or what font scale is in effect. Starts at 0f
+    // for one frame before the first real measurement lands, same trade-off screenSize above
+    // already makes.
+    var headerHeightPx by remember { mutableStateOf(0f) }
 
     // Leaving Home and coming back is one of the two moments background-synced content is
     // allowed to become visible (see HomeViewModel) — the other being an explicit
@@ -216,6 +237,7 @@ fun HomeScreen(
     // blur source would include the dock's own pixels and produce a ghosting artifact.
     // verticalScroll is what lets the pull-to-refresh gesture register even though the
     // content itself fits on one screen.
+    val pullRefreshState = rememberPullToRefreshState()
     PullToRefreshBox(
         // Tracks isPullRefreshing specifically, not the general isLoading — loadFeed() also
         // runs silently in the background (e.g. right after sending a photo, so streaks and
@@ -223,12 +245,27 @@ fun HomeScreen(
         // actually pulled down for it.
         isRefreshing = viewModel.isPullRefreshing,
         onRefresh = { viewModel.loadFeed(isPullRefresh = true) },
+        state = pullRefreshState,
+        // The stock indicator otherwise renders in Material's own default scheme (a light
+        // container, a generic primary-color arc) — nothing about it reads as part of this app.
+        // Recoloring it to the theme's own panel/glow tokens is what makes it look like Ember's
+        // own refresh moment instead of a plain system control dropped on top of it.
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                state = pullRefreshState,
+                isRefreshing = viewModel.isPullRefreshing,
+                containerColor = colors.panel,
+                color = colors.glow,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        },
         modifier = Modifier.fillMaxSize(),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .hazeSource(hazeState)
+                .statusBarsPadding()
                 // Disabled while either kind of focus is active — background content the user
                 // can't currently interact with anyway (everything but the focused card is
                 // behind FocusShield, or blurred behind Memories' own day-card) never needed to
@@ -242,12 +279,14 @@ fun HomeScreen(
             // rather than as one soft, de-emphasized backdrop.
             FocusShield(active = isPhotoFocused, onDismiss = onDismissFocus) {
             Column(
-                modifier = Modifier.blur(chromeBlur, BlurredEdgeTreatment.Unbounded),
+                modifier = Modifier
+                    .onGloballyPositioned { headerHeightPx = it.size.height.toFloat() }
+                    .blur(chromeBlur, BlurredEdgeTreatment.Unbounded),
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 26.dp, start = 22.dp, end = 22.dp),
+                        .padding(top = 12.dp, start = 22.dp, end = 22.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
@@ -282,9 +321,19 @@ fun HomeScreen(
                         if (hasConnectionError) {
                             append("Couldn't connect")
                         } else if (unseenCount > 0) {
-                            withStyle(SpanStyle(color = colors.glow)) { append("$unseenCount") }
-                            append(if (unseenCount == 1) " photo is" else " photos are")
-                            append(" glowing for you")
+                            // The count itself is left un-styled (inherits the Text's own
+                            // full-strength cream below) and it's the rest of the sentence that's
+                            // muted instead — in the default Ember theme, colors.glow is the exact
+                            // same hex as colors.cream by design (see Theme.kt), so styling the
+                            // number with glow made it visually identical to plain cream text
+                            // around it; a real color (muted, not just a dimmer cream) for the
+                            // *surrounding* words guarantees a genuine, visible difference in
+                            // every theme instead of relying on two tokens that can coincide.
+                            append("$unseenCount")
+                            withStyle(SpanStyle(color = colors.muted)) {
+                                append(if (unseenCount == 1) " photo is" else " photos are")
+                                append(" glowing for you")
+                            }
                         } else {
                             append("You're all caught up")
                         }
@@ -294,12 +343,12 @@ fun HomeScreen(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.3).sp,
                     color = colors.cream,
-                    modifier = Modifier.padding(top = 24.dp, start = 22.dp, end = 22.dp),
+                    modifier = Modifier.padding(top = 10.dp, start = 22.dp, end = 22.dp),
                 )
-                // "Tap to retry" folds into this existing line rather than adding a new one —
-                // same reasoning as above, just the other half of it: the identity/date line was
-                // never in conflict with a connection error, so it's the natural place for the
-                // one new fact (there's a way to fix this) that error state actually adds.
+                // "Tap to retry" folds into this line rather than the hero line above — the hero
+                // line already runs long enough on its own ("Couldn't connect") that adding retry
+                // text there wrapped to two lines on narrower/smaller screens, eating extra header
+                // height. This line has room for it.
                 Text(
                     text = buildAnnotatedString {
                         append(viewModel.userName?.substringBefore(" ")?.let { "Hey $it · ${viewModel.dateText}" } ?: viewModel.dateText)
@@ -495,86 +544,98 @@ fun HomeScreen(
                         avatarListState.smoothCenterOn(index, itemStridePx, itemWidthPx)
                     }
 
-                    // Measured (not guessed) so the very first screenful — before any scroll —
-                    // shows only the card and avatar row, cleanly, with nothing from Memories
-                    // peeking in underneath the floating nav dock. A version of this that
-                    // measured the card/avatar row and stretched a spacer to fill the exact
-                    // remaining screen height was tried and reverted — it "worked" in the sense
-                    // that Memories always started right at the fold, but on any screen where the
-                    // card didn't already fill most of it, that turned into a large dead gap of
-                    // empty background, which read as more broken than the original crowding did.
-                    // A modest fixed gap doesn't chase device-height precision, but doesn't
-                    // produce a gap that scales into that kind of empty space either.
-                    // Plain text lines, flush with the "Hey Abhishek · date" line directly above
-                    // them (same 22dp start, same 5dp line gap the greeting-to-date transition
-                    // already uses) — no icon/dot leading them, since that offset the text start
-                    // away from every other line in this header block and read as crooked rather
-                    // than a clean continuation of it. Reads as a natural third line of the
-                    // header, not a separate inserted element.
-                    AnimatedVisibility(
-                        visible = viewModel.hasNewFeedAvailable,
-                        enter = fadeIn(tween(200)),
-                        exit = fadeOut(tween(150)),
-                    ) {
-                        Text(
-                            text = buildAnnotatedString {
-                                withStyle(SpanStyle(color = colors.glow)) { append("New memories") }
-                                append(" available")
-                            },
-                            fontFamily = typography.body,
-                            fontSize = 12.5.sp,
-                            color = colors.muted,
-                            modifier = Modifier
-                                .padding(top = 5.dp, start = 22.dp, end = 22.dp)
-                                .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                                .clickable { viewModel.revealNewFeed() },
-                        )
-                    }
-
                     // A connection error no longer gets its own line here — it now takes over the
                     // header's own hero line above (see the hasConnectionError branch there) so
                     // it doesn't sit in contradiction next to a "you're all caught up" claim the
                     // app can no longer verify. Nothing further needed in this specific spot.
 
-                    FeaturedPhotoCard(
-                        entries = entries,
-                        pagerState = pagerState,
-                        isFocused = isPhotoFocused,
-                        isAtDefaultScrollPosition = isHomeAtDefaultScrollPosition,
-                        // Only actually toggles focus when Home is scrolled all the way to its
-                        // default resting position — without this, tapping the card while it's
-                        // only half-visible (scrolled partway down into Memories) still blurred
-                        // the whole screen, which made no sense for a tap that mostly landed on
-                        // Memories content, not the card itself.
-                        onToggleFocus = { if (scrollState.value == 0) onToggleFocus() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 18.dp, start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING)
-                            .blur(cardBlurWhenMemoriesFocused, BlurredEdgeTreatment.Unbounded),
-                    )
+                    // On a short enough viewport, the card's own aspect-ratio height (derived
+                    // purely from width, with no awareness of the screen's actual height) can push
+                    // the avatar row below it down into the floating nav dock's zone — the dock is
+                    // a fixed overlay anchored to the true screen bottom, so whatever lands there
+                    // at rest (scroll position 0) gets visually covered, with no scroll interaction
+                    // able to fix that specific spot. Two earlier fixes both guessed at how much
+                    // space the header/avatar row need (first via live cross-sibling measurement
+                    // that didn't converge reliably, then via generous-but-still-not-generous-enough
+                    // fixed dp constants that still landed too tight on at least one real device) —
+                    // both were fundamentally still "hope this number is big enough" arithmetic.
+                    // This instead wraps the card + avatar row in their own Column bounded to
+                    // exactly the real remaining space (screenSize, minus the real measured status
+                    // bar inset, minus the header's own real measured height, minus the dock's
+                    // reserve), and gives the card `weight(1f, fill = false)` — Compose's own
+                    // layout algorithm then measures the avatar row (a non-weighted sibling) at its
+                    // real natural size FIRST and gives the card whatever's left, never more than
+                    // that bound allows. This can't overflow past the dock, structurally, on any
+                    // device — nothing here is a guess except the dock's own already-accepted
+                    // NAV_DOCK_RESERVE_DP constant.
+                    val statusBarPx = WindowInsets.statusBars.getTop(density)
+                    val topFoldMaxHeightDp = with(density) {
+                        (screenSize.height - statusBarPx - headerHeightPx - NAV_DOCK_RESERVE_DP.dp.toPx()).toDp()
+                    }
+                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = topFoldMaxHeightDp)) {
+                        AnimatedVisibility(
+                            visible = viewModel.hasNewFeedAvailable,
+                            enter = fadeIn(tween(200)),
+                            exit = fadeOut(tween(150)),
+                        ) {
+                            Text(
+                                text = buildAnnotatedString {
+                                    withStyle(SpanStyle(color = colors.glow)) { append("New memories") }
+                                    append(" available")
+                                },
+                                fontFamily = typography.body,
+                                fontSize = 12.5.sp,
+                                color = colors.muted,
+                                modifier = Modifier
+                                    .padding(top = 5.dp, start = 22.dp, end = 22.dp)
+                                    .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
+                                    .clickable { viewModel.revealNewFeed() },
+                            )
+                        }
 
-                    FocusShield(active = isPhotoFocused, onDismiss = onDismissFocus) {
-                    FriendAvatarRow(
-                        viewModel = viewModel,
-                        activeFriendId = displayFriendId,
-                        listState = avatarListState,
-                        onAvatarClick = { friendId ->
-                            // Always that friend's FIRST (newest) photo, deliberately not
-                            // pageIndexFor's remembered position — auto-advance walks forward
-                            // through every friend's photos on its own timer, so by the time it's
-                            // moved on to someone else, the friend it just left has its remembered
-                            // position sitting on their LAST photo. Tapping a friend's avatar is a
-                            // deliberate "show me them" action; it should never land on whatever
-                            // auto-advance (or an earlier manual swipe) happened to leave behind.
-                            val target = entries.indexOfFirst { it.friendId == friendId }.coerceAtLeast(0)
-                            scope.launch { pagerState.animateScrollToPage(target) }
-                        },
-                        onAddFriendClick = onAddFriendClick,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 20.dp, bottom = 12.dp)
-                            .blur(chromeBlur, BlurredEdgeTreatment.Unbounded),
-                    )
+                        FeaturedPhotoCard(
+                            entries = entries,
+                            pagerState = pagerState,
+                            isFocused = isPhotoFocused,
+                            isAtDefaultScrollPosition = isHomeAtDefaultScrollPosition,
+                            // Only actually toggles focus when Home is scrolled all the way to its
+                            // default resting position — without this, tapping the card while it's
+                            // only half-visible (scrolled partway down into Memories) still blurred
+                            // the whole screen, which made no sense for a tap that mostly landed on
+                            // Memories content, not the card itself.
+                            onToggleFocus = { if (scrollState.value == 0) onToggleFocus() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 18.dp, start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING)
+                                .weight(1f, fill = false)
+                                .heightIn(min = FEATURED_CARD_MIN_HEIGHT_DP)
+                                .blur(cardBlurWhenMemoriesFocused, BlurredEdgeTreatment.Unbounded),
+                        )
+
+                        FocusShield(active = isPhotoFocused, onDismiss = onDismissFocus) {
+                        FriendAvatarRow(
+                            viewModel = viewModel,
+                            activeFriendId = displayFriendId,
+                            listState = avatarListState,
+                            onAvatarClick = { friendId ->
+                                // Always that friend's FIRST (newest) photo, deliberately not
+                                // pageIndexFor's remembered position — auto-advance walks forward
+                                // through every friend's photos on its own timer, so by the time
+                                // it's moved on to someone else, the friend it just left has its
+                                // remembered position sitting on their LAST photo. Tapping a
+                                // friend's avatar is a deliberate "show me them" action; it should
+                                // never land on whatever auto-advance (or an earlier manual swipe)
+                                // happened to leave behind.
+                                val target = entries.indexOfFirst { it.friendId == friendId }.coerceAtLeast(0)
+                                scope.launch { pagerState.animateScrollToPage(target) }
+                            },
+                            onAddFriendClick = onAddFriendClick,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 20.dp, bottom = 12.dp)
+                                .blur(chromeBlur, BlurredEdgeTreatment.Unbounded),
+                        )
+                        }
                     }
 
                     // Memories starts right where the feed ends — on the page, in the normal
@@ -744,7 +805,10 @@ internal fun ProfileChip(name: String?, photoUrl: String?, onClick: () -> Unit) 
             modifier = Modifier
                 .fillMaxSize()
                 .clip(CircleShape)
-                .background(colors.panel),
+                // Same fallback fill as every other "your/a person's avatar" spot in the app
+                // (Settings' profile row, Friends' StreakAvatar, Activity's actor avatar) —
+                // was a flatter plain colors.panel here, the one place that token had drifted.
+                .background(colors.border.copy(alpha = 0.4f)),
             contentAlignment = Alignment.Center,
         ) {
             if (photoUrl != null) {
@@ -1290,6 +1354,8 @@ private fun FriendAvatarRow(
                             .background(dotColor),
                     )
                 }
+                // Streak lives on the featured card itself now, not duplicated here too —
+                // just the name below each avatar.
                 Text(
                     text = item.displayName.substringBefore(" "),
                     fontFamily = typography.body,
@@ -1298,25 +1364,6 @@ private fun FriendAvatarRow(
                     maxLines = 1,
                     modifier = Modifier.padding(top = 7.dp),
                 )
-                // Same "hide a zero streak" rule as the Friends list — a badge with nothing
-                // to say isn't worth showing.
-                if (item.streak > 0) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 1.dp)) {
-                        Icon(
-                            Icons.Rounded.LocalFireDepartment,
-                            contentDescription = "Streak",
-                            tint = colors.glow,
-                            modifier = Modifier.size(11.dp),
-                        )
-                        Text(
-                            text = "${item.streak}",
-                            fontFamily = typography.body,
-                            fontSize = 10.5.sp,
-                            color = colors.glow,
-                            modifier = Modifier.padding(start = 2.dp),
-                        )
-                    }
-                }
             }
         }
 

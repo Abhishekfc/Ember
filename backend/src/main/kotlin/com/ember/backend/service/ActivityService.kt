@@ -2,12 +2,16 @@ package com.ember.backend.service
 
 import com.ember.backend.dto.ActivityEvent
 import com.ember.backend.dto.ActivityEventType
+import com.ember.backend.dto.ActivityLastSeen
 import com.ember.backend.dto.Page
+import com.ember.backend.exception.ResourceNotFoundException
 import com.ember.backend.model.FriendshipStatus
 import com.ember.backend.repository.FriendshipRepository
 import com.ember.backend.repository.PhotoRecipientRepository
+import com.ember.backend.repository.UserRepository
 import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -20,9 +24,23 @@ private const val RECENT_PHOTOS_LIMIT = 20
 class ActivityService(
     private val friendshipRepository: FriendshipRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
+    private val userRepository: UserRepository,
     private val r2StorageService: R2StorageService,
     private val cacheManager: CacheManager,
 ) {
+
+    fun getLastSeen(userId: UUID): ActivityLastSeen {
+        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
+        return ActivityLastSeen(user.activityLastSeenAt)
+    }
+
+    @Transactional
+    fun markSeen(userId: UUID): ActivityLastSeen {
+        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
+        user.activityLastSeenAt = Instant.now()
+        userRepository.save(user)
+        return ActivityLastSeen(user.activityLastSeenAt)
+    }
 
     /** Cached per-user, same read-bypass-but-rewrite-on-[forceRefresh] pattern as
      * [FriendService.getFriends] — this assembles from three separate repository queries plus a

@@ -1,6 +1,7 @@
 package com.ember.app.data.remote
 
 import com.ember.app.data.remote.dto.ActivityEventDto
+import com.ember.app.data.remote.dto.ActivityLastSeenDto
 import com.ember.app.data.remote.dto.AuthResponse
 import com.ember.app.data.remote.dto.DeviceTokenRequestDto
 import com.ember.app.data.remote.dto.FeedItem
@@ -36,6 +37,12 @@ interface EmberApi {
 
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): Response<AuthResponse>
+
+    /** Public counterpart to [checkUsernameAvailability] — used during registration, before an
+     * account (and therefore a token) exists at all, so it can't go through the authenticated
+     * `/users/me/...` route the way an existing user editing their own username does. */
+    @GET("auth/username-availability")
+    suspend fun checkUsernameAvailabilityPublic(@Query("username") username: String): Response<UsernameAvailabilityDto>
 
     @GET("photos/feed")
     suspend fun getFeed(@Query("refresh") refresh: Boolean = false): Response<List<FeedItem>>
@@ -93,6 +100,12 @@ interface EmberApi {
         @Query("offset") offset: Int = 0,
         @Query("limit") limit: Int = 30,
     ): Response<PageDto<ActivityEventDto>>
+
+    @GET("activity/seen")
+    suspend fun getActivityLastSeen(): Response<ActivityLastSeenDto>
+
+    @POST("activity/seen")
+    suspend fun markActivitySeen(): Response<ActivityLastSeenDto>
 
     @GET("users/me")
     suspend fun getMyProfile(): Response<UserProfileDto>

@@ -16,3 +16,9 @@ data class ActivityEventDto(
     val warn: Boolean = false,
     val photoUrl: String? = null,
 )
+
+/** Backs the Activity tab's nav-dock badge dot — a real per-account value from the backend (not
+ * on-device storage), so it survives a reinstall. `lastSeenAt` is null for an account that's
+ * never actually viewed the Activity tab. */
+@Serializable
+data class ActivityLastSeenDto(val lastSeenAt: String?)

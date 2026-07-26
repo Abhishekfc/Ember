@@ -40,7 +40,6 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewmodel.initializer
 import com.ember.app.data.local.LocalListCache
 import com.ember.app.data.remote.dto.FeedItem
-import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.MemoryPhotoDto
 import com.ember.app.data.remote.dto.UserProfileDto
 import com.ember.app.ui.activity.ActivityScreen
@@ -60,6 +59,7 @@ import com.ember.app.ui.friends.FriendProfileScreen
 import com.ember.app.ui.friends.FriendProfileViewModel
 import com.ember.app.ui.friends.FriendsScreen
 import com.ember.app.ui.friends.FriendsViewModel
+import com.ember.app.ui.friends.ProfileSubject
 import com.ember.app.ui.home.HomeScreen
 import com.ember.app.ui.home.HomeViewModel
 import com.ember.app.ui.home.InitialHomeCache
@@ -73,8 +73,6 @@ import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.ThemeKey
 import com.ember.app.ui.theme.ThemeScreen
 import com.ember.app.ui.theme.ThemeViewModel
-import com.ember.app.ui.theme.bottomEdgeColor
-import com.ember.app.ui.theme.topEdgeColor
 import com.ember.app.widget.EmberWidget
 import com.ember.app.widget.WidgetPhotoStore
 import com.ember.app.widget.WidgetPhotoSync
@@ -143,6 +141,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // True edge-to-edge: the status/nav bars are fully transparent, and every screen's own
+        // full-bleed background gradient (already drawn via Modifier.fillMaxSize().background(...)
+        // everywhere) paints straight through behind them — this is what actually makes the bars
+        // disappear into the screen pixel-for-pixel, rather than approximating with a flat fill
+        // color (tried first; visibly seams on any theme whose background isn't flat across the
+        // top edge, e.g. Ember's off-center radial gradient). Content that would otherwise render
+        // underneath the bars now needs its own explicit statusBarsPadding()/navigationBarsPadding()
+        // — see each top-level screen for where that's applied.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Otherwise the system quietly paints a translucent dark scrim behind the gesture bar
+            // for legibility contrast, which is exactly the flat mismatched strip this whole fix
+            // is meant to remove — every screen already gives its own content enough contrast
+            // against its own background without needing the system's help here.
+            window.isNavigationBarContrastEnforced = false
+        }
         // Keep the widget's background refresh alive even across reinstalls that wiped the
         // schedule; KEEP policy makes this a no-op when it's already queued.
         WidgetUpdateWorker.schedule(applicationContext)
@@ -195,25 +211,19 @@ class MainActivity : ComponentActivity() {
                 // the login screen for a frame while that DataStore read is in flight.
                 var sessionChecked by remember { mutableStateOf(false) }
                 var nestedScreen by remember { mutableStateOf<NestedScreen?>(null) }
-                var selectedFriend by remember { mutableStateOf<FriendSummaryDto?>(null) }
+                var selectedProfileSubject by remember { mutableStateOf<ProfileSubject?>(null) }
                 val appContext = LocalContext.current
 
-                // The status bar and nav bar are otherwise just whatever flat color the app's
-                // static theme XML happens to declare — a leftover indigo that matched nothing
-                // once every screen moved to its own per-theme gradient background. Recoloring
-                // them here, every time the active background actually changes, is what keeps
-                // them blending into the screen across all 8 themes (and the fixed Ember look
-                // AuthPalette uses pre-login) instead of reading as a mismatched strip. Approximate
-                // rather than exact — see topEdgeColor/bottomEdgeColor's own doc comment — but a
-                // solid strip inside a gradient's own top/bottom color is indistinguishable in
-                // practice at that size.
-                val barColors = if (authenticated) EmberTheme.colors else AuthPalette.colors
+                // Bars themselves are fully transparent (set once, in onCreate) — the only thing
+                // that needs updating per-recomposition is which set of icons (light content for
+                // a dark background, dark content for a light one) reads correctly on top of
+                // whatever's now showing through: the active theme's colors once signed in, or
+                // the fixed Ember look AuthPalette uses pre-login.
+                val barsAreLight = if (authenticated) EmberTheme.colors.isLight else AuthPalette.colors.isLight
                 SideEffect {
-                    window.statusBarColor = barColors.background.topEdgeColor.toArgb()
-                    window.navigationBarColor = barColors.background.bottomEdgeColor.toArgb()
                     val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-                    insetsController.isAppearanceLightStatusBars = barColors.isLight
-                    insetsController.isAppearanceLightNavigationBars = barColors.isLight
+                    insetsController.isAppearanceLightStatusBars = barsAreLight
+                    insetsController.isAppearanceLightNavigationBars = barsAreLight
                 }
 
                 // Camera is now a page you can swipe to rather than a screen only opened
@@ -271,7 +281,7 @@ class MainActivity : ComponentActivity() {
                     viewModelStore.clear()
                     authenticated = false
                     nestedScreen = null
-                    selectedFriend = null
+                    selectedProfileSubject = null
                 }
 
                 // The backend issues short-lived JWTs with no refresh flow yet, so a session
@@ -439,6 +449,12 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(pagerState.settledPage) {
                         if (pagerState.settledPage != PAGE_HOME) isHomePhotoFocused = false
                     }
+                    // Clears the nav-dock badge dot the moment Activity actually becomes the
+                    // settled page — not on tab tap alone, so a swipe that passes through without
+                    // stopping there doesn't count as having seen it.
+                    LaunchedEffect(pagerState.settledPage) {
+                        if (pagerState.settledPage == PAGE_ACTIVITY) activityViewModel.markSeen()
+                    }
                     // Home's featured card has its own inner pager for cycling through photos —
                     // same swipe axis as this outer one, nested inside it. Compose doesn't always
                     // hand a gesture off cleanly between two pagers on the same axis, and the
@@ -529,24 +545,34 @@ class MainActivity : ComponentActivity() {
                             FindPeopleScreen(viewModel = findPeopleViewModel)
                         }
 
-                        nestedScreen == NestedScreen.FRIEND_PROFILE && selectedFriend != null -> {
-                            val friend = selectedFriend!!
+                        nestedScreen == NestedScreen.FRIEND_PROFILE && selectedProfileSubject != null -> {
+                            val subject = selectedProfileSubject!!
                             val friendProfileViewModel: FriendProfileViewModel = viewModel(
-                                key = friend.friendshipId,
+                                key = subject.friendshipId,
                                 factory = viewModelFactory {
-                                    initializer { FriendProfileViewModel(friendRepository, friend) }
+                                    initializer { FriendProfileViewModel(friendRepository, subject) }
                                 },
                             )
                             FriendProfileScreen(
                                 viewModel = friendProfileViewModel,
                                 onBack = {
                                     nestedScreen = null
-                                    selectedFriend = null
+                                    selectedProfileSubject = null
                                 },
                                 onSendPhotoClick = onCameraClick,
                                 onRemoved = {
                                     nestedScreen = null
-                                    selectedFriend = null
+                                    selectedProfileSubject = null
+                                    friendsViewModel.loadFriends()
+                                },
+                                onAccepted = {
+                                    nestedScreen = null
+                                    selectedProfileSubject = null
+                                    friendsViewModel.loadFriends()
+                                },
+                                onRejected = {
+                                    nestedScreen = null
+                                    selectedProfileSubject = null
                                     friendsViewModel.loadFriends()
                                 },
                             )
@@ -609,7 +635,11 @@ class MainActivity : ComponentActivity() {
                                             onCameraClick = onCameraClick,
                                             onFindPeopleClick = { nestedScreen = NestedScreen.FIND_PEOPLE },
                                             onFriendClick = { friend ->
-                                                selectedFriend = friend
+                                                selectedProfileSubject = ProfileSubject.Friend(friend)
+                                                nestedScreen = NestedScreen.FRIEND_PROFILE
+                                            },
+                                            onPendingRequestClick = { request ->
+                                                selectedProfileSubject = ProfileSubject.PendingRequest(request)
                                                 nestedScreen = NestedScreen.FRIEND_PROFILE
                                             },
                                             hazeState = hazeState,
@@ -648,6 +678,7 @@ class MainActivity : ComponentActivity() {
                                         PAGE_ACTIVITY -> ActivityScreen(
                                             viewModel = activityViewModel,
                                             onCameraClick = onCameraClick,
+                                            onNavigateToFriends = { onNavigate(NavDestination.FRIENDS) },
                                             hazeState = hazeState,
                                         )
 
@@ -678,6 +709,8 @@ class MainActivity : ComponentActivity() {
                                     active = destinationForPage(pagerState.currentPage),
                                     onNavigate = onNavigate,
                                     onCameraClick = onCameraClick,
+                                    showFriendsBadge = friendsViewModel.pendingRequests.isNotEmpty(),
+                                    showActivityBadge = activityViewModel.hasNewActivity,
                                     // 0 = fully on Home (top of the scroll), 1 = fully on
                                     // Memories — driven by how far Home has been scrolled now,
                                     // not swipe position between two pages. Reads pagerState and

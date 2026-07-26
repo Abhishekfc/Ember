@@ -23,6 +23,7 @@ data class PendingFriendRequestDto(
     val displayName: String,
     val username: String,
     val email: String,
+    val profilePhotoUrl: String? = null,
     val createdAt: String,
 )
 
@@ -32,6 +33,11 @@ data class FriendSearchResultDto(
     val displayName: String,
     val username: String,
     val requested: Boolean,
+    // Both null/false when there's no relationship at all — see the backend FriendSearchResult
+    // DTO's own doc comment for the exact semantics (only true when *this* user is the one who
+    // sent a still-pending request, which is the one case cancelable from this screen).
+    val friendshipId: String? = null,
+    val isPendingFromMe: Boolean = false,
 )
 
 @Serializable

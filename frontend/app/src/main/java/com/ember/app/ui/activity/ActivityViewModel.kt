@@ -24,6 +24,15 @@ class ActivityViewModel(
     var isLoading by mutableStateOf(true)
         private set
 
+    // Drives the Activity tab's nav-dock badge dot. `createdAt` is an ISO-8601 string
+    // (`Instant.toString()` server-side), so plain string comparison already sorts chronologically
+    // the same way parsing and comparing Instants would — no need to actually parse it just to
+    // find the newest one. null (nothing seen yet, a fresh install) counts as "there's something
+    // new" as long as there's at least one event, same as "seen" being from before all of them.
+    var hasNewActivity by mutableStateOf(false)
+        private set
+    private var lastSeenAt: String? = null
+
     // Separate from isLoading (which starts `true` purely to show a spinner before the very
     // first fetch runs) — using isLoading itself as loadActivity's re-entrancy guard meant the
     // very first call from init saw it already `true` and returned immediately, before ever
@@ -50,8 +59,34 @@ class ActivityViewModel(
         // explanation. Read must complete first (not just be launched first) so there's no race
         // between it and the fresh fetch for who sets `events` first.
         viewModelScope.launch {
-            localCache.read<ActivityEventDto>(LocalListCache.KEY_ACTIVITY)?.let { events = it }
+            // A real per-account value from the backend, not on-device storage — see
+            // ActivityLastSeenDto's own doc comment for why (a fresh install shouldn't make
+            // already-seen activity look new again). Best-effort: a failed check just means the
+            // dot stays off for this session rather than blocking the rest of the tab from
+            // loading over it.
+            repository.getActivityLastSeen().onSuccess { lastSeenAt = it.lastSeenAt }
+            localCache.read<ActivityEventDto>(LocalListCache.KEY_ACTIVITY)?.let {
+                events = it
+                recomputeHasNewActivity()
+            }
             loadActivity()
+        }
+    }
+
+    private fun recomputeHasNewActivity() {
+        val seenAt = lastSeenAt
+        hasNewActivity = events.isNotEmpty() && (seenAt == null || events.any { it.createdAt > seenAt })
+    }
+
+    /** Called once the Activity tab actually becomes the visible page — see MainActivity's own
+     * pager-settle effect. Persists "now" as the new "seen" marker server-side, so the dot
+     * doesn't come back for events already on screen by the time this fires, and stays cleared
+     * even across a reinstall. */
+    fun markSeen() {
+        if (!hasNewActivity) return
+        hasNewActivity = false
+        viewModelScope.launch {
+            repository.markActivitySeen().onSuccess { lastSeenAt = it.lastSeenAt }
         }
     }
 
@@ -68,6 +103,7 @@ class ActivityViewModel(
                     events = page.items
                     hasMore = page.hasMore
                     localCache.write(LocalListCache.KEY_ACTIVITY, page.items)
+                    recomputeHasNewActivity()
                 },
                 onFailure = { errorMessage = it.message ?: "Couldn't load activity" },
             )

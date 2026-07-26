@@ -131,4 +131,22 @@ class FriendsViewModel(
             acceptingRequestIds = acceptingRequestIds - request.friendshipId
         }
     }
+
+    /** No dedicated "decline" endpoint exists server-side — this reuses the same
+     * DELETE /friends/{friendshipId} call "remove friend" already uses (see
+     * FriendRepository.removeFriend), which the backend already allows regardless of the
+     * friendship's status as long as the caller is part of it. Tracked in the same
+     * [acceptingRequestIds] set as accepting — the chip only ever has one action in flight for a
+     * given request at a time, so one busy-set covers both. */
+    fun rejectRequest(request: PendingFriendRequestDto) {
+        if (request.friendshipId in acceptingRequestIds) return
+        viewModelScope.launch {
+            acceptingRequestIds = acceptingRequestIds + request.friendshipId
+            repository.removeFriend(request.friendshipId).fold(
+                onSuccess = { pendingRequests = pendingRequests.filterNot { it.friendshipId == request.friendshipId } },
+                onFailure = { errorMessage = it.message ?: "Couldn't decline request" },
+            )
+            acceptingRequestIds = acceptingRequestIds - request.friendshipId
+        }
+    }
 }

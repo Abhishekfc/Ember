@@ -50,10 +50,37 @@ class FindPeopleViewModel(private val repository: FriendRepository) : ViewModel(
     fun sendRequest(userId: String) {
         viewModelScope.launch {
             repository.sendFriendRequest(userId).fold(
-                onSuccess = {
-                    results = results.map { r -> if (r.userId == userId) r.copy(requested = true) else r }
+                onSuccess = { sent ->
+                    results = results.map { r ->
+                        if (r.userId == userId) {
+                            r.copy(requested = true, friendshipId = sent.friendshipId, isPendingFromMe = true)
+                        } else {
+                            r
+                        }
+                    }
                 },
                 onFailure = { errorMessage = it.message ?: "Couldn't send request" },
+            )
+        }
+    }
+
+    /** Only ever called for a result with [FriendSearchResultDto.isPendingFromMe] true — the
+     * screen itself gates on that, but this reuses the exact same DELETE endpoint that removing
+     * an already-accepted friendship uses (see FriendRepository.removeFriend). The backend allows
+     * that regardless of the friendship's current status, as long as the caller is part of it. */
+    fun cancelRequest(friendshipId: String) {
+        viewModelScope.launch {
+            repository.removeFriend(friendshipId).fold(
+                onSuccess = {
+                    results = results.map { r ->
+                        if (r.friendshipId == friendshipId) {
+                            r.copy(requested = false, friendshipId = null, isPendingFromMe = false)
+                        } else {
+                            r
+                        }
+                    }
+                },
+                onFailure = { errorMessage = it.message ?: "Couldn't cancel request" },
             )
         }
     }

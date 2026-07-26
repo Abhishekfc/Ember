@@ -1,6 +1,7 @@
 package com.ember.app.ui.friends
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -22,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
@@ -31,6 +32,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +59,7 @@ import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
+import com.ember.app.ui.theme.PublicSansFontFamily
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 
@@ -70,6 +74,20 @@ private fun streakRingBrush(colors: com.ember.app.ui.theme.EmberColors, streak: 
     else -> Brush.linearGradient(listOf(colors.border, colors.border))
 }
 
+/** Rounds only the true top/bottom edges of the friends list so consecutive rows read as one
+ * seamless panel — same grouped-card language as Settings — while each row stays its own
+ * LazyColumn item (no loss of per-row virtualization for a list that can run to hundreds of
+ * friends, unlike Settings' handful of fixed rows). */
+private fun groupRowShape(index: Int, lastIndex: Int): RoundedCornerShape {
+    val corner = 22.dp
+    return when {
+        lastIndex <= 0 -> RoundedCornerShape(corner)
+        index == 0 -> RoundedCornerShape(topStart = corner, topEnd = corner, bottomStart = 0.dp, bottomEnd = 0.dp)
+        index == lastIndex -> RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = corner, bottomEnd = corner)
+        else -> RoundedCornerShape(0.dp)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsScreen(
@@ -77,12 +95,12 @@ fun FriendsScreen(
     onCameraClick: () -> Unit,
     onFindPeopleClick: () -> Unit,
     onFriendClick: (FriendSummaryDto) -> Unit,
+    onPendingRequestClick: (PendingFriendRequestDto) -> Unit,
     hazeState: HazeState,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
-    val rowShape = RoundedCornerShape(20.dp)
     val searchShape = RoundedCornerShape(16.dp)
     val isSearching = viewModel.searchQuery.isNotBlank()
     val pinnedPartner = viewModel.friends.firstOrNull { it.pinnedByMe }
@@ -93,7 +111,7 @@ fun FriendsScreen(
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize)),
     ) {
-        Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState)) {
+        Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState).statusBarsPadding()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -117,16 +135,17 @@ fun FriendsScreen(
                         modifier = Modifier.padding(top = 2.dp),
                     )
                 }
-                // 44dp is the accessibility-minimum touch target — was 32dp, too small to
-                // tap reliably.
+                // Plain panel + neutral icon, not a colored bubble — same quieter chrome as
+                // Settings, which keeps color for things that carry real meaning (a streak, a
+                // toggle) rather than spending it on navigation affordances.
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .background(colors.glow.copy(alpha = 0x1F / 255f), CircleShape)
+                        .background(colors.panel, CircleShape)
                         .clickable(onClick = onFindPeopleClick),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Find people", tint = colors.glow, modifier = Modifier.size(19.dp))
+                    Icon(Icons.Filled.Add, contentDescription = "Find people", tint = colors.cream, modifier = Modifier.size(19.dp))
                 }
             }
 
@@ -154,12 +173,25 @@ fun FriendsScreen(
                 }
             }
 
+            val pullRefreshState = rememberPullToRefreshState()
             PullToRefreshBox(
                 // Only true once there's already content on screen — the cold-start load is
                 // covered by the full-screen spinner instead, so the pull indicator doesn't
                 // animate in from the top on every app launch.
                 isRefreshing = viewModel.isLoading && (viewModel.filteredFriends.isNotEmpty() || viewModel.pendingRequests.isNotEmpty()),
                 onRefresh = { viewModel.loadFriends(isPullRefresh = true) },
+                state = pullRefreshState,
+                // Recolored to the theme's own panel/glow tokens — see HomeScreen's identical
+                // indicator for why (the stock Material scheme doesn't read as part of this app).
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pullRefreshState,
+                        isRefreshing = viewModel.isLoading && (viewModel.filteredFriends.isNotEmpty() || viewModel.pendingRequests.isNotEmpty()),
+                        containerColor = colors.panel,
+                        color = colors.glow,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {
@@ -207,15 +239,18 @@ fun FriendsScreen(
 
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 110.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 110.dp),
+                        // No global gap — the friends list below draws as one seamless panel
+                        // (each row's own corner-rounding does the grouping instead of spacing),
+                        // same as Settings' grouped cards. Sections that do need a gap add their
+                        // own top/bottom padding below.
                     ) {
                         if (!isSearching && pinnedPartner != null) {
                             item(key = "hero") {
                                 PinnedPartnerHero(
                                     friend = pinnedPartner,
                                     onClick = { onFriendClick(pinnedPartner) },
-                                    modifier = Modifier.padding(bottom = 4.dp),
+                                    modifier = Modifier.padding(bottom = 18.dp),
                                 )
                             }
                         }
@@ -227,13 +262,12 @@ fun FriendsScreen(
                             item(key = "requests-row") {
                                 LazyRow(
                                     horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    contentPadding = PaddingValues(bottom = 4.dp),
+                                    contentPadding = PaddingValues(bottom = 18.dp),
                                 ) {
                                     items(viewModel.pendingRequests, key = { it.friendshipId }) { request ->
                                         PendingRequestChip(
                                             request = request,
-                                            isAccepting = request.friendshipId in viewModel.acceptingRequestIds,
-                                            onAccept = { viewModel.acceptRequest(request) },
+                                            onClick = { onPendingRequestClick(request) },
                                         )
                                     }
                                 }
@@ -242,12 +276,13 @@ fun FriendsScreen(
 
                         if (!isSearching && (pinnedPartner != null || viewModel.pendingRequests.isNotEmpty())) {
                             item(key = "friends-header") {
-                                SectionLabel(text = "My friends", modifier = Modifier.padding(top = 6.dp))
+                                SectionLabel(text = "My friends")
                             }
                         }
 
+                        val lastIndex = viewModel.filteredFriends.lastIndex
                         itemsIndexed(viewModel.filteredFriends, key = { _, f -> f.friendshipId }) { index, friend ->
-                            FriendRow(friend, seed = index, shape = rowShape, onClick = { onFriendClick(friend) })
+                            FriendRow(friend, shape = groupRowShape(index, lastIndex), onClick = { onFriendClick(friend) })
                         }
 
                         // Search operates only over what's already loaded (client-side
@@ -274,17 +309,17 @@ fun FriendsScreen(
     }
 }
 
+/** Same label treatment as Settings' own section headers — title case, no letter-spacing,
+ * plain UI font, instead of the old uppercase/tracked-out caption. */
 @Composable
 private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
-    val typography = EmberTheme.typography
 
     Text(
-        text = text.uppercase(),
-        fontFamily = typography.body,
-        fontSize = 11.5.sp,
+        text = text,
+        fontFamily = PublicSansFontFamily,
+        fontSize = 12.5.sp,
         fontWeight = FontWeight.SemiBold,
-        letterSpacing = 0.8.sp,
         color = colors.mutedDim,
         modifier = modifier.padding(start = 4.dp, bottom = 2.dp),
     )
@@ -321,11 +356,22 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
+                // Same "no photo yet" identity as ActivityScreen's ActivityRow — an initial
+                // letter, not just an empty placeholder, so a friend without a profile photo
+                // still reads as *them* rather than as a broken/missing image.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Brush.radialGradient(listOf(colors.glow.copy(alpha = 0.28f), colors.panel))),
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = friend.displayName.firstOrNull()?.uppercase() ?: "•",
+                        fontFamily = typography.display,
+                        fontSize = 40.sp,
+                        color = colors.cream,
+                    )
+                }
             }
             Box(
                 modifier = Modifier
@@ -381,8 +427,9 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
 /** Circular ring avatar whose colour is the streak-intensity signature — used everywhere a
  * friend's identity needs to carry that "how much is this glowing" information at a glance. */
 @Composable
-private fun StreakAvatar(photoUrl: String?, seed: Int, streak: Int, size: Dp) {
+private fun StreakAvatar(photoUrl: String?, displayName: String, streak: Int, size: Dp) {
     val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
     val ringWidth = if (streak > 0) 2.5.dp else 1.5.dp
 
     Box(
@@ -395,6 +442,7 @@ private fun StreakAvatar(photoUrl: String?, seed: Int, streak: Int, size: Dp) {
             .background(colors.panel)
             .padding(2.dp)
             .clip(CircleShape),
+        contentAlignment = Alignment.Center,
     ) {
         if (photoUrl != null) {
             AsyncImage(
@@ -404,44 +452,57 @@ private fun StreakAvatar(photoUrl: String?, seed: Int, streak: Int, size: Dp) {
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            Box(modifier = Modifier.fillMaxSize().background(colors.border.copy(alpha = 0.4f)))
+            // Same "no photo yet" identity as ActivityScreen's ActivityRow — see PinnedPartnerHero
+            // above for the fuller reasoning.
+            Box(modifier = Modifier.fillMaxSize().background(colors.border.copy(alpha = 0.4f)), contentAlignment = Alignment.Center) {
+                Text(
+                    text = displayName.firstOrNull()?.uppercase() ?: "•",
+                    fontFamily = typography.display,
+                    fontSize = (size.value * 0.4f).sp,
+                    color = colors.cream,
+                )
+            }
         }
     }
 }
 
+/** A single tap target that opens the requester's profile page — accepting/declining lives
+ * there now (same profile screen every person gets), not inline on this chip. */
 @Composable
 private fun PendingRequestChip(
     request: PendingFriendRequestDto,
-    isAccepting: Boolean,
-    onAccept: () -> Unit,
+    onClick: () -> Unit,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(68.dp).clickable(enabled = !isAccepting, onClick = onAccept),
+        modifier = Modifier.width(68.dp).clickable(onClick = onClick),
     ) {
-        Box(modifier = Modifier.size(56.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape)
-                    .background(colors.panel),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(colors.glow),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isAccepting) {
-                    CircularProgressIndicator(modifier = Modifier.size(11.dp), color = colors.accentText, strokeWidth = 1.5.dp)
-                } else {
-                    Icon(Icons.Filled.Check, contentDescription = "Accept", tint = colors.accentText, modifier = Modifier.size(13.dp))
-                }
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(colors.panel),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (request.profilePhotoUrl != null) {
+                AsyncImage(
+                    model = request.profilePhotoUrl,
+                    contentDescription = request.displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                )
+            } else {
+                // Same "no photo yet" identity as ActivityScreen's ActivityRow — see
+                // PinnedPartnerHero's own comment above for the fuller reasoning.
+                Text(
+                    text = request.displayName.firstOrNull()?.uppercase() ?: "•",
+                    fontFamily = typography.display,
+                    fontSize = 20.sp,
+                    color = colors.cream,
+                )
             }
         }
         Text(
@@ -456,7 +517,7 @@ private fun PendingRequestChip(
 }
 
 @Composable
-private fun FriendRow(friend: FriendSummaryDto, seed: Int, shape: RoundedCornerShape, onClick: () -> Unit) {
+private fun FriendRow(friend: FriendSummaryDto, shape: RoundedCornerShape, onClick: () -> Unit) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
 
@@ -465,10 +526,10 @@ private fun FriendRow(friend: FriendSummaryDto, seed: Int, shape: RoundedCornerS
             .fillMaxWidth()
             .background(colors.panel, shape)
             .clickable(onClick = onClick)
-            .padding(14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StreakAvatar(photoUrl = friend.profilePhotoUrl, seed = seed, streak = friend.streak, size = 56.dp)
+        StreakAvatar(photoUrl = friend.profilePhotoUrl, displayName = friend.displayName, streak = friend.streak, size = 52.dp)
         Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
