@@ -1,6 +1,8 @@
 package com.ember.app.ui.home
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -69,6 +71,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -178,6 +181,13 @@ fun HomeScreen(
     // already makes.
     var headerHeightPx by remember { mutableStateOf(0f) }
 
+    // Whichever photo the featured card is currently showing — hoisted up here (rather than kept
+    // local to the carousel branch below) so AmbientPhotoBackdrop, rendered from this composable's
+    // own outer Box, can read it too. Only ever set while there's a real feed (see the carousel
+    // branch's own LaunchedEffect); staying at whatever it last was when the feed is empty is
+    // harmless since the backdrop itself is invisible whenever nothing is focused anyway.
+    var currentPhotoUrl by remember { mutableStateOf<String?>(null) }
+
     // Leaving Home and coming back is one of the two moments background-synced content is
     // allowed to become visible (see HomeViewModel) — the other being an explicit
     // pull-to-refresh, already handled inside loadFeed itself. A no-op whenever nothing has
@@ -219,12 +229,19 @@ fun HomeScreen(
     // exact same state transition in the same recomposition, just kept as two instances so this
     // screen doesn't need the animated Dp threaded in as its own parameter.
     val chromeBlur by rememberFocusBlur(isPhotoFocused || isMemoriesFocused)
+    // Fully hides the same chrome chromeBlur recedes — see rememberFocusFade's own doc comment
+    // for why blur alone isn't enough once AmbientPhotoBackdrop is in the picture too.
+    val chromeFade by rememberFocusFade(isPhotoFocused || isMemoriesFocused)
 
     // Home's own featured card must stay sharp while it's the thing actually in focus, but
     // should recede like everything else once Memories' day-card is what's focused instead —
     // otherwise it sat there perfectly crisp, sandwiched between an already-blurred header above
     // and an already-blurred avatar row below it.
     val cardBlurWhenMemoriesFocused by rememberFocusBlur(isMemoriesFocused)
+    // Companion fade — without this, whatever part of Home's own card is scrolled into view
+    // behind an open Memories day-card stayed a solid (merely blurred, never hidden) rectangle,
+    // the exact same bleed-through chromeFade already fixes for the header/avatar row/grid.
+    val cardFadeWhenMemoriesFocused by rememberFocusFade(isMemoriesFocused)
 
     Box(
         modifier = Modifier
@@ -232,6 +249,16 @@ fun HomeScreen(
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize)),
     ) {
+    // Sits behind everything else in this Box, only actually visible once a photo is tapped —
+    // either Home's own featured card, or a Memories day-card (which reports its own settled
+    // photo up via DayFeaturedOverlay's onCurrentPhotoChanged below) — replacing the flat
+    // background above with a wash matching whatever's currently focused.
+    AmbientPhotoBackdrop(
+        photoUrl = currentPhotoUrl,
+        visible = isPhotoFocused || isMemoriesFocused,
+        modifier = Modifier.fillMaxSize(),
+    )
+
     // hazeSource is scoped to this Column only (header + content) — it must never wrap
     // the shared BottomNavDock (now hoisted up to MainActivity, outside every page), or the
     // blur source would include the dock's own pixels and produce a ghosting artifact.
@@ -281,7 +308,8 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .onGloballyPositioned { headerHeightPx = it.size.height.toFloat() }
-                    .blur(chromeBlur, BlurredEdgeTreatment.Unbounded),
+                    .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
+                    .graphicsLayer { alpha = chromeFade },
             ) {
                 Row(
                     modifier = Modifier
@@ -442,6 +470,7 @@ fun HomeScreen(
                         onCameraClick = onCameraClick,
                         dayFocusState = dayFocusState,
                         chromeBlur = chromeBlur,
+                        chromeFade = chromeFade,
                         revealProgress = { 1f },
                         onMemoriesFocusChanged = { isMemoriesFocused = it },
                         modifier = Modifier.padding(top = 6.dp),
@@ -528,6 +557,26 @@ fun HomeScreen(
                     val activeFriendId = entries.getOrNull(pagerState.currentPage)?.friendId
                         ?: viewModel.feedItems.first().friendId
 
+                    // Keeps AmbientPhotoBackdrop (rendered from this screen's own outer Box, see
+                    // its call site) in sync with whichever photo is on screen — driven by when
+                    // scrolling actually *stops*, not by a timer. A fixed delay was tried and was
+                    // wrong in both directions at once: it made a single deliberate swipe wait for
+                    // a timeout that had nothing to do with the gesture, while a fast flick could
+                    // still slip a change through between two swipes. Keying on isScrollInProgress
+                    // instead means one swipe updates the instant it lands (the fade below is then
+                    // the only thing between the swipe and the new colour), while flicking through
+                    // several photos keeps scrolling continuously — so the backdrop simply holds
+                    // whatever it was showing until the flick genuinely comes to rest, then
+                    // switches once to wherever it landed.
+                    LaunchedEffect(entries) {
+                        snapshotFlow { pagerState.isScrollInProgress }
+                            .collect { isScrolling ->
+                                if (!isScrolling) {
+                                    currentPhotoUrl = entries.getOrNull(pagerState.currentPage)?.photo?.photoUrl
+                                }
+                            }
+                    }
+
                     // The avatar row is blurred while focused specifically so it recedes —
                     // letting it keep resizing/recentering underneath while blurred would pull
                     // attention right back to it. Freeze it on whichever friend was active the
@@ -589,6 +638,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .padding(top = 5.dp, start = 22.dp, end = 22.dp)
                                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
+                                    .graphicsLayer { alpha = chromeFade }
                                     .clickable { viewModel.revealNewFeed() },
                             )
                         }
@@ -609,7 +659,8 @@ fun HomeScreen(
                                 .padding(top = 18.dp, start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING)
                                 .weight(1f, fill = false)
                                 .heightIn(min = FEATURED_CARD_MIN_HEIGHT_DP)
-                                .blur(cardBlurWhenMemoriesFocused, BlurredEdgeTreatment.Unbounded),
+                                .blur(cardBlurWhenMemoriesFocused, BlurredEdgeTreatment.Unbounded)
+                                .graphicsLayer { alpha = cardFadeWhenMemoriesFocused },
                         )
 
                         FocusShield(active = isPhotoFocused, onDismiss = onDismissFocus) {
@@ -633,7 +684,8 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 20.dp, bottom = 12.dp)
-                                .blur(chromeBlur, BlurredEdgeTreatment.Unbounded),
+                                .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
+                                .graphicsLayer { alpha = chromeFade },
                         )
                         }
                     }
@@ -649,6 +701,7 @@ fun HomeScreen(
                         onCameraClick = onCameraClick,
                         dayFocusState = dayFocusState,
                         chromeBlur = chromeBlur,
+                        chromeFade = chromeFade,
                         revealProgress = memoriesRevealProgress,
                         onMemoriesFocusChanged = { isMemoriesFocused = it },
                         modifier = Modifier.padding(top = 8.dp),
@@ -668,6 +721,7 @@ fun HomeScreen(
             screenSize = screenSize,
             progress = dayFocusState.progress.value,
             onDismiss = { dayFocusState.isOpen = false },
+            onCurrentPhotoChanged = { currentPhotoUrl = it },
         )
     }
     }
@@ -687,6 +741,7 @@ private fun HomeMemoriesSection(
     onCameraClick: () -> Unit,
     dayFocusState: DayFocusState,
     chromeBlur: Dp,
+    chromeFade: Float,
     revealProgress: () -> Float,
     onMemoriesFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -696,7 +751,7 @@ private fun HomeMemoriesSection(
             modifier = Modifier
                 .padding(start = 22.dp, end = 22.dp, bottom = 14.dp)
                 .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                .graphicsLayer { alpha = revealProgress() },
+                .graphicsLayer { alpha = revealProgress() * chromeFade },
         )
         MemoriesGridContent(
             memories = viewModel.memories,
@@ -712,7 +767,7 @@ private fun HomeMemoriesSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                .graphicsLayer { alpha = revealProgress() }
+                .graphicsLayer { alpha = revealProgress() * chromeFade }
                 .padding(bottom = NAV_DOCK_RESERVE_DP.dp),
         )
     }
@@ -781,6 +836,62 @@ private fun FocusShield(
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             )
         }
+    }
+}
+
+/** Ambient, heavily-blurred backdrop in the same shade as whichever photo the featured card is
+ * currently focused on — the Apple Music/Spotify "blurred album art" trick, reusing the exact
+ * photo already decoded for the sharp card in front of it (Coil serves that from cache, so this
+ * is a free extra composition, not a second fetch/decode) rather than computing an average color
+ * by hand. [visible] gates the whole thing on focus, per how blur already works on this screen
+ * (tap → things react) — the backdrop fades in/out over the flat background rather than
+ * appearing instantly.
+ *
+ * A change to [photoUrl] starts crossfading immediately — deciding *which* photo counts as the
+ * one to show is entirely upstream's job (whoever sets [photoUrl] only does so once its pager has
+ * actually stopped scrolling), so anything that reaches this composable is already a change worth
+ * reacting to right away. Nothing here adds any further delay before the fade begins.
+ *
+ * Real blur needs `RenderEffect`, only available from API 31 — below that this renders nothing
+ * at all rather than an unblurred photo sitting behind everything, which would look like a bug
+ * rather than a missing enhancement. */
+@Composable
+private fun AmbientPhotoBackdrop(photoUrl: String?, visible: Boolean, modifier: Modifier = Modifier) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+
+    val backdropAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(360, easing = FastOutSlowInEasing),
+        label = "ambientBackdropVisibility",
+    )
+    // Stops rendering (and blurring) once fully faded out and no longer wanted — not just
+    // whenever the target alpha is 0, so the fade-out animation itself still gets to play.
+    if (backdropAlpha <= 0f && !visible) return
+
+    Box(modifier = modifier.graphicsLayer { alpha = backdropAlpha }) {
+        Crossfade(
+            targetState = photoUrl,
+            animationSpec = tween(350, easing = FastOutSlowInEasing),
+            label = "ambientBackdropPhoto",
+        ) { url ->
+            if (url != null) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // Scaled up beyond the blur radius so the soft, sampled-from-nothing edge
+                        // a heavy blur leaves at the image's true border sits safely offscreen.
+                        .graphicsLayer { scaleX = 1.15f; scaleY = 1.15f }
+                        .blur(72.dp, BlurredEdgeTreatment.Unbounded),
+                )
+            }
+        }
+        // Muted/darkened rather than a bright duplicate of the photo — reads as ambient mood
+        // lighting behind real content, the same moody register the rest of this app's dark
+        // theme already sits in, not a second, distracting copy of the picture itself.
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
     }
 }
 

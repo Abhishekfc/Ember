@@ -2,6 +2,7 @@ package com.ember.app.ui.home
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -21,6 +22,19 @@ fun rememberFocusBlur(active: Boolean): State<Dp> = animateDpAsState(
     targetValue = if (active) FOCUS_BLUR_RADIUS else 0.dp,
     animationSpec = tween(FOCUS_BLUR_DURATION_MS, easing = FastOutSlowInEasing),
     label = "focusBlur",
+)
+
+/** Companion to [rememberFocusBlur] for the same "something is focused, everything else recedes"
+ * moments, now that Home also has [AmbientPhotoBackdrop] sitting behind that receded chrome —
+ * against a busy blurred-photo backdrop, a light blur alone still left header text and avatar
+ * shapes faintly legible (see AmbientPhotoBackdrop's own doc comment), which read as a bug, not
+ * as "receded." Fading the same chrome fully to invisible alongside its existing blur is what
+ * actually reads as "gone" rather than "smudged." */
+@Composable
+fun rememberFocusFade(active: Boolean): State<Float> = animateFloatAsState(
+    targetValue = if (active) 0f else 1f,
+    animationSpec = tween(FOCUS_BLUR_DURATION_MS, easing = FastOutSlowInEasing),
+    label = "focusFade",
 )
 
 /** The one "featured card" recipe both Home's own [FeaturedPhotoCard] and Memories' own

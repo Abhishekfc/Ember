@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -50,6 +51,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -212,6 +214,10 @@ internal fun MemoriesGridContent(
     BackHandler(enabled = isOpen) { focusState.isOpen = false }
 
     val gridBlur by rememberFocusBlur(isOpen)
+    // Blur alone left month-header text and grid-tile photos faintly legible behind the opened
+    // day-card, once that card started sitting on top of AmbientPhotoBackdrop's much busier wash
+    // instead of the flat background — same fix, same reasoning, as HomeScreen's own chromeFade.
+    val gridFade by rememberFocusFade(isOpen)
 
     val isCurrentMonth = selectedMonth == YearMonth.now()
 
@@ -250,7 +256,8 @@ internal fun MemoriesGridContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 22.dp, end = 22.dp, bottom = 24.dp)
-                .blur(gridBlur, BlurredEdgeTreatment.Unbounded),
+                .blur(gridBlur, BlurredEdgeTreatment.Unbounded)
+                .graphicsLayer { alpha = gridFade },
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
@@ -445,6 +452,11 @@ internal fun DayFeaturedOverlay(
     screenSize: Size,
     progress: Float,
     onDismiss: () -> Unit,
+    // Reports whichever photo scrolling has actually come to rest on, for HomeScreen's own
+    // AmbientPhotoBackdrop (the same blurred-photo wash Home's own featured card uses) to pick
+    // up — deliberately NOT wired to the live page the way currentEntry below is. See
+    // HomeScreen's own identical isScrollInProgress effect for the fuller reasoning.
+    onCurrentPhotoChanged: (String?) -> Unit = {},
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -458,6 +470,15 @@ internal fun DayFeaturedOverlay(
     // label and per-day dot-row, so both track wherever swiping has actually taken you rather
     // than staying frozen on the originally-tapped day.
     val currentEntry = target.monthEntries.getOrElse(pagerState.currentPage) { target.monthEntries[target.initialPage] }
+
+    LaunchedEffect(target) {
+        snapshotFlow { pagerState.isScrollInProgress }
+            .collect { isScrolling ->
+                if (!isScrolling) {
+                    onCurrentPhotoChanged(target.monthEntries.getOrNull(pagerState.currentPage)?.photo?.photoUrl)
+                }
+            }
+    }
 
     // Same reasoning as Home's FeaturedPhotoCard: this pager and whatever's behind it (the
     // Memories grid's own scroll, and beyond that Home's outer scroll/pager) are both potential
