@@ -7,6 +7,7 @@ import com.ember.app.data.remote.dto.DeviceTokenRequestDto
 import com.ember.app.data.remote.dto.ErrorResponse
 import com.ember.app.data.remote.dto.LoginRequest
 import com.ember.app.data.remote.dto.RegisterRequest
+import com.ember.app.data.remote.dto.UsernameAvailabilityDto
 import kotlinx.serialization.json.Json
 import retrofit2.Response
 
@@ -22,6 +23,19 @@ class AuthRepository(
     /** [identifier] can be either the account's email or its username — see LoginRequest. */
     suspend fun login(identifier: String, password: String): Result<AuthResponse> =
         safeCall { handle(api.login(LoginRequest(identifier, password))) }
+
+    /** Used while picking a username during registration, before an account/token exists — see
+     * EmberApi.checkUsernameAvailabilityPublic for why this can't go through UserRepository's
+     * authenticated equivalent. */
+    suspend fun checkUsernameAvailability(username: String): Result<UsernameAvailabilityDto> = safeCall {
+        val response = api.checkUsernameAvailabilityPublic(username)
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            Result.success(body)
+        } else {
+            Result.failure(Exception("Couldn't check that username"))
+        }
+    }
 
     /** Called whenever a fresh FCM token becomes available (see EmberFirebaseMessagingService)
      * and once whenever a session becomes authenticated (fresh login, or an already-valid

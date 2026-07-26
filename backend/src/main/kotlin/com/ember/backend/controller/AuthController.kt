@@ -3,15 +3,19 @@ package com.ember.backend.controller
 import com.ember.backend.dto.AuthResponse
 import com.ember.backend.dto.LoginRequest
 import com.ember.backend.dto.RegisterRequest
+import com.ember.backend.dto.UsernameAvailability
 import com.ember.backend.service.AuthService
 import com.ember.backend.service.RateLimiterService
+import com.ember.backend.service.UserService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.Duration
 
@@ -24,6 +28,7 @@ import java.time.Duration
 @RequestMapping("/auth")
 class AuthController(
     private val authService: AuthService,
+    private val userService: UserService,
     private val rateLimiterService: RateLimiterService,
 ) {
 
@@ -37,5 +42,14 @@ class AuthController(
     fun login(@Valid @RequestBody request: LoginRequest, httpRequest: HttpServletRequest): ResponseEntity<AuthResponse> {
         rateLimiterService.checkLimit("login:${httpRequest.remoteAddr}", maxAttempts = 20, window = Duration.ofMinutes(15))
         return ResponseEntity.ok(authService.login(request))
+    }
+
+    // Called on every keystroke (client-debounced) while someone's picking a username during
+    // registration, well before an account/token exists — generous limit since a single person
+    // typing out a few candidates easily fires a dozen+ checks, but still bounded per IP.
+    @GetMapping("/username-availability")
+    fun checkUsernameAvailability(@RequestParam username: String, httpRequest: HttpServletRequest): UsernameAvailability {
+        rateLimiterService.checkLimit("username-availability:${httpRequest.remoteAddr}", maxAttempts = 60, window = Duration.ofMinutes(10))
+        return userService.checkUsernameAvailabilityPublic(username)
     }
 }

@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -163,12 +165,13 @@ fun PhotoCropScreen(
             fontFamily = typography.body,
             fontSize = 13.sp,
             color = colors.muted,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 56.dp),
         )
 
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
+                .statusBarsPadding()
                 .padding(24.dp)
                 .size(40.dp)
                 .clip(CircleShape)
@@ -183,6 +186,7 @@ fun PhotoCropScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 32.dp, vertical = 36.dp),
             horizontalArrangement = Arrangement.Center,
         ) {

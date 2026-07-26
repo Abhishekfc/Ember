@@ -35,6 +35,7 @@ data class PendingFriendRequest(
     val displayName: String,
     val username: String,
     val email: String,
+    val profilePhotoUrl: String?,
     val createdAt: Instant,
 )
 
@@ -43,6 +44,15 @@ data class FriendSearchResult(
     val displayName: String,
     val username: String,
     val requested: Boolean,
+    // Both null when there's no relationship at all. When a friendship (of any status) exists,
+    // friendshipId is the existing DELETE /friends/{friendshipId} endpoint's own key — reused
+    // as-is for canceling a still-pending request, not a new capability the backend needed.
+    // isPendingFromMe is what actually gates whether the client offers a cancel action at all:
+    // true only when it's PENDING *and* the searching user is the one who sent it — a request
+    // someone else sent you, or an already-accepted friendship, both still set `requested = true`
+    // for display, but aren't this user's to cancel.
+    val friendshipId: UUID? = null,
+    val isPendingFromMe: Boolean = false,
 )
 
 /** A single page of an offset-paginated list — used for Friends, Activity, and Memories, the

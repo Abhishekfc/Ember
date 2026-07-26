@@ -1,9 +1,7 @@
 package com.ember.app.ui.activity
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,8 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +25,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +50,7 @@ import com.ember.app.data.remote.dto.ActivityEventDto
 import com.ember.app.data.remote.dto.ActivityEventType
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
+import com.ember.app.ui.theme.PublicSansFontFamily
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import java.time.Instant
@@ -63,6 +64,7 @@ import java.util.Locale
 fun ActivityScreen(
     viewModel: ActivityViewModel,
     onCameraClick: () -> Unit,
+    onNavigateToFriends: () -> Unit,
     hazeState: HazeState,
 ) {
     val colors = EmberTheme.colors
@@ -70,7 +72,6 @@ fun ActivityScreen(
     var screenSize by remember { mutableStateOf(Size.Zero) }
 
     val groups = remember(viewModel.events) { groupByDay(viewModel.events) }
-    val todayCount = remember(viewModel.events) { groups.firstOrNull { it.first == "Today" }?.second?.size ?: 0 }
 
     Box(
         modifier = Modifier
@@ -78,29 +79,34 @@ fun ActivityScreen(
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize)),
     ) {
-        Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState)) {
-            Column(modifier = Modifier.padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 16.dp)) {
-                Text(text = "Activity", fontFamily = typography.display, fontSize = 26.sp, color = colors.cream)
-                Text(
-                    text = when {
-                        viewModel.events.isEmpty() -> "Nothing yet"
-                        todayCount == 0 -> "Nothing new today"
-                        todayCount == 1 -> "1 moment today"
-                        else -> "$todayCount moments today"
-                    },
-                    fontFamily = typography.body,
-                    fontSize = 12.5.sp,
-                    color = colors.muted,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+        Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState).statusBarsPadding()) {
+            // Centered, plain-weight title — same header treatment as Settings, rather than the
+            // left-aligned display-font title/subtitle Friends and Home use. The per-day group
+            // labels below (Today/Yesterday/...) already carry the "what's new" information the
+            // old subtitle summarized, so there's no separate count line to keep here either.
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp, bottom = 22.dp), contentAlignment = Alignment.Center) {
+                Text(text = "Activity", fontFamily = PublicSansFontFamily, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = colors.cream)
             }
 
+            val pullRefreshState = rememberPullToRefreshState()
             PullToRefreshBox(
                 // Only true once there's already content on screen — the cold-start load is
                 // covered by the full-screen spinner instead, so the pull indicator doesn't
                 // animate in from the top on every app launch.
                 isRefreshing = viewModel.isLoading && viewModel.events.isNotEmpty(),
                 onRefresh = { viewModel.loadActivity(isPullRefresh = true) },
+                state = pullRefreshState,
+                // Recolored to the theme's own panel/glow tokens — see HomeScreen's identical
+                // indicator for why (the stock Material scheme doesn't read as part of this app).
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pullRefreshState,
+                        isRefreshing = viewModel.isLoading && viewModel.events.isNotEmpty(),
+                        containerColor = colors.panel,
+                        color = colors.glow,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {
@@ -134,27 +140,17 @@ fun ActivityScreen(
 
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        // The header block above already carries its own 16dp bottom margin, so
-                        // this only needs to add a little more breathing room, not create the
-                        // whole gap by itself — spacing shouldn't depend on one value elsewhere
-                        // being exactly right.
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 110.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 0.dp, bottom = 110.dp),
                     ) {
                         groups.forEach { (label, events) ->
+                            // Same section-label treatment as Settings — title case, no letter
+                            // spacing, sitting above a single plain panel rather than each event
+                            // getting its own bordered card.
                             item(key = "header-$label") {
-                                Text(
-                                    text = label.uppercase(),
-                                    fontFamily = typography.body,
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    letterSpacing = 0.8.sp,
-                                    color = colors.mutedDim,
-                                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp),
-                                )
+                                SectionLabel(text = label, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp, start = 4.dp))
                             }
-                            items(events, key = { "${it.actorId}-${it.createdAt}-${it.type}" }) { event ->
-                                ActivityRow(event)
+                            item(key = "group-$label") {
+                                ActivityGroup(events = events, onNavigateToFriends = onNavigateToFriends)
                             }
                         }
 
@@ -205,30 +201,44 @@ private fun iconFor(type: ActivityEventType): ImageVector = when (type) {
     ActivityEventType.REQUEST_INCOMING -> Icons.Filled.PersonAdd
 }
 
-/** Same card weight as [com.ember.app.ui.friends.FriendsScreen]'s friend rows — panel
- * background, 20dp corners, 14dp padding — so the two tabs read as one app instead of Activity
- * looking unfinished next to Friends. Two real images carry the row instead of one abstract
- * placeholder: the actor's actual profile photo (who), and — only for a received photo — a
- * thumbnail of the photo itself (what), so a burst of sends from one friend collapses into a
- * single "sent you 3 photos" row (see ActivityService) rather than three identical-looking
- * entries. Urgent events (streak about to lapse) get a warm badge and warm-tinted time so
- * they're what your eye catches first while scanning — deliberately not a full-card colored
- * border too: on some themes (e.g. Citrus, whose glow is a saturated pure yellow) that read as
- * a caution-tape outline around the whole card rather than a warm highlight. */
+/** One plain panel per day, same chrome as Settings' own grouped cards — no border, no
+ * dividers between rows, just the group's shared background — instead of every event getting
+ * its own bordered card. */
 @Composable
-private fun ActivityRow(event: ActivityEventDto) {
+private fun ActivityGroup(events: List<ActivityEventDto>, onNavigateToFriends: () -> Unit) {
+    val colors = EmberTheme.colors
+    val shape = RoundedCornerShape(22.dp)
+
+    Column(modifier = Modifier.fillMaxWidth().background(colors.panel, shape)) {
+        events.forEach { event ->
+            ActivityRow(
+                event = event,
+                // Only an incoming request has anywhere useful to go — the actual accept action
+                // lives on the Friends tab (see its own "Added you" row), this just gets you there.
+                onClick = if (event.type == ActivityEventType.REQUEST_INCOMING) onNavigateToFriends else null,
+            )
+        }
+    }
+}
+
+/** Two real images carry the row instead of one abstract placeholder: the actor's actual
+ * profile photo (who), and — only for a received photo — a thumbnail of the photo itself
+ * (what), so a burst of sends from one friend collapses into a single "sent you 3 photos" row
+ * (see ActivityService) rather than three identical-looking entries. Urgent events (streak
+ * about to lapse) get a warm badge and warm-tinted time so they're what your eye catches first
+ * while scanning. */
+@Composable
+private fun ActivityRow(event: ActivityEventDto, onClick: (() -> Unit)? = null) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
-    val shape = RoundedCornerShape(20.dp)
     val badgeTint = if (event.warn) colors.glow else colors.violet
     val badgeIconTint = if (event.warn) colors.accentText else Color.White
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.panel, shape)
-            .border(1.dp, colors.border, shape)
-            .padding(14.dp),
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
@@ -236,8 +246,7 @@ private fun ActivityRow(event: ActivityEventDto) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(colors.panel)
-                    .border(1.dp, colors.border, CircleShape),
+                    .background(colors.border.copy(alpha = 0.4f)),
                 contentAlignment = Alignment.Center,
             ) {
                 if (event.actorProfilePhotoUrl != null) {
@@ -335,4 +344,19 @@ private fun EmptyActivityState(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(top = 6.dp),
         )
     }
+}
+
+/** Same label treatment as Settings' own section headers — title case, no letter-spacing,
+ * sitting above a plain panel rather than the old uppercase/tracked-out caption. */
+@Composable
+private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+    val colors = EmberTheme.colors
+    Text(
+        text = text,
+        fontFamily = PublicSansFontFamily,
+        fontSize = 12.5.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = colors.mutedDim,
+        modifier = modifier,
+    )
 }

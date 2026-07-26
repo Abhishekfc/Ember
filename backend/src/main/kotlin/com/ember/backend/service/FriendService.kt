@@ -106,6 +106,7 @@ class FriendService(
                     displayName = it.requester.displayName,
                     username = it.requester.username,
                     email = it.requester.email,
+                    profilePhotoUrl = it.requester.profilePhotoStorageKey?.let { key -> r2StorageService.publicUrl(key) },
                     createdAt = it.createdAt,
                 )
             }
@@ -119,15 +120,20 @@ class FriendService(
 
         // One query covering every result instead of one findBetween call per result.
         val resultIds = results.map { it.id }
-        val relatedIds = friendshipRepository.findAllBetween(userId, resultIds)
-            .mapTo(mutableSetOf()) { if (it.requester.id == userId) it.addressee.id else it.requester.id }
+        val friendshipsByOtherUserId = friendshipRepository.findAllBetween(userId, resultIds)
+            .associateBy { if (it.requester.id == userId) it.addressee.id else it.requester.id }
 
         return results.map { user ->
+            val friendship = friendshipsByOtherUserId[user.id]
             FriendSearchResult(
                 userId = user.id,
                 displayName = user.displayName,
                 username = user.username,
-                requested = user.id in relatedIds,
+                requested = friendship != null,
+                friendshipId = friendship?.id,
+                isPendingFromMe = friendship != null &&
+                    friendship.status == FriendshipStatus.PENDING &&
+                    friendship.requester.id == userId,
             )
         }
     }
@@ -168,6 +174,7 @@ class FriendService(
             displayName = requester.displayName,
             username = requester.username,
             email = requester.email,
+            profilePhotoUrl = requester.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
             createdAt = friendship.createdAt,
         )
     }

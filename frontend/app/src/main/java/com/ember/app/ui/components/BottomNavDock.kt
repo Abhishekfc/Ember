@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
@@ -22,11 +23,6 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.People
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -87,6 +83,11 @@ fun BottomNavDock(
     // second during every scroll. Reading it lazily inside HomeMemoriesNavItem's graphicsLayer
     // (a draw-phase callback) keeps that to a cheap per-frame redraw of two small icons instead.
     homeIconProgress: () -> Float = { 0f },
+    // Small dot badges — Friends for a pending incoming friend request, Activity for activity
+    // that's happened since the tab was last actually viewed (see MainActivity's own doc comments
+    // on where each of these is computed; this composable just renders whatever it's handed).
+    showFriendsBadge: Boolean = false,
+    showActivityBadge: Boolean = false,
 ) {
     val colors = EmberTheme.colors
     val dockShape = RoundedCornerShape(percent = 50)
@@ -131,10 +132,10 @@ fun BottomNavDock(
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             HomeMemoriesNavItem(active, homeIconProgress, onNavigate)
-            NavItem(NavDestination.FRIENDS, Icons.Outlined.People, Icons.Filled.People, active, onNavigate)
+            NavItem(NavDestination.FRIENDS, Icons.Filled.People, active, onNavigate, showBadge = showFriendsBadge)
             CameraButton(onCameraClick)
-            NavItem(NavDestination.ACTIVITY, Icons.Outlined.Notifications, Icons.Filled.Notifications, active, onNavigate)
-            NavItem(NavDestination.SETTINGS, Icons.Outlined.Settings, Icons.Filled.Settings, active, onNavigate)
+            NavItem(NavDestination.ACTIVITY, Icons.Filled.Notifications, active, onNavigate, showBadge = showActivityBadge)
+            NavItem(NavDestination.SETTINGS, Icons.Filled.Settings, active, onNavigate)
         }
     }
 }
@@ -195,31 +196,32 @@ private fun HomeMemoriesNavItem(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = if (isActive) Icons.Filled.Home else Icons.Outlined.Home,
+            imageVector = Icons.Filled.Home,
             contentDescription = "Home",
             tint = tint,
-            modifier = Modifier.size(20.dp).graphicsLayer { alpha = 1f - progress() },
+            modifier = Modifier.size(23.dp).graphicsLayer { alpha = 1f - progress() },
         )
         Icon(
-            imageVector = if (isActive) Icons.Filled.Image else Icons.Outlined.Image,
+            imageVector = Icons.Filled.Image,
             contentDescription = "Memories",
             tint = tint,
-            modifier = Modifier.size(20.dp).graphicsLayer { alpha = progress() },
+            modifier = Modifier.size(23.dp).graphicsLayer { alpha = progress() },
         )
     }
 }
 
 /** No background wash behind the active icon — that would be a second, competing accent on top
- * of the camera button's gradient. The active state reads through weight and contrast alone:
- * filled glyph at full-strength `cream` versus an outlined glyph in `muted`, the same neutral
- * pairing the rest of the app already uses for primary-vs-secondary text. */
+ * of the camera button's gradient. Every icon is always the solid/filled glyph now (bolder,
+ * heavier-looking than the old outlined-vs-filled pairing) — the active state reads through
+ * color and contrast alone: full-strength `cream` versus `muted`, the same neutral pairing the
+ * rest of the app already uses for primary-vs-secondary text. */
 @Composable
 private fun NavItem(
     destination: NavDestination,
-    outlinedIcon: ImageVector,
-    filledIcon: ImageVector,
+    icon: ImageVector,
     active: NavDestination,
     onNavigate: (NavDestination) -> Unit,
+    showBadge: Boolean = false,
 ) {
     val colors = EmberTheme.colors
     val isActive = destination == active
@@ -240,11 +242,27 @@ private fun NavItem(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = if (isActive) filledIcon else outlinedIcon,
+            imageVector = icon,
             contentDescription = destination.label,
             tint = tint,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(23.dp),
         )
+        if (showBadge) {
+            // Same small-dot-with-a-ring-cutout language the avatar row's own unseen indicator
+            // already uses elsewhere in the app — a border in the dock's own background color is
+            // what reads as a cutout rather than the dot just floating on top of the icon.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 2.dp, y = 2.dp)
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(colors.panel)
+                    .padding(2.dp)
+                    .clip(CircleShape)
+                    .background(colors.glow),
+            )
+        }
     }
 }
 

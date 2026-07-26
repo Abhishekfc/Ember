@@ -2,6 +2,7 @@ package com.ember.app.data
 
 import com.ember.app.data.remote.EmberApi
 import com.ember.app.data.remote.dto.ActivityEventDto
+import com.ember.app.data.remote.dto.ActivityLastSeenDto
 import com.ember.app.data.remote.dto.ErrorResponse
 import com.ember.app.data.remote.dto.PageDto
 import kotlinx.serialization.json.Json
@@ -44,6 +45,26 @@ class ActivityRepository(private val api: EmberApi) {
                     Result.failure(Exception(message))
                 }
             }.onSuccess { activityCache.put(cacheKey, it) }
+        }
+    }
+
+    suspend fun getActivityLastSeen(): Result<ActivityLastSeenDto> = safeCall {
+        val response = api.getActivityLastSeen()
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            Result.success(body)
+        } else {
+            Result.failure(Exception("Couldn't check activity status (${response.code()})"))
+        }
+    }
+
+    suspend fun markActivitySeen(): Result<ActivityLastSeenDto> = safeCall {
+        val response = api.markActivitySeen()
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            Result.success(body)
+        } else {
+            Result.failure(Exception("Couldn't update activity status (${response.code()})"))
         }
     }
 }

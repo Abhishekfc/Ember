@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
@@ -227,14 +228,21 @@ internal fun MemoriesGridContent(
     }
 
     val cells: List<MemoryGridCell> = remember(byDay, selectedMonth) {
+        val today = LocalDate.now()
         val dayCells = (1..selectedMonth.lengthOfMonth()).map { day ->
             val date = selectedMonth.atDay(day)
             val photosForDay = byDay[date]
-            if (photosForDay != null) MemoryGridCell.DayGroup(date, photosForDay) else MemoryGridCell.EmptyDay(date)
+            when {
+                photosForDay != null -> MemoryGridCell.DayGroup(date, photosForDay)
+                // The "add a photo" tile sits on today's own square in the calendar now, not as
+                // a leading tile prepended before day 1 — it only takes over today's spot while
+                // nothing's been posted there yet; once it has, today reads like any other day.
+                isCurrentMonth && date == today -> MemoryGridCell.AddTile
+                else -> MemoryGridCell.EmptyDay(date)
+            }
         }
-        val realCells = (if (isCurrentMonth) listOf(MemoryGridCell.AddTile) else emptyList()) + dayCells
         val targetCount = GRID_ROWS * GRID_COLUMNS
-        realCells + List((targetCount - realCells.size).coerceAtLeast(0)) { MemoryGridCell.Filler }
+        dayCells + List((targetCount - dayCells.size).coerceAtLeast(0)) { MemoryGridCell.Filler }
     }
 
     Box(modifier = modifier) {
@@ -359,12 +367,20 @@ private fun MemoryCell(
             Icon(Icons.Filled.Add, contentDescription = "Take a photo", tint = colors.glow, modifier = Modifier.size(14.dp))
         }
 
+        // A day with nothing posted reads as a quiet placeholder dot, not an outlined box
+        // pretending to be a photo slot — only today (see MemoryGridCell.AddTile above) is
+        // actually actionable, so every other empty day shouldn't compete visually with it.
         is MemoryGridCell.EmptyDay -> Box(
-            modifier = modifier
-                .aspectRatio(0.85f)
-                .clip(shape)
-                .border(1.dp, colors.border, shape),
-        )
+            modifier = modifier.aspectRatio(0.85f),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(colors.border),
+            )
+        }
 
         is MemoryGridCell.DayGroup -> {
             var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -467,8 +483,12 @@ internal fun DayFeaturedOverlay(
         // already in the right coordinate space as-is.
         val sidePaddingPx = with(density) { FEATURED_CARD_SIDE_PADDING.toPx() }
         val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
+        // True edge-to-edge means screenSize now includes the real gesture-bar strip at the
+        // bottom too (previously the system reserved that space outside the window, so this
+        // term didn't exist) — NAV_DOCK_RESERVE_DP alone no longer accounts for it.
+        val navigationBarPx = WindowInsets.navigationBars.getBottom(density).toFloat()
         val navDockReservePx = with(density) { NAV_DOCK_RESERVE_DP.dp.toPx() }
-        val usableHeightPx = (screenSize.height - statusBarPx - navDockReservePx).coerceAtLeast(1f)
+        val usableHeightPx = (screenSize.height - statusBarPx - navigationBarPx - navDockReservePx).coerceAtLeast(1f)
         val cardWidthPx = (screenSize.width - sidePaddingPx * 2).coerceAtLeast(1f)
         val cardHeightPx = cardWidthPx / FEATURED_CARD_ASPECT_RATIO
         val destLeft = sidePaddingPx

@@ -34,6 +34,10 @@ enum class ThemeKey(val displayName: String, val locked: Boolean) {
     CYBER("Cyber", locked = true),
     BOTANICA("Botanica", locked = true),
     CITRUS("Citrus", locked = true),
+    // Added directly against a user-supplied accent color (#A9D7FF, a pale icy blue) rather than
+    // from the ember-complete-app.jsx reference this enum's own doc comment describes — not in
+    // that file, a deliberate one-off addition.
+    FROST("Frost", locked = true),
 }
 
 /** Mirrors the JSX theme's `bg`/`panelBg` CSS gradient strings, resolved lazily against draw size. */
@@ -50,24 +54,6 @@ sealed interface EmberBackground {
         )
     }
 }
-
-/** Solid stand-ins for the very top/bottom of this gradient — used to color the system status
- * bar and navigation bar so they blend into the screen instead of sitting on top of it as a flat
- * mismatched strip. Every background here is anchored/reads top-to-bottom (a [EmberBackground.Linear]
- * is literally top-to-bottom; a [EmberBackground.Radial]'s center is always pinned to the very top
- * edge, `centerYFraction = 0f`), so the first color is always what the top of the screen actually
- * looks like and the last is what the bottom fades to. */
-val EmberBackground.topEdgeColor: Color
-    get() = when (this) {
-        is EmberBackground.Linear -> colors.first()
-        is EmberBackground.Radial -> colors.first()
-    }
-
-val EmberBackground.bottomEdgeColor: Color
-    get() = when (this) {
-        is EmberBackground.Linear -> colors.last()
-        is EmberBackground.Radial -> colors.last()
-    }
 
 /** One-to-one with every color field on a JSX theme object. */
 data class EmberColors(
@@ -320,6 +306,32 @@ private val citrusDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = SpaceGroteskFontFamily, body = InterFontFamily),
 )
 
+// Built directly around a user-supplied accent (#CCE7FF, a very pale icy blue) rather than
+// derived from anywhere else — a dark, cold-toned counterpart to Aurora's teal-green rather than
+// a repeat of it. Since #CCE7FF itself is close to white, glow2 is a genuinely deeper, more
+// saturated blue rather than just a slightly-darker version of the same pale tone — the streak
+// ring's gradient sweep needs real range between its two stops, not two shades that read as
+// almost the same color. Background/panel gradients lean a touch more saturated-blue than a
+// flat navy-black too, so the theme reads as "icy," not just "dark with a blue accent."
+private val frostDefinition = EmberThemeDefinition(
+    key = ThemeKey.FROST,
+    colors = EmberColors(
+        background = EmberBackground.Radial(listOf(Color(0xFF0B121B), Color(0xFF04070B)), 0.20f, 0.0f),
+        panelBackground = EmberBackground.Radial(listOf(Color(0xFF16283C), Color(0xFF060B11)), 0.30f, 0.0f),
+        panel = Color(0xFF1C2C3A),
+        cream = Color(0xFFF2F9FF),
+        muted = Color(0xFF8FB4D6),
+        mutedDim = Color(0xFF52708C),
+        glow = Color(0xFFCCE7FF),
+        glow2 = Color(0xFF4F9FE6),
+        violet = Color(0xFF4F9FE6),
+        accentText = Color(0xFF031320),
+        border = whiteBorder(0.10f),
+        isLight = false,
+    ),
+    typography = EmberTypography(display = SpaceGroteskFontFamily, body = InterFontFamily),
+)
+
 fun emberThemeDefinition(key: ThemeKey): EmberThemeDefinition = when (key) {
     ThemeKey.EMBER -> emberDefinition
     ThemeKey.BLAZE -> blazeDefinition
@@ -330,6 +342,7 @@ fun emberThemeDefinition(key: ThemeKey): EmberThemeDefinition = when (key) {
     ThemeKey.CYBER -> cyberDefinition
     ThemeKey.BOTANICA -> botanicaDefinition
     ThemeKey.CITRUS -> citrusDefinition
+    ThemeKey.FROST -> frostDefinition
 }
 
 private val LocalEmberThemeDefinition: ProvidableCompositionLocal<EmberThemeDefinition> =

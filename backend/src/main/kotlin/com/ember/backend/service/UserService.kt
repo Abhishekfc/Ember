@@ -109,6 +109,22 @@ class UserService(
         return UsernameAvailability(available = false, suggestions = generateUsernameSuggestions(normalized))
     }
 
+    /** Same check as [checkUsernameAvailability], for the registration flow specifically —
+     * there's no signed-in user yet at that point (no [userId] to exclude a "keep my own current
+     * username" case for), so this is a plain existence check with no self-exclusion. */
+    fun checkUsernameAvailabilityPublic(candidate: String): UsernameAvailability {
+        val normalized = candidate.trim().lowercase()
+        if (normalized.length < USERNAME_MIN_LENGTH || normalized.length > USERNAME_MAX_LENGTH || !USERNAME_FORMAT.matches(normalized)) {
+            return UsernameAvailability(available = false)
+        }
+
+        if (!userRepository.existsByUsername(normalized)) {
+            return UsernameAvailability(available = true)
+        }
+
+        return UsernameAvailability(available = false, suggestions = generateUsernameSuggestions(normalized))
+    }
+
     private fun generateUsernameSuggestions(base: String): List<String> {
         val trimmedBase = base.take(USERNAME_MAX_LENGTH - 4)
         return sequence {

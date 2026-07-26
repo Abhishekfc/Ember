@@ -10,13 +10,17 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
@@ -37,7 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ember.app.data.remote.dto.FriendSearchResultDto
-import com.ember.app.ui.components.GlowPhotoTile
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -58,6 +62,8 @@ fun FindPeopleScreen(
             .fillMaxSize()
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize))
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 20.dp),
     ) {
         Text(
@@ -129,7 +135,12 @@ fun FindPeopleScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(viewModel.results, key = { it.userId }) { result ->
-                        FindPeopleRow(result, shape = rowShape, onAdd = { viewModel.sendRequest(result.userId) })
+                        FindPeopleRow(
+                            result,
+                            shape = rowShape,
+                            onAdd = { viewModel.sendRequest(result.userId) },
+                            onCancel = { result.friendshipId?.let { viewModel.cancelRequest(it) } },
+                        )
                     }
                 }
             }
@@ -142,8 +153,10 @@ private fun FindPeopleRow(
     result: FriendSearchResultDto,
     shape: RoundedCornerShape,
     onAdd: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
 
     Row(
         modifier = Modifier
@@ -153,7 +166,21 @@ private fun FindPeopleRow(
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GlowPhotoTile(size = 44.dp, seed = result.username.hashCode())
+        // Search results carry no photo URL at all today (FriendSearchResult doesn't fetch one) —
+        // GlowPhotoTile's colorful glow-with-no-letter fallback read as a broken/empty image with
+        // nothing behind it. Same plain "dark circle + initial letter" identity as
+        // ActivityScreen's ActivityRow and the rest of Friends' own avatars use instead.
+        Box(
+            modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.panel),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = result.displayName.firstOrNull()?.uppercase() ?: "•",
+                fontFamily = typography.display,
+                fontSize = 17.sp,
+                color = colors.cream,
+            )
+        }
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
             Text(text = result.displayName, fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = colors.cream)
             Text(
@@ -166,12 +193,26 @@ private fun FindPeopleRow(
         }
 
         if (result.requested) {
-            Box(
+            // Only a request *this* user sent is theirs to cancel — one they received, or an
+            // already-accepted friendship showing up in search, both still read "Requested" here
+            // but aren't interactive (accepting/removing those has its own dedicated place:
+            // the Friends tab itself).
+            Row(
                 modifier = Modifier
                     .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+                    .let { if (result.isPendingFromMe) it.clickable(onClick = onCancel) else it }
                     .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(text = "Requested", fontFamily = PublicSansFontFamily, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.mutedDim)
+                if (result.isPendingFromMe) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Cancel request",
+                        tint = colors.mutedDim,
+                        modifier = Modifier.padding(start = 6.dp).size(12.dp),
+                    )
+                }
             }
         } else {
             val buttonSizePx = Size(80f, 30f)
