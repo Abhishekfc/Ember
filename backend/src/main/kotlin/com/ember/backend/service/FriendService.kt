@@ -134,6 +134,9 @@ class FriendService(
                 isPendingFromMe = friendship != null &&
                     friendship.status == FriendshipStatus.PENDING &&
                     friendship.requester.id == userId,
+                isPendingFromThem = friendship != null &&
+                    friendship.status == FriendshipStatus.PENDING &&
+                    friendship.requester.id != userId,
             )
         }
     }

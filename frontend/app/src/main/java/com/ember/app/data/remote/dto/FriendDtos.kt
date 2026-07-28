@@ -38,6 +38,9 @@ data class FriendSearchResultDto(
     // sent a still-pending request, which is the one case cancelable from this screen).
     val friendshipId: String? = null,
     val isPendingFromMe: Boolean = false,
+    // True when the found user is the one who sent the still-pending request — this user has a
+    // request waiting on them, offered as Accept/Decline on that person's profile page.
+    val isPendingFromThem: Boolean = false,
 )
 
 @Serializable

@@ -15,11 +15,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.NotificationsNone
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -147,7 +147,11 @@ fun ActivityScreen(
                             // spacing, sitting above a single plain panel rather than each event
                             // getting its own bordered card.
                             item(key = "header-$label") {
-                                SectionLabel(text = label, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp, start = 4.dp))
+                                // start=16.dp, not a smaller inset — matches ActivityRow's own
+                                // horizontal padding exactly, so this label's left edge lines up
+                                // with the avatar directly below it instead of sitting adrift a
+                                // few dp to its left.
+                                SectionLabel(text = label, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp, start = 16.dp))
                             }
                             item(key = "group-$label") {
                                 ActivityGroup(events = events, onNavigateToFriends = onNavigateToFriends)
@@ -195,10 +199,10 @@ private fun dayLabel(isoInstant: String): String {
 }
 
 private fun iconFor(type: ActivityEventType): ImageVector = when (type) {
-    ActivityEventType.PHOTO_RECEIVED -> Icons.Filled.Image
-    ActivityEventType.STREAK_EXPIRING -> Icons.Filled.LocalFireDepartment
-    ActivityEventType.REQUEST_ACCEPTED -> Icons.Filled.Check
-    ActivityEventType.REQUEST_INCOMING -> Icons.Filled.PersonAdd
+    ActivityEventType.PHOTO_RECEIVED -> Icons.Rounded.PhotoLibrary
+    ActivityEventType.STREAK_EXPIRING -> Icons.Rounded.LocalFireDepartment
+    ActivityEventType.REQUEST_ACCEPTED -> Icons.Rounded.TaskAlt
+    ActivityEventType.REQUEST_INCOMING -> Icons.Rounded.PersonAdd
 }
 
 /** One plain panel per day, same chrome as Settings' own grouped cards — no border, no
@@ -246,7 +250,13 @@ private fun ActivityRow(event: ActivityEventDto, onClick: (() -> Unit)? = null) 
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(colors.border.copy(alpha = 0.4f)),
+                    // colors.border is a subtle white hairline token (meant for stroke outlines,
+                    // always near-white even on dark themes) — reused here at higher alpha as a
+                    // fill, it read as a conspicuous light grey blob instead of a dark avatar
+                    // backing. A black wash instead always darkens whatever panel it sits on
+                    // (near-black on this app's dark themes, a plain neutral grey on its light
+                    // ones), rather than washing it out toward white.
+                    .background(Color.Black.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center,
             ) {
                 if (event.actorProfilePhotoUrl != null) {
@@ -283,9 +293,10 @@ private fun ActivityRow(event: ActivityEventDto, onClick: (() -> Unit)? = null) 
             Text(
                 text = event.message,
                 fontFamily = typography.body,
-                fontSize = 13.5.sp,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
                 color = colors.cream,
-                lineHeight = 18.sp,
+                lineHeight = 19.sp,
                 maxLines = 2,
             )
             Text(
@@ -326,7 +337,7 @@ private fun EmptyActivityState(modifier: Modifier = Modifier) {
                 .background(colors.glow.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.Notifications, contentDescription = null, tint = colors.glow, modifier = Modifier.size(30.dp))
+            Icon(Icons.Rounded.NotificationsNone, contentDescription = null, tint = colors.glow, modifier = Modifier.size(30.dp))
         }
         Text(
             text = "Nothing here yet",

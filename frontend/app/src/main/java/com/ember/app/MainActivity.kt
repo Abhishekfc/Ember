@@ -23,6 +23,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -35,6 +36,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewmodel.initializer
@@ -473,6 +476,21 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Shared by the on-screen back arrow (FriendProfileScreen's own onBack) and
+                    // the system back gesture/button below — two genuinely separate code paths
+                    // that both end this screen, previously only kept in sync by hand (a fix that
+                    // only taught one of them to refresh the Friends list left the other, more
+                    // commonly used one — a swipe/back-button — still showing stale data). Doesn't
+                    // need to refresh anything itself: every action this screen can take
+                    // (pin/unpin, remove, accept, decline) already pushes its own fresh result
+                    // straight into friendsViewModel the instant it succeeds — see onPinChanged/
+                    // onRemoved/onAccepted/onRejected below — so by the time this ever runs,
+                    // friendsViewModel is already correct with no fetch of its own needed.
+                    val onCloseFriendProfile = {
+                        nestedScreen = null
+                        selectedProfileSubject = null
+                    }
+
                     // Swiping/pressing back should always retrace the last navigation step
                     // instead of falling through to the system default (which closes the app):
                     // close the recipient picker, then any nested screen, then return to Home
@@ -485,6 +503,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         when {
                             showRecipientPicker -> showRecipientPicker = false
+                            nestedScreen == NestedScreen.FRIEND_PROFILE -> onCloseFriendProfile()
                             nestedScreen != null -> nestedScreen = null
                             else -> coroutineScope.launch { pagerState.animateScrollToPage(PAGE_HOME) }
                         }
@@ -542,38 +561,70 @@ class MainActivity : ComponentActivity() {
                                     initializer { FindPeopleViewModel(friendRepository) }
                                 },
                             )
-                            FindPeopleScreen(viewModel = findPeopleViewModel)
+                            FindPeopleScreen(
+                                viewModel = findPeopleViewModel,
+                                onResultClick = { result ->
+                                    selectedProfileSubject = ProfileSubject.SearchResult(result)
+                                    nestedScreen = NestedScreen.FRIEND_PROFILE
+                                },
+                            )
                         }
 
                         nestedScreen == NestedScreen.FRIEND_PROFILE && selectedProfileSubject != null -> {
                             val subject = selectedProfileSubject!!
+                            // A ViewModel cached under a hand-built string key (tried userId
+                            // alone, then subject-kind + userId) will always eventually collide,
+                            // because the same person is legitimately revisited many times across
+                            // a session as the relationship itself changes underneath — stranger
+                            // to requested, requested to friend, friend to removed, removed back
+                            // to stranger. Each of those is a genuinely new visit, but
+                            // `viewModel(key = X)` only ever runs its factory on the *first*
+                            // lookup for a given key and silently hands back that same stale
+                            // instance to every later call with the same key, no matter what fresh
+                            // subject was just passed in. The actual right scope for this
+                            // ViewModel is "one visit to this screen," not "one person" or "one
+                            // person in one relationship stage" — so it gets its own private
+                            // ViewModelStore, created fresh whenever `subject` changes and cleared
+                            // via the DisposableEffect below (canceling its viewModelScope too),
+                            // the same lifetime a real back-stack entry would give it. This is the
+                            // same pattern Jetpack Navigation uses internally per back-stack entry.
+                            val profileViewModelStoreOwner = remember(subject) {
+                                object : ViewModelStoreOwner {
+                                    override val viewModelStore = ViewModelStore()
+                                }
+                            }
+                            DisposableEffect(profileViewModelStoreOwner) {
+                                onDispose { profileViewModelStoreOwner.viewModelStore.clear() }
+                            }
                             val friendProfileViewModel: FriendProfileViewModel = viewModel(
-                                key = subject.friendshipId,
+                                viewModelStoreOwner = profileViewModelStoreOwner,
                                 factory = viewModelFactory {
                                     initializer { FriendProfileViewModel(friendRepository, subject) }
                                 },
                             )
                             FriendProfileScreen(
                                 viewModel = friendProfileViewModel,
-                                onBack = {
-                                    nestedScreen = null
-                                    selectedProfileSubject = null
-                                },
+                                onBack = onCloseFriendProfile,
                                 onSendPhotoClick = onCameraClick,
+                                // subject.friendshipId below is the same id this screen was
+                                // opened with — stable for as long as the screen is open, so it's
+                                // exactly the key each of these needs to update the Friends tab's
+                                // own list in place, with no fetch of any kind.
+                                onPinChanged = { updated -> friendsViewModel.applyUpdatedFriend(updated) },
                                 onRemoved = {
+                                    subject.friendshipId?.let { friendsViewModel.removeFriendLocally(it) }
                                     nestedScreen = null
                                     selectedProfileSubject = null
-                                    friendsViewModel.loadFriends()
                                 },
-                                onAccepted = {
+                                onAccepted = { newFriend ->
+                                    friendsViewModel.addFriendLocally(newFriend)
                                     nestedScreen = null
                                     selectedProfileSubject = null
-                                    friendsViewModel.loadFriends()
                                 },
                                 onRejected = {
+                                    subject.friendshipId?.let { friendsViewModel.removePendingRequestLocally(it) }
                                     nestedScreen = null
                                     selectedProfileSubject = null
-                                    friendsViewModel.loadFriends()
                                 },
                             )
                         }

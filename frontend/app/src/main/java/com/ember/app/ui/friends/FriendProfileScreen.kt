@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,14 +45,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 
-/** One profile layout for every person — an existing friend and someone who's only sent a
- * pending request share the exact same header (avatar, name, username, streak). Only the action
- * area at the bottom differs: Send photo/Pin/Remove for a friend, Accept/Decline for a pending
- * request.
+/** One profile layout for every person — an existing friend, someone who's sent a pending
+ * request, and a stranger found via search all share the exact same header (avatar, name,
+ * username, streak) with no banner/hero image. Only the action area at the bottom differs: Send
+ * photo/Pin/Remove for a friend, Accept/Decline for a pending request, and for a search result —
+ * Add if there's no relationship yet, Accept/Decline if they already requested this user, a
+ * cancelable Requested state if this user already requested them, and nothing at all if they're
+ * already friends (that has its own dedicated actions, reached from the Friends tab instead).
  *
  * Visual language is deliberately closer to Instagram/Snapchat's own profile screens than the
  * rest of Ember's more illustrated UI: a plain centered header, one quiet chip instead of a
@@ -64,8 +69,9 @@ fun FriendProfileScreen(
     viewModel: FriendProfileViewModel,
     onBack: () -> Unit,
     onSendPhotoClick: () -> Unit,
+    onPinChanged: (FriendSummaryDto) -> Unit,
     onRemoved: () -> Unit,
-    onAccepted: () -> Unit,
+    onAccepted: (FriendSummaryDto) -> Unit,
     onRejected: () -> Unit,
 ) {
     val colors = EmberTheme.colors
@@ -182,11 +188,20 @@ fun FriendProfileScreen(
                 friend = subject.summary,
                 pillShape = pillShape,
                 onSendPhotoClick = onSendPhotoClick,
+                onPinChanged = onPinChanged,
                 onRemoved = onRemoved,
             )
 
             is ProfileSubject.PendingRequest -> PendingRequestActions(
                 viewModel = viewModel,
+                pillShape = pillShape,
+                onAccepted = onAccepted,
+                onRejected = onRejected,
+            )
+
+            is ProfileSubject.SearchResult -> SearchResultActions(
+                viewModel = viewModel,
+                result = subject.result,
                 pillShape = pillShape,
                 onAccepted = onAccepted,
                 onRejected = onRejected,
@@ -198,9 +213,10 @@ fun FriendProfileScreen(
 @Composable
 private fun FriendActions(
     viewModel: FriendProfileViewModel,
-    friend: com.ember.app.data.remote.dto.FriendSummaryDto,
+    friend: FriendSummaryDto,
     pillShape: RoundedCornerShape,
     onSendPhotoClick: () -> Unit,
+    onPinChanged: (FriendSummaryDto) -> Unit,
     onRemoved: () -> Unit,
 ) {
     val colors = EmberTheme.colors
@@ -233,7 +249,7 @@ private fun FriendActions(
             .padding(top = 10.dp)
             .background(colors.panel, pillShape)
             .border(1.dp, if (friend.pinnedByMe) colors.glow else colors.border, pillShape)
-            .clickable(enabled = !viewModel.isUpdatingPin, onClick = viewModel::togglePin)
+            .clickable(enabled = !viewModel.isUpdatingPin) { viewModel.togglePin(onPinChanged) }
             .padding(vertical = 13.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -275,7 +291,7 @@ private fun FriendActions(
 private fun PendingRequestActions(
     viewModel: FriendProfileViewModel,
     pillShape: RoundedCornerShape,
-    onAccepted: () -> Unit,
+    onAccepted: (FriendSummaryDto) -> Unit,
     onRejected: () -> Unit,
 ) {
     val colors = EmberTheme.colors
@@ -328,6 +344,97 @@ private fun PendingRequestActions(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 color = colors.cream,
+                modifier = Modifier.padding(start = 7.dp),
+            )
+        }
+    }
+}
+
+/** A search result's action area depends on the relationship this user already has (if any) with
+ * the found person — reuses [PendingRequestActions] as-is for the "they already requested this
+ * user" case rather than a second copy of the same Accept/Decline pair. */
+@Composable
+private fun SearchResultActions(
+    viewModel: FriendProfileViewModel,
+    result: com.ember.app.data.remote.dto.FriendSearchResultDto,
+    pillShape: RoundedCornerShape,
+    onAccepted: (FriendSummaryDto) -> Unit,
+    onRejected: () -> Unit,
+) {
+    when {
+        result.isPendingFromThem -> PendingRequestActions(
+            viewModel = viewModel,
+            pillShape = pillShape,
+            onAccepted = onAccepted,
+            onRejected = onRejected,
+        )
+
+        result.isPendingFromMe -> RequestedActions(viewModel = viewModel, pillShape = pillShape)
+
+        // Already friends, found again via search — that relationship's own actions
+        // (Send photo/Pin/Remove) live on the Friends-tab entry point instead.
+        result.requested -> Unit
+
+        else -> AddActions(viewModel = viewModel, pillShape = pillShape)
+    }
+}
+
+@Composable
+private fun AddActions(viewModel: FriendProfileViewModel, pillShape: RoundedCornerShape) {
+    val colors = EmberTheme.colors
+
+    val buttonSizePx = Size(300f, 52f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 22.dp)
+            .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), pillShape)
+            .clickable(enabled = !viewModel.isSendingRequest, onClick = viewModel::sendRequest)
+            .padding(vertical = 15.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (viewModel.isSendingRequest) {
+            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.accentText, strokeWidth = 2.dp)
+        } else {
+            Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
+            Text(
+                text = "Add",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.accentText,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RequestedActions(viewModel: FriendProfileViewModel, pillShape: RoundedCornerShape) {
+    val colors = EmberTheme.colors
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 22.dp)
+            .background(colors.panel, pillShape)
+            .border(1.dp, colors.border, pillShape)
+            .clickable(enabled = !viewModel.isCancelling, onClick = viewModel::cancelRequest)
+            .padding(vertical = 15.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (viewModel.isCancelling) {
+            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.cream, strokeWidth = 2.dp)
+        } else {
+            Icon(Icons.Filled.Close, contentDescription = null, tint = colors.mutedDim, modifier = Modifier.size(14.dp))
+            Text(
+                text = "Cancel request",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.mutedDim,
                 modifier = Modifier.padding(start = 7.dp),
             )
         }

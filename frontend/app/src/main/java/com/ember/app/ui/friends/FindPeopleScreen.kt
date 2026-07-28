@@ -27,6 +27,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import com.ember.app.ui.theme.PublicSansFontFamily
 @Composable
 fun FindPeopleScreen(
     viewModel: FindPeopleViewModel,
+    onResultClick: (FriendSearchResultDto) -> Unit = {},
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -56,6 +58,18 @@ fun FindPeopleScreen(
     val searchShape = RoundedCornerShape(14.dp)
     val rowShape = RoundedCornerShape(16.dp)
     val isActiveSearch = viewModel.query.isNotEmpty()
+
+    // viewModel survives across visits to this screen (it's keyed the same every time in
+    // MainActivity, not recreated), so its last results linger in memory too — stale the moment
+    // a relationship changes elsewhere (removing a friend, accepting/declining/sending a request
+    // from that person's own profile page) since none of those write paths touch this screen's
+    // state. Re-running whatever search was already typed on every fresh visit is what actually
+    // picks up that change, rather than waiting for the next keystroke that may never come.
+    LaunchedEffect(Unit) {
+        if (viewModel.query.isNotBlank()) {
+            viewModel.onQueryChange(viewModel.query)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -138,6 +152,7 @@ fun FindPeopleScreen(
                         FindPeopleRow(
                             result,
                             shape = rowShape,
+                            onClick = { onResultClick(result) },
                             onAdd = { viewModel.sendRequest(result.userId) },
                             onCancel = { result.friendshipId?.let { viewModel.cancelRequest(it) } },
                         )
@@ -152,6 +167,7 @@ fun FindPeopleScreen(
 private fun FindPeopleRow(
     result: FriendSearchResultDto,
     shape: RoundedCornerShape,
+    onClick: () -> Unit,
     onAdd: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -163,6 +179,7 @@ private fun FindPeopleRow(
             .fillMaxWidth()
             .background(colors.panel, shape)
             .border(1.dp, colors.border, shape)
+            .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

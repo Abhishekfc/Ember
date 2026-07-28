@@ -53,6 +53,11 @@ data class FriendSearchResult(
     // for display, but aren't this user's to cancel.
     val friendshipId: UUID? = null,
     val isPendingFromMe: Boolean = false,
+    // The mirror of isPendingFromMe: true only when it's PENDING *and* the found user is the one
+    // who sent it — this user has a request waiting on them, which the profile page reached from
+    // this search result can accept or decline. False for an already-accepted friendship, which
+    // still sets `requested = true` but offers no action here.
+    val isPendingFromThem: Boolean = false,
 )
 
 /** A single page of an offset-paginated list — used for Friends, Activity, and Memories, the
