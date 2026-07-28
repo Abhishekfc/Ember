@@ -114,7 +114,10 @@ fun BottomNavDock(
                             )
                         }
                     } else {
-                        base.background(colors.panel)
+                        // overlayPanel, not plain panel — this dock is the one genuinely floating
+                        // element sitting permanently above every screen's content, the same tier
+                        // a dialog or bottom sheet would use.
+                        base.background(colors.overlayPanel)
                     }
                 }
 
@@ -249,15 +252,17 @@ private fun NavItem(
         )
         if (showBadge) {
             // Same small-dot-with-a-ring-cutout language the avatar row's own unseen indicator
-            // already uses elsewhere in the app — a border in the dock's own background color is
-            // what reads as a cutout rather than the dot just floating on top of the icon.
+            // already uses elsewhere in the app — a ring in the dock's own background color is
+            // what reads as a cutout rather than the dot just floating on top of the icon. Must
+            // match whatever the dock's own background actually is (see the hazeEffect/
+            // overlayPanel fallback above) or the "cutout" illusion breaks.
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .offset(x = 2.dp, y = 2.dp)
                     .size(9.dp)
                     .clip(CircleShape)
-                    .background(colors.panel)
+                    .background(colors.overlayPanel)
                     .padding(2.dp)
                     .clip(CircleShape)
                     .background(colors.glow),

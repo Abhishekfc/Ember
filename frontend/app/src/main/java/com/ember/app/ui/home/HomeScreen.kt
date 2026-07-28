@@ -17,6 +17,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -64,6 +65,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -103,6 +105,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.PhotoEntryDto
 import com.ember.app.ui.theme.CourgetteFontFamily
@@ -399,7 +403,14 @@ fun HomeScreen(
             // the parent Column is now scrollable (unbounded height), where fillMaxSize
             // collapses to zero.
             when {
-                viewModel.isLoading && viewModel.feedItems.isEmpty() -> HomeSkeletonLoader(
+                // !hasCompletedFirstSync is what keeps this scoped to "we've never gotten a real
+                // answer yet" (first-ever open, nothing cached) — without it, refreshing an
+                // account that's already confirmed to have zero shared photos re-enters this
+                // branch too (isLoading flips true, feedItems is still empty), flashes a "your
+                // photo is coming" skeleton for the refresh's duration, then resolves right back
+                // to the plain empty state below the instant it completes. That reads as a
+                // loading bug (something was about to appear and didn't), not a refresh.
+                viewModel.isLoading && viewModel.feedItems.isEmpty() && !viewModel.hasCompletedFirstSync -> HomeSkeletonLoader(
                     modifier = Modifier.padding(top = 6.dp),
                 )
 
@@ -618,6 +629,17 @@ fun HomeScreen(
                     // device — nothing here is a guess except the dock's own already-accepted
                     // NAV_DOCK_RESERVE_DP constant.
                     val statusBarPx = WindowInsets.statusBars.getTop(density)
+                    // screenSize and headerHeightPx both start at zero for one frame before their
+                    // real onSizeChanged/onGloballyPositioned callbacks land (see their own doc
+                    // comments) — computing topFoldMaxHeightDp from zero-or-near-zero inputs on
+                    // that first frame produces a wrong (often negative, clamped to ~0) bound, so
+                    // the card + avatar row would render collapsed for a frame and then visibly
+                    // snap/expand to their real size the instant the real measurements arrive.
+                    // Rather than accept that as a "just one frame, should be imperceptible"
+                    // trade-off, skip rendering this section entirely until both real
+                    // measurements are in — it appears once, already at its correct final size,
+                    // instead of appearing wrong and then correcting itself.
+                    if (screenSize != Size.Zero && headerHeightPx > 0f) {
                     val topFoldMaxHeightDp = with(density) {
                         (screenSize.height - statusBarPx - headerHeightPx - NAV_DOCK_RESERVE_DP.dp.toPx()).toDp()
                     }
@@ -688,6 +710,7 @@ fun HomeScreen(
                                 .graphicsLayer { alpha = chromeFade },
                         )
                         }
+                    }
                     }
 
                     // Memories starts right where the feed ends — on the page, in the normal
@@ -916,15 +939,31 @@ internal fun ProfileChip(name: String?, photoUrl: String?, onClick: () -> Unit) 
             modifier = Modifier
                 .fillMaxSize()
                 .clip(CircleShape)
-                // Same fallback fill as every other "your/a person's avatar" spot in the app
-                // (Settings' profile row, Friends' StreakAvatar, Activity's actor avatar) —
-                // was a flatter plain colors.panel here, the one place that token had drifted.
-                .background(colors.border.copy(alpha = 0.4f)),
+                // colors.border is a translucent white/black hairline token meant for stroke
+                // outlines, not a fill — reused here at higher alpha it read as a washed-out grey
+                // blob instead of a themed avatar backing. Plain colors.panel is the correct fill:
+                // it already resolves to the right dark-charcoal-or-bright-cream tone per theme.
+                .background(colors.panel),
             contentAlignment = Alignment.Center,
         ) {
             if (photoUrl != null) {
-                AsyncImage(
-                    model = photoUrl,
+                val painter = rememberAsyncImagePainter(model = photoUrl)
+                val painterState by painter.state.collectAsState()
+                val isLoading = when (painterState) {
+                    is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> true
+                    else -> false
+                }
+                if (isLoading) {
+                    val pulseAlpha by rememberSkeletonPulse(periodMillis = 900)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = pulseAlpha }
+                            .background(colors.panel),
+                    )
+                }
+                Image(
+                    painter = painter,
                     contentDescription = "Your profile photo",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().clip(CircleShape),
@@ -1040,6 +1079,17 @@ private const val AUTO_ADVANCE_INTERVAL_MS = 4000L
  * gradual, unlike a manual swipe's instant dot switch (see the dot-row below). */
 private const val AUTO_ADVANCE_FADE_MS = 900
 
+/** How many pages on either side of the current one stay composed (see HorizontalPager's
+ * beyondViewportPageCount below) — each composed page's AsyncImage starts its Coil request the
+ * moment it's composed, not when it actually scrolls into view, so the very next photo is
+ * already fetching while you're still mid-swipe on the current one rather than only starting
+ * once you land on it. Kept small and deliberately singular (not a bulk preload of the whole
+ * feed — that was tried and reverted, see PROJECT_CONTEXT.md, for competing with the real feed/
+ * memories fetch over the network right at cold start): every extra page composed is another
+ * in-flight request and another bitmap held in memory, for a photo that's rarely more than one
+ * swipe away from actually being seen. */
+private const val FEATURED_CARD_LOOKAHEAD_PAGES = 1
+
 /** The large featured card — one continuous pager across every friend's photos (see
  * [buildHomeCarousel]), so swiping past someone's last photo lands on the next friend's first
  * and back past a first photo lands on the previous friend's last, without any special-casing:
@@ -1116,7 +1166,11 @@ private fun FeaturedPhotoCard(
             .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
             .nestedScroll(cardNestedScrollBoundary)
             .clip(cardShape)
-            .background(colors.panel)
+            // The single most important surface on this whole screen — elevated, not the same
+            // panel tone every plain row/chip elsewhere uses, so it visibly outranks them behind
+            // whichever photo is actually loaded (this only ever peeks out at the card's own
+            // edges/behind a transparent PNG — the photo itself is still the real hero).
+            .background(colors.elevatedPanel)
             // A plain tap (not a swipe) toggles focus mode — no ripple, since the blur
             // transition on the rest of the screen already reads as the tap's feedback.
             .clickable(
@@ -1125,10 +1179,42 @@ private fun FeaturedPhotoCard(
                 onClick = onToggleFocus,
             ),
     ) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = FEATURED_CARD_LOOKAHEAD_PAGES,
+        ) { page ->
             val entry = entries[page]
-            AsyncImage(
-                model = entry.photo.photoUrl,
+            // Plain AsyncImage paints nothing at all while its request is in flight — behind it
+            // sits this Box's own colors.elevatedPanel background (see above), a flat, static
+            // color with no indication anything is happening. That reads as broken, not loading,
+            // especially the first time a photo is shown (nothing's been decoded into memory yet,
+            // so this is never instant even with everything else already fixed — a slow/uncached
+            // network fetch is still a real wait, just no longer a mysterious-looking one).
+            // Tracking the painter's own state directly (rather than plain AsyncImage) lets this
+            // card show the same pulsing skeleton animation used elsewhere in this exact file
+            // (see SkeletonFeaturedCard/rememberSkeletonPulse) for as long as that wait actually
+            // lasts, instead of a static rectangle that looks identical whether it's mid-load or
+            // stuck.
+            val painter = rememberAsyncImagePainter(model = entry.photo.photoUrl)
+            // painter.state is a StateFlow<State>, not the State itself — collectAsState is what
+            // actually turns "did the request finish" into something Compose recomposes on.
+            val painterState by painter.state.collectAsState()
+            val isLoading = when (painterState) {
+                is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> true
+                else -> false
+            }
+            if (isLoading) {
+                val pulseAlpha by rememberSkeletonPulse(periodMillis = 1100)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = pulseAlpha }
+                        .background(colors.elevatedPanel),
+                )
+            }
+            Image(
+                painter = painter,
                 contentDescription = entry.displayName,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -1314,7 +1400,9 @@ private fun SkeletonFeaturedCard() {
             .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
             .graphicsLayer { alpha = cardAlpha }
             .clip(RoundedCornerShape(FEATURED_CARD_CORNER_RADIUS))
-            .background(colors.panel),
+            // Matches the real card's own elevatedPanel tone — otherwise the loading state
+            // resolves into a visible tone-shift the instant the real photo arrives.
+            .background(colors.elevatedPanel),
     ) {
         Box(
             modifier = Modifier
@@ -1446,8 +1534,30 @@ private fun FriendAvatarRow(
                                 .clip(CircleShape)
                                 .clickable { onAvatarClick(item.friendId) },
                         ) {
-                            AsyncImage(
-                                model = item.photos.last().photoUrl,
+                            // Same treatment as the featured card's own photo (see its call
+                            // site's own doc comment) — a plain AsyncImage paints nothing while
+                            // loading, leaving this ring's flat colors.panel background showing
+                            // through with no indication anything's happening. Tracking the
+                            // painter's state directly lets this pulse the same way
+                            // SkeletonAvatar already does for the whole-screen loading state,
+                            // just for this one avatar's own in-flight request.
+                            val avatarPainter = rememberAsyncImagePainter(model = item.photos.last().photoUrl)
+                            val avatarPainterState by avatarPainter.state.collectAsState()
+                            val isAvatarLoading = when (avatarPainterState) {
+                                is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> true
+                                else -> false
+                            }
+                            if (isAvatarLoading) {
+                                val avatarPulseAlpha by rememberSkeletonPulse(periodMillis = 900)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer { alpha = avatarPulseAlpha }
+                                        .background(colors.panel),
+                                )
+                            }
+                            Image(
+                                painter = avatarPainter,
                                 contentDescription = item.displayName,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize().clip(CircleShape),

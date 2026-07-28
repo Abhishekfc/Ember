@@ -1,7 +1,6 @@
 package com.ember.app.ui.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,12 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 
@@ -46,12 +45,11 @@ fun EmberGoldScreen() {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
-    val panelShape = RoundedCornerShape(18.dp)
 
     val perks = listOf(
-        GoldPerk(Icons.Filled.Palette, "Exclusive themes", "Unlock Cyber, Botanica, and Citrus looks"),
-        GoldPerk(Icons.Filled.History, "Longer photo history", "Friends' photos stay for 7 days instead of 24 hours"),
-        GoldPerk(Icons.Filled.Favorite, "Support Ember", "Help keep the lights glowing for everyone"),
+        GoldPerk(Icons.Rounded.Palette, "Exclusive themes", "Unlock Cyber, Botanica, and Citrus looks"),
+        GoldPerk(Icons.Rounded.History, "Longer photo history", "Friends' photos stay for 7 days instead of 24 hours"),
+        GoldPerk(Icons.Rounded.VolunteerActivism, "Support Ember", "Help keep the lights glowing for everyone"),
     )
 
     Column(
@@ -72,7 +70,7 @@ fun EmberGoldScreen() {
                 .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), badgeSizePx), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(32.dp))
+            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(32.dp))
         }
 
         Text(
@@ -91,31 +89,32 @@ fun EmberGoldScreen() {
             modifier = Modifier.padding(top = 6.dp, bottom = 26.dp),
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.panel, panelShape)
-                .border(1.dp, colors.border, panelShape)
-                .padding(vertical = 4.dp),
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             perks.forEach { perk ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(perk.icon, contentDescription = null, tint = colors.glow, modifier = Modifier.size(18.dp))
+                    // Same quiet icon-tint badge every other screen uses instead of a card behind
+                    // the row (see SettingsIconBadge in SettingsScreen.kt).
+                    Box(
+                        modifier = Modifier.size(34.dp).background(colors.glow.copy(alpha = 0.14f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(perk.icon, contentDescription = null, tint = colors.glow, modifier = Modifier.size(17.dp))
+                    }
                     Column(modifier = Modifier.padding(start = 14.dp)) {
                         Text(
                             text = perk.title,
                             fontFamily = PublicSansFontFamily,
-                            fontSize = 13.5.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.cream,
                         )
                         Text(
                             text = perk.detail,
                             fontFamily = PublicSansFontFamily,
-                            fontSize = 11.5.sp,
+                            fontSize = 12.sp,
                             color = colors.muted,
                             modifier = Modifier.padding(top = 2.dp),
                         )
@@ -129,8 +128,7 @@ fun EmberGoldScreen() {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.panel, RoundedCornerShape(16.dp))
-                .border(1.dp, colors.border, RoundedCornerShape(16.dp))
+                .background(colors.elevatedPanel, EmberRadii.buttonShape)
                 .padding(vertical = 15.dp),
             horizontalArrangement = Arrangement.Center,
         ) {

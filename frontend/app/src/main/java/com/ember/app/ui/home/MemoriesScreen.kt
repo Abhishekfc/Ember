@@ -32,8 +32,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -326,7 +326,7 @@ internal fun MemoriesGridContent(
 private fun MonthNavArrow(pointsLeft: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val colors = EmberTheme.colors
     Icon(
-        imageVector = if (pointsLeft) Icons.Filled.KeyboardArrowLeft else Icons.Filled.KeyboardArrowRight,
+        imageVector = if (pointsLeft) Icons.Rounded.ChevronLeft else Icons.Rounded.ChevronRight,
         contentDescription = if (pointsLeft) "Previous month" else "Next month",
         tint = if (enabled) colors.cream else colors.mutedDim.copy(alpha = 0.4f),
         modifier = Modifier
@@ -556,7 +556,9 @@ internal fun DayFeaturedOverlay(
                 }
                 .nestedScroll(cardNestedScrollBoundary)
                 .clip(cardShape)
-                .background(colors.panel)
+                // Matches Home's own FeaturedPhotoCard, which this is explicitly "the same
+                // recipe" as — elevated, not plain panel, so it outranks the grid tiles behind it.
+                .background(colors.elevatedPanel)
                 // A plain tap anywhere on the open photo closes it, matching Home's own featured
                 // card (there, tapping the card is exactly what toggles it back out of focus) —
                 // this used to be a deliberate no-op, which read as the photo just not responding.

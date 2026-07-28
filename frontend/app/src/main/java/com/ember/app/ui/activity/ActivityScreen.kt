@@ -144,14 +144,11 @@ fun ActivityScreen(
                     ) {
                         groups.forEach { (label, events) ->
                             // Same section-label treatment as Settings — title case, no letter
-                            // spacing, sitting above a single plain panel rather than each event
-                            // getting its own bordered card.
+                            // spacing. No extra start inset — ActivityRow is flat now (no card,
+                            // no padding of its own beyond the LazyColumn's contentPadding), so
+                            // this already lines up with the avatar directly below it.
                             item(key = "header-$label") {
-                                // start=16.dp, not a smaller inset — matches ActivityRow's own
-                                // horizontal padding exactly, so this label's left edge lines up
-                                // with the avatar directly below it instead of sitting adrift a
-                                // few dp to its left.
-                                SectionLabel(text = label, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp, start = 16.dp))
+                                SectionLabel(text = label, modifier = Modifier.padding(top = 18.dp, bottom = 6.dp))
                             }
                             item(key = "group-$label") {
                                 ActivityGroup(events = events, onNavigateToFriends = onNavigateToFriends)
@@ -205,15 +202,13 @@ private fun iconFor(type: ActivityEventType): ImageVector = when (type) {
     ActivityEventType.REQUEST_INCOMING -> Icons.Rounded.PersonAdd
 }
 
-/** One plain panel per day, same chrome as Settings' own grouped cards — no border, no
- * dividers between rows, just the group's shared background — instead of every event getting
- * its own bordered card. */
+/** No panel behind the day's events — flat, straight on the screen's own background, same
+ * language as the Friends list. Separation between events is spacing (see [ActivityRow]'s own
+ * padding), and between days it's [SectionLabel]'s day heading, never a card boundary or a
+ * divider line. */
 @Composable
 private fun ActivityGroup(events: List<ActivityEventDto>, onNavigateToFriends: () -> Unit) {
-    val colors = EmberTheme.colors
-    val shape = RoundedCornerShape(22.dp)
-
-    Column(modifier = Modifier.fillMaxWidth().background(colors.panel, shape)) {
+    Column {
         events.forEach { event ->
             ActivityRow(
                 event = event,
@@ -242,7 +237,7 @@ private fun ActivityRow(event: ActivityEventDto, onClick: (() -> Unit)? = null) 
         modifier = Modifier
             .fillMaxWidth()
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
@@ -250,13 +245,9 @@ private fun ActivityRow(event: ActivityEventDto, onClick: (() -> Unit)? = null) 
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    // colors.border is a subtle white hairline token (meant for stroke outlines,
-                    // always near-white even on dark themes) — reused here at higher alpha as a
-                    // fill, it read as a conspicuous light grey blob instead of a dark avatar
-                    // backing. A black wash instead always darkens whatever panel it sits on
-                    // (near-black on this app's dark themes, a plain neutral grey on its light
-                    // ones), rather than washing it out toward white.
-                    .background(Color.Black.copy(alpha = 0.5f)),
+                    // A quiet, consistent circle to sit on the flat background — same role
+                    // elevatedPanel plays for Friends' own avatar fallback.
+                    .background(colors.elevatedPanel),
                 contentAlignment = Alignment.Center,
             ) {
                 if (event.actorProfilePhotoUrl != null) {
@@ -280,7 +271,9 @@ private fun ActivityRow(event: ActivityEventDto, onClick: (() -> Unit)? = null) 
                     .align(Alignment.BottomEnd)
                     .size(19.dp)
                     .clip(CircleShape)
-                    .background(colors.panel)
+                    // One tier further than the avatar behind it — same "outranks its
+                    // neighbor" cascade as everywhere else this ladder is used.
+                    .background(colors.overlayPanel)
                     .padding(2.dp)
                     .clip(CircleShape)
                     .background(badgeTint),

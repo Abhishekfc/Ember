@@ -10,22 +10,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.Article
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Feedback
+import androidx.compose.material.icons.rounded.NotificationsNone
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Switch
@@ -56,18 +55,6 @@ import com.ember.app.ui.theme.ThemeKey
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 
-private data class SettingsRow(
-    val icon: ImageVector,
-    val label: String,
-    val badge: String?,
-    val onClick: (() -> Unit)?,
-)
-
-/** Every settings row — plain chevron rows and the Notifications toggle row alike — reserves
- * this same minimum height, so a trailing Switch (whose own touch target is taller than a
- * chevron icon) can't make its row read as bigger than its siblings. */
-private val SETTINGS_ROW_MIN_HEIGHT = 48.dp
-
 /** Where "Help & Support" and "Send Feedback" open an email composer to — there's no dedicated
  * support inbox or feedback form yet, so both point at the same address for now. */
 private const val SUPPORT_EMAIL = "abhisheksir6280@gmail.com"
@@ -80,6 +67,9 @@ private fun openSupportEmail(context: android.content.Context, subject: String) 
     runCatching { context.startActivity(intent) }
 }
 
+/** Flat, straight on the screen's own background — no panel behind any row. Same language as
+ * the Friends list: clarity comes from generous spacing and one consistent, quiet color accent
+ * (see [SettingsIconBadge]) per row, not from a card boundary. */
 @Composable
 fun SettingsScreen(
     displayName: String?,
@@ -99,27 +89,11 @@ fun SettingsScreen(
     val typography = EmberTheme.typography
     val context = LocalContext.current
     var screenSize by remember { mutableStateOf(Size.Zero) }
-    val panelShape = RoundedCornerShape(22.dp)
 
     val versionName = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "—"
     }
-
-    val goldRows = listOf(
-        SettingsRow(Icons.Filled.AutoAwesome, "Ember Gold", "Free", onGoldClick),
-    )
-    val preferenceRows = listOf(
-        SettingsRow(Icons.Filled.Palette, "Appearance", currentTheme.displayName, onThemeClick),
-        // No widget exists yet — listed so the setting isn't a surprise omission from a
-        // familiar app's settings screen, but it can't do anything until one's actually built.
-        SettingsRow(Icons.Filled.Widgets, "Widget", "Soon", null),
-    )
-    val supportRows = listOf(
-        SettingsRow(Icons.AutoMirrored.Filled.HelpOutline, "Help & support", null, { openSupportEmail(context, "Ember support") }),
-        SettingsRow(Icons.AutoMirrored.Filled.Send, "Send feedback", null, { openSupportEmail(context, "Ember feedback") }),
-        SettingsRow(Icons.Filled.Info, "About Ember", versionName, null),
-    )
 
     Box(
         modifier = Modifier
@@ -128,28 +102,25 @@ fun SettingsScreen(
             .background(colors.background.asBrush(screenSize)),
     ) {
         Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState).statusBarsPadding()) {
-            // Centered title, no leading back control — unlike the reference this was modeled
-            // on, Settings here is a bottom-nav tab (swipe between Home/Friends/.../Settings),
-            // not a screen pushed on top of one you'd back out of, so a back arrow would have
-            // nothing real to do.
-            Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp, bottom = 22.dp), contentAlignment = Alignment.Center) {
+            // Centered, plain title — Settings is a bottom-nav tab (swipe between Home/Friends/
+            // .../Settings), not a screen pushed on top of one you'd back out of, so no back
+            // arrow.
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp, bottom = 26.dp), contentAlignment = Alignment.Center) {
                 Text(text = "Settings", fontFamily = PublicSansFontFamily, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = colors.cream)
             }
 
             // The one identity element every comparable app leads Settings with — tapping your
-            // own name/photo to edit your profile — which this screen had no path to at all
-            // before (only Home's small header chip could get you there).
+            // own name/photo to edit your profile.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .background(colors.panel, panelShape)
+                    .padding(horizontal = 24.dp)
                     .clickable(onClick = onProfileClick)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
-                    modifier = Modifier.size(48.dp).clip(CircleShape).background(colors.border.copy(alpha = 0.4f)),
+                    modifier = Modifier.size(56.dp).clip(CircleShape).background(colors.glow.copy(alpha = 0.16f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (profilePhotoUrl != null) {
@@ -163,8 +134,8 @@ fun SettingsScreen(
                         Text(
                             text = displayName?.firstOrNull()?.uppercase() ?: "•",
                             fontFamily = typography.display,
-                            fontSize = 19.sp,
-                            color = colors.cream,
+                            fontSize = 20.sp,
+                            color = colors.glow,
                         )
                     }
                 }
@@ -172,81 +143,89 @@ fun SettingsScreen(
                     Text(
                         text = displayName ?: "Your account",
                         fontFamily = PublicSansFontFamily,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
                         color = colors.cream,
                     )
                     if (username != null) {
                         Text(
                             text = "@$username",
                             fontFamily = PublicSansFontFamily,
-                            fontSize = 12.sp,
+                            fontSize = 12.5.sp,
                             color = colors.mutedDim,
-                            modifier = Modifier.padding(top = 1.dp),
+                            modifier = Modifier.padding(top = 2.dp),
                         )
                     }
                 }
-                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = colors.mutedDim, modifier = Modifier.size(16.dp))
+                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.mutedDim, modifier = Modifier.size(16.dp))
             }
 
-            // Ember Gold gets its own card, standing apart from the plain preference/social/
-            // support groups below — the one promotional row on the screen.
-            SettingsGroup(rows = goldRows, panelShape = panelShape, modifier = Modifier.padding(top = 14.dp))
+            FlatSettingsRow(
+                icon = Icons.Rounded.AutoAwesome,
+                label = "Ember Gold",
+                badge = "Free",
+                onClick = onGoldClick,
+                modifier = Modifier.padding(top = 8.dp),
+            )
 
-            SectionLabel(text = "Preferences", modifier = Modifier.padding(top = 20.dp, start = 24.dp, bottom = 6.dp))
-            SettingsGroup(rows = preferenceRows, panelShape = panelShape) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = SETTINGS_ROW_MIN_HEIGHT).padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Filled.Notifications, contentDescription = null, tint = colors.muted, modifier = Modifier.size(16.dp))
-                    Text(
-                        text = "Notifications",
-                        fontFamily = PublicSansFontFamily,
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = colors.cream,
-                        modifier = Modifier.padding(start = 12.dp).weight(1f),
+            SectionLabel(text = "Preferences", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SettingsIconBadge(Icons.Rounded.NotificationsNone)
+                Text(
+                    text = "Notifications",
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.cream,
+                    modifier = Modifier.padding(start = 14.dp).weight(1f),
+                )
+                // Switch's default touch target (48dp) is taller than this row's own content —
+                // stripped to its intrinsic size so it doesn't force the row taller than its
+                // plain-icon siblings above/below.
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                    Switch(
+                        checked = notificationsEnabled,
+                        onCheckedChange = onNotificationsChange,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = colors.glow,
+                            checkedThumbColor = colors.cream,
+                            checkedBorderColor = colors.glow,
+                            uncheckedTrackColor = colors.border,
+                            uncheckedThumbColor = colors.cream,
+                            uncheckedBorderColor = colors.border,
+                        ),
                     )
-                    // Switch's default touch target padding (48dp tall) is what made this row
-                    // read as noticeably bigger than its plain chevron-row siblings — shrinking
-                    // it to the switch's own intrinsic size brings the row back to the same
-                    // height as every other row in this list.
-                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-                        Switch(
-                            checked = notificationsEnabled,
-                            onCheckedChange = onNotificationsChange,
-                            colors = SwitchDefaults.colors(
-                                checkedTrackColor = colors.glow,
-                                checkedThumbColor = colors.cream,
-                                checkedBorderColor = colors.glow,
-                                uncheckedTrackColor = colors.border,
-                                uncheckedThumbColor = colors.cream,
-                                uncheckedBorderColor = colors.border,
-                            ),
-                        )
-                    }
                 }
             }
+            FlatSettingsRow(Icons.Rounded.Palette, "Appearance", currentTheme.displayName, onThemeClick)
+            // No widget exists yet — listed so the setting isn't a surprise omission from a
+            // familiar app's settings screen, but it can't do anything until one's actually built.
+            FlatSettingsRow(Icons.Rounded.Widgets, "Widget", "Soon", null)
 
-            SectionLabel(text = "Support", modifier = Modifier.padding(top = 20.dp, start = 24.dp, bottom = 6.dp))
-            SettingsGroup(rows = supportRows, panelShape = panelShape)
+            SectionLabel(text = "Support", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
+            FlatSettingsRow(Icons.AutoMirrored.Rounded.HelpOutline, "Help & support", null, { openSupportEmail(context, "Ember support") })
+            FlatSettingsRow(Icons.Rounded.Feedback, "Send feedback", null, { openSupportEmail(context, "Ember feedback") })
+            FlatSettingsRow(Icons.Rounded.Article, "About Ember", versionName, null)
 
             // The one loud element on an otherwise quiet screen — a light pill rather than
             // Ember's usual gradient-glow button, because signing out isn't a positive action
-            // worth the same visual weight as "send a photo".
+            // worth the same visual weight as "send a photo". Deliberately a full capsule (28dp
+            // radius on a ~52dp-tall row), not the app's standard card radius.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 22.dp)
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 26.dp)
                     .background(colors.cream, RoundedCornerShape(28.dp))
                     .clickable(onClick = onSignOut)
                     .padding(vertical = 16.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = Color(0xFFE8756C), modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null, tint = Color(0xFFE8756C), modifier = Modifier.size(16.dp))
                 Text(
                     text = "Log out",
                     fontFamily = PublicSansFontFamily,
@@ -257,62 +236,61 @@ fun SettingsScreen(
                 )
             }
         }
-
     }
 }
 
-/** One plain panel per section, no border/dividers — the reference this was modeled on
- * separates rows purely by card membership and the gap between cards, not hairlines, so
- * [SettingsGroup] leaves that gap to its own top padding at the call site instead of drawing
- * lines between rows. [extraContent] lets a group lead with something that isn't a plain
- * label/chevron row (here: the Notifications toggle) while still sharing the same panel chrome
- * as the rows that follow it. */
+/** Small tinted circle behind every row's leading icon — one consistent, quiet touch of the
+ * theme's own accent color instead of a plain grey glyph floating on its own, without needing a
+ * card behind the whole row to read as "considered." Reused verbatim by every row so the accent
+ * stays the same weight everywhere, rather than any one row reading as more important than its
+ * neighbor purely because of its color. */
 @Composable
-private fun SettingsGroup(
-    rows: List<SettingsRow>,
-    panelShape: RoundedCornerShape,
+private fun SettingsIconBadge(icon: ImageVector) {
+    val colors = EmberTheme.colors
+    Box(
+        modifier = Modifier.size(34.dp).clip(CircleShape).background(colors.glow.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = colors.glow, modifier = Modifier.size(17.dp))
+    }
+}
+
+@Composable
+private fun FlatSettingsRow(
+    icon: ImageVector,
+    label: String,
+    badge: String?,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
-    extraContent: (@Composable () -> Unit)? = null,
 ) {
     val colors = EmberTheme.colors
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .background(colors.panel, panelShape),
+            .padding(horizontal = 24.dp)
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        extraContent?.invoke()
-
-        rows.forEach { row ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = SETTINGS_ROW_MIN_HEIGHT)
-                    .let { if (row.onClick != null) it.clickable(onClick = row.onClick) else it }
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(row.icon, contentDescription = null, tint = colors.muted, modifier = Modifier.size(16.dp))
-                Text(
-                    text = row.label,
-                    fontFamily = PublicSansFontFamily,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = colors.cream,
-                    modifier = Modifier.padding(start = 12.dp).weight(1f),
-                )
-                if (row.badge != null) {
-                    Text(text = row.badge, fontFamily = PublicSansFontFamily, fontSize = 11.5.sp, color = colors.mutedDim)
-                }
-                if (row.onClick != null) {
-                    Icon(
-                        Icons.Filled.ChevronRight,
-                        contentDescription = null,
-                        tint = colors.mutedDim,
-                        modifier = Modifier.padding(start = 8.dp).size(15.dp),
-                    )
-                }
-            }
+        SettingsIconBadge(icon)
+        Text(
+            text = label,
+            fontFamily = PublicSansFontFamily,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.cream,
+            modifier = Modifier.padding(start = 14.dp).weight(1f),
+        )
+        if (badge != null) {
+            Text(text = badge, fontFamily = PublicSansFontFamily, fontSize = 12.sp, color = colors.mutedDim)
+        }
+        if (onClick != null) {
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = colors.mutedDim,
+                modifier = Modifier.padding(start = 8.dp).size(15.dp),
+            )
         }
     }
 }

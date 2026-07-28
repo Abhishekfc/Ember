@@ -24,9 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -74,19 +74,6 @@ private fun streakRingBrush(colors: com.ember.app.ui.theme.EmberColors, streak: 
     else -> Brush.linearGradient(listOf(colors.border, colors.border))
 }
 
-/** Rounds only the true top/bottom edges of the friends list so consecutive rows read as one
- * seamless panel — same grouped-card language as Settings — while each row stays its own
- * LazyColumn item (no loss of per-row virtualization for a list that can run to hundreds of
- * friends, unlike Settings' handful of fixed rows). */
-private fun groupRowShape(index: Int, lastIndex: Int): RoundedCornerShape {
-    val corner = 22.dp
-    return when {
-        lastIndex <= 0 -> RoundedCornerShape(corner)
-        index == 0 -> RoundedCornerShape(topStart = corner, topEnd = corner, bottomStart = 0.dp, bottomEnd = 0.dp)
-        index == lastIndex -> RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = corner, bottomEnd = corner)
-        else -> RoundedCornerShape(0.dp)
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,7 +128,7 @@ fun FriendsScreen(
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .background(colors.panel, CircleShape)
+                        .background(colors.elevatedPanel, CircleShape)
                         .clickable(onClick = onFindPeopleClick),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -153,7 +140,10 @@ fun FriendsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 18.dp, start = 20.dp, end = 20.dp)
-                    .background(colors.panel, searchShape)
+                    // A quiet in-between tone, not the same panel every card below uses — an
+                    // input sits apart from background without competing with real cards for
+                    // the same visual weight.
+                    .background(colors.surface, searchShape)
                     .padding(horizontal = 16.dp, vertical = 13.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -280,9 +270,8 @@ fun FriendsScreen(
                             }
                         }
 
-                        val lastIndex = viewModel.filteredFriends.lastIndex
-                        itemsIndexed(viewModel.filteredFriends, key = { _, f -> f.friendshipId }) { index, friend ->
-                            FriendRow(friend, shape = groupRowShape(index, lastIndex), onClick = { onFriendClick(friend) })
+                        items(viewModel.filteredFriends, key = { it.friendshipId }) { friend ->
+                            FriendRow(friend, onClick = { onFriendClick(friend) })
                         }
 
                         // Search operates only over what's already loaded (client-side
@@ -345,7 +334,9 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
                 // cropping a second time on top of an already-deliberate square, for no reason.
                 .aspectRatio(1f)
                 .clip(cardShape)
-                .background(colors.panel)
+                // Elevated, not the plain panel tone every row below it already uses — this is
+                // the one card on the screen that's meant to visibly outrank its siblings.
+                .background(colors.elevatedPanel)
                 .clickable(onClick = onClick),
         ) {
             if (friend.profilePhotoUrl != null) {
@@ -362,7 +353,7 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Brush.radialGradient(listOf(colors.glow.copy(alpha = 0.28f), colors.panel))),
+                        .background(Brush.radialGradient(listOf(colors.glow.copy(alpha = 0.28f), colors.elevatedPanel))),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -396,7 +387,7 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
                         color = Color(0xFFFBF8F3),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 3.dp)) {
-                        Icon(Icons.Filled.PushPin, contentDescription = null, tint = colors.glow, modifier = Modifier.size(11.dp))
+                        Icon(Icons.Rounded.PushPin, contentDescription = null, tint = colors.glow, modifier = Modifier.size(11.dp))
                         Text(
                             text = "Pinned partner",
                             fontFamily = typography.body,
@@ -408,7 +399,7 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
                 }
                 if (friend.streak > 0) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.LocalFireDepartment, contentDescription = "Streak", tint = colors.glow, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.LocalFireDepartment, contentDescription = "Streak", tint = colors.glow, modifier = Modifier.size(18.dp))
                         Text(
                             text = "${friend.streak}",
                             fontFamily = typography.body,
@@ -453,8 +444,10 @@ private fun StreakAvatar(photoUrl: String?, displayName: String, streak: Int, si
             )
         } else {
             // Same "no photo yet" identity as ActivityScreen's ActivityRow — see PinnedPartnerHero
-            // above for the fuller reasoning.
-            Box(modifier = Modifier.fillMaxSize().background(colors.border.copy(alpha = 0.4f)), contentAlignment = Alignment.Center) {
+            // above for the fuller reasoning. Elevated, not colors.border (a hairline-stroke
+            // token, not a fill — read as a washed-out grey) or plain colors.panel (this sits
+            // inside a panel-toned row already and would just blend into it).
+            Box(modifier = Modifier.fillMaxSize().background(colors.elevatedPanel), contentAlignment = Alignment.Center) {
                 Text(
                     text = displayName.firstOrNull()?.uppercase() ?: "•",
                     fontFamily = typography.display,
@@ -516,32 +509,41 @@ private fun PendingRequestChip(
     }
 }
 
+// No card background here at all — flat, straight on the screen's own background, the same
+// language Snapchat's own chat list uses (a direct reference the user pointed to: "everything
+// clearly visible" comes from bold name text + generous row height + meaningful color, not from
+// a panel behind each row). Separation between rows is spacing (see the vertical padding below),
+// never a divider line.
 @Composable
-private fun FriendRow(friend: FriendSummaryDto, shape: RoundedCornerShape, onClick: () -> Unit) {
+private fun FriendRow(friend: FriendSummaryDto, onClick: () -> Unit) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
+    // The same "streak = warmth" signature every avatar ring on this screen already carries
+    // (see streakRingBrush) — extended to the status line itself, so a glowing friendship reads
+    // as glowing everywhere in its row, not just in the ring. A cold friendship (no streak yet)
+    // stays plain and quiet.
+    val statusColor = if (friend.streak > 0) colors.glow else colors.mutedDim
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.panel, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StreakAvatar(photoUrl = friend.profilePhotoUrl, displayName = friend.displayName, streak = friend.streak, size = 52.dp)
+        StreakAvatar(photoUrl = friend.profilePhotoUrl, displayName = friend.displayName, streak = friend.streak, size = 54.dp)
         Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = friend.displayName,
                     fontFamily = typography.body,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
                     color = colors.cream,
                 )
                 if (friend.pinnedByMe) {
                     Icon(
-                        Icons.Filled.PushPin,
+                        Icons.Rounded.PushPin,
                         contentDescription = "Pinned",
                         tint = colors.glow,
                         modifier = Modifier.padding(start = 5.dp).size(11.dp),
@@ -551,16 +553,17 @@ private fun FriendRow(friend: FriendSummaryDto, shape: RoundedCornerShape, onCli
             Text(
                 text = friend.lastActivityAt?.let { "Last sent ${formatRelativeTime(it)}" } ?: "No photos yet",
                 fontFamily = typography.body,
-                fontSize = 12.sp,
-                color = colors.mutedDim,
-                modifier = Modifier.padding(top = 2.dp),
+                fontSize = 12.5.sp,
+                fontWeight = if (friend.streak > 0) FontWeight.SemiBold else FontWeight.Normal,
+                color = statusColor,
+                modifier = Modifier.padding(top = 3.dp),
             )
         }
         // A "0" streak isn't an achievement worth displaying — only show once a friend
         // actually has one going.
         if (friend.streak > 0) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.LocalFireDepartment, contentDescription = "Streak", tint = colors.glow, modifier = Modifier.size(14.dp))
+                Icon(Icons.Rounded.LocalFireDepartment, contentDescription = "Streak", tint = colors.glow, modifier = Modifier.size(14.dp))
                 Text(
                     text = "${friend.streak}",
                     fontFamily = typography.body,

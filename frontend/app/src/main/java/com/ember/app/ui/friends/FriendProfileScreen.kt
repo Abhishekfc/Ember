@@ -16,13 +16,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 
@@ -79,7 +80,7 @@ fun FriendProfileScreen(
     var screenSize by remember { mutableStateOf(Size.Zero) }
     val subject = viewModel.subject
     val streak = (subject as? ProfileSubject.Friend)?.summary?.streak ?: 0
-    val pillShape = RoundedCornerShape(16.dp)
+    val pillShape = EmberRadii.buttonShape
 
     Column(
         modifier = Modifier
@@ -99,7 +100,7 @@ fun FriendProfileScreen(
                 .clickable(onClick = onBack),
             contentAlignment = Alignment.CenterStart,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(20.dp))
+            Icon(Icons.AutoMirrored.Rounded.ArrowBackIos, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(20.dp))
         }
 
         Box(
@@ -113,10 +114,10 @@ fun FriendProfileScreen(
                     .background(streakRingBrush(colors, streak))
                     .padding(3.dp)
                     .clip(CircleShape)
-                    .background(colors.panel)
+                    .background(colors.elevatedPanel)
                     .padding(3.dp)
                     .clip(CircleShape)
-                    .background(colors.panel),
+                    .background(colors.elevatedPanel),
                 contentAlignment = Alignment.Center,
             ) {
                 if (subject.profilePhotoUrl != null) {
@@ -138,7 +139,7 @@ fun FriendProfileScreen(
         }
 
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Text(text = subject.displayName, fontFamily = typography.display, fontSize = 22.sp, color = colors.cream)
+            Text(text = subject.displayName, fontFamily = typography.display, fontSize = 24.sp, color = colors.cream)
             Text(
                 text = "@${subject.username}",
                 fontFamily = PublicSansFontFamily,
@@ -152,11 +153,11 @@ fun FriendProfileScreen(
                 Row(
                     modifier = Modifier
                         .padding(top = 14.dp)
-                        .background(colors.panel, RoundedCornerShape(20.dp))
+                        .background(colors.elevatedPanel, RoundedCornerShape(20.dp))
                         .padding(horizontal = 14.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.LocalFireDepartment, contentDescription = null, tint = colors.glow, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Rounded.LocalFireDepartment, contentDescription = null, tint = colors.glow, modifier = Modifier.size(13.dp))
                     Text(
                         text = "$streak day streak",
                         fontFamily = PublicSansFontFamily,
@@ -180,7 +181,7 @@ fun FriendProfileScreen(
             )
         }
 
-        HorizontalDivider(color = colors.border.copy(alpha = 0.4f), thickness = 1.dp, modifier = Modifier.padding(top = 26.dp))
+        HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(top = 26.dp))
 
         when (subject) {
             is ProfileSubject.Friend -> FriendActions(
@@ -232,7 +233,7 @@ private fun FriendActions(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Filled.PhotoCamera, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
+        Icon(Icons.Rounded.PhotoCamera, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
         Text(
             text = "Send a photo",
             fontFamily = PublicSansFontFamily,
@@ -247,7 +248,7 @@ private fun FriendActions(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 10.dp)
-            .background(colors.panel, pillShape)
+            .background(colors.elevatedPanel, pillShape)
             .border(1.dp, if (friend.pinnedByMe) colors.glow else colors.border, pillShape)
             .clickable(enabled = !viewModel.isUpdatingPin) { viewModel.togglePin(onPinChanged) }
             .padding(vertical = 13.dp),
@@ -258,7 +259,7 @@ private fun FriendActions(
             CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.glow, strokeWidth = 2.dp)
         } else {
             Icon(
-                Icons.Filled.PushPin,
+                Icons.Rounded.PushPin,
                 contentDescription = null,
                 tint = if (friend.pinnedByMe) colors.glow else colors.cream,
                 modifier = Modifier.size(14.dp),
@@ -311,7 +312,7 @@ private fun PendingRequestActions(
         if (viewModel.isAccepting) {
             CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.accentText, strokeWidth = 2.dp)
         } else {
-            Icon(Icons.Filled.Check, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
+            Icon(Icons.Rounded.TaskAlt, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
             Text(
                 text = "Accept",
                 fontFamily = PublicSansFontFamily,
@@ -327,7 +328,7 @@ private fun PendingRequestActions(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 10.dp)
-            .background(colors.panel, pillShape)
+            .background(colors.elevatedPanel, pillShape)
             .border(1.dp, colors.border, pillShape)
             .clickable(enabled = !busy) { viewModel.rejectRequest(onRejected) }
             .padding(vertical = 13.dp),
@@ -337,7 +338,7 @@ private fun PendingRequestActions(
         if (viewModel.isRejecting) {
             CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.cream, strokeWidth = 2.dp)
         } else {
-            Icon(Icons.Filled.Close, contentDescription = null, tint = colors.cream, modifier = Modifier.size(14.dp))
+            Icon(Icons.Rounded.Cancel, contentDescription = null, tint = colors.cream, modifier = Modifier.size(14.dp))
             Text(
                 text = "Decline",
                 fontFamily = PublicSansFontFamily,
@@ -397,7 +398,7 @@ private fun AddActions(viewModel: FriendProfileViewModel, pillShape: RoundedCorn
         if (viewModel.isSendingRequest) {
             CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.accentText, strokeWidth = 2.dp)
         } else {
-            Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
+            Icon(Icons.Rounded.PersonAdd, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
             Text(
                 text = "Add",
                 fontFamily = PublicSansFontFamily,
@@ -418,7 +419,7 @@ private fun RequestedActions(viewModel: FriendProfileViewModel, pillShape: Round
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 22.dp)
-            .background(colors.panel, pillShape)
+            .background(colors.elevatedPanel, pillShape)
             .border(1.dp, colors.border, pillShape)
             .clickable(enabled = !viewModel.isCancelling, onClick = viewModel::cancelRequest)
             .padding(vertical = 15.dp),
@@ -428,7 +429,7 @@ private fun RequestedActions(viewModel: FriendProfileViewModel, pillShape: Round
         if (viewModel.isCancelling) {
             CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.cream, strokeWidth = 2.dp)
         } else {
-            Icon(Icons.Filled.Close, contentDescription = null, tint = colors.mutedDim, modifier = Modifier.size(14.dp))
+            Icon(Icons.Rounded.Cancel, contentDescription = null, tint = colors.mutedDim, modifier = Modifier.size(14.dp))
             Text(
                 text = "Cancel request",
                 fontFamily = PublicSansFontFamily,

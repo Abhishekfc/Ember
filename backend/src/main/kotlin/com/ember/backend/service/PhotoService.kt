@@ -64,6 +64,11 @@ class PhotoService(
         if (detectedType == null || detectedType !in ALLOWED_CONTENT_TYPES) {
             throw InvalidFriendRequestException("File content doesn't match a supported image type")
         }
+        // Re-encodes down to a sane size/format before anything gets stored, so every future
+        // fetch of this photo — from any screen, any client — is reasonably sized regardless of
+        // what was actually uploaded. See PhotoCompressionService's own doc comment for why this
+        // is conservative (an already-small JPEG passes through untouched).
+        val compressed = PhotoCompressionService.compress(file.bytes, detectedType)
 
         val sender = userRepository.findById(senderId)
             .orElseThrow { ResourceNotFoundException("User not found") }
@@ -84,18 +89,19 @@ class PhotoService(
             throw ResourceNotFoundException("One or more recipients not found")
         }
 
-        // Stored using the type we actually detected in the bytes, not whatever the client's
-        // multipart part claimed — a client can label any content "image/jpeg" in the request,
-        // and that declared type used to be trusted all the way through to what gets served back.
-        val extension = when (detectedType) {
+        // Stored using the type actually being stored (post-compression), not whatever the
+        // client's multipart part claimed — a client can label any content "image/jpeg" in the
+        // request, and that declared type used to be trusted all the way through to what gets
+        // served back.
+        val extension = when (compressed.contentType) {
             "image/png" -> "png"
             "image/webp" -> "webp"
             else -> "jpg"
         }
         val storageKey = "photos/$senderId/${UUID.randomUUID()}.$extension"
-        r2StorageService.upload(storageKey, detectedType, file.bytes)
+        r2StorageService.upload(storageKey, compressed.contentType, compressed.bytes)
 
-        val (photo, photoRecipients) = photoWriteService.persist(sender, storageKey, detectedType, recipients)
+        val (photo, photoRecipients) = photoWriteService.persist(sender, storageKey, compressed.contentType, recipients)
 
         pushNotificationService.notifyNewPhoto(
             photoId = photo.id,
@@ -105,8 +111,8 @@ class PhotoService(
             recipientUserIds = photoRecipients.map { it.recipient.id },
         )
         logger.info(
-            "Photo uploaded: photoId={} sender={} ({}) recipients={} sizeBytes={}",
-            photo.id, sender.id, sender.email, distinctRecipientIds, file.size,
+            "Photo uploaded: photoId={} sender={} ({}) recipients={} uploadedBytes={} storedBytes={}",
+            photo.id, sender.id, sender.email, distinctRecipientIds, file.size, compressed.bytes.size,
         )
 
         // A new photo changes each recipient's feed, and the exchange-timestamp-derived streak
