@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.servlet.NoHandlerFoundException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 import java.time.Instant
 
 data class ErrorResponse(
@@ -72,8 +73,16 @@ class GlobalExceptionHandler {
             ErrorResponse(status = HttpStatus.BAD_REQUEST.value(), error = "Bad Request", message = "Malformed request")
         )
 
-    @ExceptionHandler(NoHandlerFoundException::class)
-    fun handleNotFound(ex: NoHandlerFoundException): ResponseEntity<ErrorResponse> =
+    // NoResourceFoundException (not just NoHandlerFoundException) because Spring Boot 3's default
+    // routing tries the static-resource handler before giving up on an unmatched path, and that's
+    // what actually throws for a plain unknown URL — NoHandlerFoundException only fires under a
+    // non-default config this app doesn't set. Both mean the same thing to a caller ("no such
+    // endpoint") and neither is a real server error, so both get a plain 404 with no ERROR-level
+    // stack trace — left uncaught here, NoResourceFoundException fell through to the generic
+    // handleUnexpected below and logged a full stack trace for something as routine as a typo'd
+    // URL or a client hitting an endpoint (e.g. /actuator/health) this app never implemented.
+    @ExceptionHandler(NoHandlerFoundException::class, NoResourceFoundException::class)
+    fun handleNotFound(ex: Exception): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.NOT_FOUND).body(
             ErrorResponse(status = HttpStatus.NOT_FOUND.value(), error = "Not Found", message = "No such endpoint")
         )

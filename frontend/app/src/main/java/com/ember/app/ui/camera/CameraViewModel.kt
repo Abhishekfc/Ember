@@ -64,6 +64,42 @@ class CameraViewModel(
     var captionText by mutableStateOf("")
         private set
 
+    /** False only for the brief window between [onPreviewSnapshotCaptured] (an instant frozen
+     * frame of the live viewfinder, shown the moment the shutter is tapped so capture feels
+     * immediate — see capturePhoto in CameraScreen.kt) and the real hardware capture actually
+     * landing via [onPhotoCaptured]. Gallery picks skip the snapshot stage entirely and go
+     * straight to [onPhotoCaptured], so this is true immediately for that path. Send gates on
+     * this so a very fast tap-then-send can never upload the temporary frame instead of the real
+     * photo.
+     *
+     * A first attempt at this exact idea was reverted after two real bugs: the page-level
+     * transition was a `Crossfade` keyed on the file value itself, so the snapshot→real swap
+     * retriggered a second fade that exposed the photo card's black background mid-transition;
+     * and the swap was slow/visible enough that the temporary frame's lower fidelity read as an
+     * obvious quality dip. This time: the live↔reviewing boundary in CameraScreen.kt is a plain
+     * `if/else` (no Crossfade at all, so no fade-through-black is even possible), and the
+     * snapshot→real swap happens through the same already-crossfade-disabled AsyncImage request
+     * (see CapturedPreview) — an instant pixel swap, not a fade, over two frames that show
+     * nearly the same scene a fraction of a second apart. The real capture itself is still full,
+     * unbounded quality — only the fleeting placeholder is viewfinder-resolution. */
+    var isRealCaptureReady by mutableStateOf(true)
+        private set
+
+    /** The in-memory bitmap backing the instant preview stage — an already-decoded `Bitmap`
+     * (from `previewView.bitmap`), not a second file-based image, so it draws the same frame
+     * it's set with no async decode gap. Kept alive for this capture's whole review (not cleared
+     * the moment the real photo lands) purely as a defensive fallback layer — see
+     * `CapturedPreview` in CameraScreen.kt, which layers the real file's AsyncImage on top of
+     * this so the real photo's own (Coil, EXIF-aware) decode always has something already on
+     * screen to sit over instead of the card's bare black background. */
+    var previewBitmap by mutableStateOf<Bitmap?>(null)
+        private set
+
+    // The snapshot file backing capturedFile while isRealCaptureReady is false — tracked
+    // separately (not just re-derived from capturedFile) purely so it can be deleted once the
+    // real file supersedes it, or if a retake happens before that ever occurs.
+    private var pendingSnapshotFile: File? = null
+
     init {
         // Deliberately NOT loadFriends() here — this ViewModel now lives for the whole app
         // session (Camera is a pager page, not a screen only created on demand), so anything
@@ -144,8 +180,26 @@ class CameraViewModel(
         errorMessage = message
     }
 
-    fun onPhotoCaptured(file: File) {
+    /** The instant, pre-real-capture frame — see [isRealCaptureReady]'s own doc comment. Never
+     * called for a gallery pick, only the live-camera path. */
+    fun onPreviewSnapshotCaptured(file: File, bitmap: Bitmap) {
         capturedFile = file
+        pendingSnapshotFile = file
+        previewBitmap = bitmap
+        isRealCaptureReady = false
+        captionText = ""
+        errorMessage = null
+    }
+
+    /** The real, final photo — either the hardware capture landing (superseding whatever
+     * snapshot [onPreviewSnapshotCaptured] showed a moment earlier) or a gallery pick, which has
+     * no snapshot stage and is already "real" the instant it's chosen. */
+    fun onPhotoCaptured(file: File) {
+        val staleSnapshot = pendingSnapshotFile
+        capturedFile = file
+        isRealCaptureReady = true
+        pendingSnapshotFile = null
+        if (staleSnapshot != null && staleSnapshot != file) staleSnapshot.delete()
         captionText = ""
         errorMessage = null
     }
@@ -156,7 +210,11 @@ class CameraViewModel(
 
     fun discardCapture() {
         capturedFile?.delete()
+        pendingSnapshotFile?.let { if (it != capturedFile) it.delete() }
+        pendingSnapshotFile = null
         capturedFile = null
+        previewBitmap = null
+        isRealCaptureReady = true
         captionText = ""
     }
 
@@ -164,8 +222,10 @@ class CameraViewModel(
         // Guards the top of the function itself, not just the button's own `enabled` — enabled
         // only takes effect once Compose recomposes after isSending flips true, so a fast
         // double-tap landing inside that window could otherwise launch this twice and send the
-        // same photo to every recipient twice over.
-        if (isSending) return
+        // same photo to every recipient twice over. isRealCaptureReady is the same idea for the
+        // instant preview-snapshot stage — without it, a send fired in the brief window before
+        // the real capture lands would upload the temporary frame instead.
+        if (isSending || !isRealCaptureReady) return
         val file = capturedFile ?: return
         if (selectedRecipientIds.isEmpty()) {
             errorMessage = "Select at least one friend first"

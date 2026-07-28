@@ -175,7 +175,7 @@ fun PhotoCropScreen(
                 .padding(24.dp)
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(colors.panel.copy(alpha = 0.85f))
+                .background(colors.elevatedPanel.copy(alpha = 0.85f))
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onCancel),
             contentAlignment = Alignment.Center,
         ) {

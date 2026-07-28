@@ -3,6 +3,7 @@ package com.ember.app.ui.camera
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -13,9 +14,15 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,16 +45,15 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material.icons.rounded.Cameraswitch
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.TextFields
+import androidx.compose.material.icons.rounded.WorkspacePremium
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -65,6 +71,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -84,9 +92,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 import java.io.File
@@ -96,7 +107,6 @@ import java.lang.ref.WeakReference
 @Composable
 fun CameraScreen(
     viewModel: CameraViewModel,
-    onClose: () -> Unit,
     onOpenRecipientPicker: () -> Unit,
     onUpgradeToGold: () -> Unit,
     onSent: (PhotoUploadResponseDto) -> Unit,
@@ -131,13 +141,18 @@ fun CameraScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 26.dp, start = 22.dp, end = 22.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Real faces, not a text label — who this is going to should be something you
                 // can recognize at a glance, not something you have to read and parse. This is
                 // the *only* recipient control on screen (live and post-capture both), so it's
                 // sized to be genuinely noticeable rather than a small afterthought chip.
+                //
+                // No close button any more — Camera is a page of the main pager (swipe to Home
+                // like any other tab), not a modal screen that needs its own explicit exit, and
+                // discarding an abandoned capture on the way out is now handled automatically
+                // (see MainActivity's own settledPage effect) rather than needing this button to
+                // be tapped for it to happen.
                 Row(
                     modifier = Modifier
                         .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(percent = 50))
@@ -148,7 +163,7 @@ fun CameraScreen(
                     RecipientAvatarStack(friends = viewModel.selectedFriends, size = 34.dp, ringColor = colors.panel)
                     if (viewModel.hasPinnedSelected) {
                         Icon(
-                            Icons.Filled.PushPin,
+                            Icons.Rounded.PushPin,
                             contentDescription = null,
                             tint = colors.glow,
                             modifier = Modifier.padding(start = 9.dp).size(12.dp),
@@ -163,22 +178,11 @@ fun CameraScreen(
                         modifier = Modifier.padding(start = 9.dp),
                     )
                     Icon(
-                        Icons.Filled.ChevronRight,
+                        Icons.Rounded.ChevronRight,
                         contentDescription = null,
                         tint = Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.size(16.dp),
                     )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.14f))
-                        .clickable(onClick = onClose),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -198,6 +202,16 @@ fun CameraScreen(
                     .clip(cardShape)
                     .background(Color.Black),
             ) {
+                // Plain, instant swap — no fade. A Crossfade here was tried (twice: first keyed
+                // on a boolean that re-read viewModel.capturedFile live inside the lambda, which
+                // crashed the app on retake — both the outgoing and incoming slots saw the same
+                // already-null value and both tried to mount LiveCameraStage at once, and two
+                // AndroidViews can't share CameraSession's one singleton PreviewView; then keyed
+                // on the File? itself instead, which fixed the crash but meant an instant-preview
+                // snapshot silently getting replaced by the real photo triggered a second fade
+                // through this Box's black background, reading as a flicker) and explicitly
+                // rejected both times — no animation, no intermediate frame, just the real photo
+                // the moment it's ready.
                 if (captured != null) {
                     CapturedPreview(viewModel = viewModel, file = captured)
                 } else {
@@ -209,17 +223,19 @@ fun CameraScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
             ) {
-                if (captured != null) {
-                    PreviewControls(viewModel = viewModel, onSent = onSent)
-                } else {
-                    CaptureControls(
-                        viewModel = viewModel,
-                        onPickFromGallery = {
-                            viewModel.onGalleryClick {
-                                galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                            }
-                        },
-                    )
+                Crossfade(targetState = captured != null, animationSpec = tween(220), label = "cameraControlsStage") { isReviewing ->
+                    if (isReviewing) {
+                        PreviewControls(viewModel = viewModel, onSent = onSent)
+                    } else {
+                        CaptureControls(
+                            viewModel = viewModel,
+                            onPickFromGallery = {
+                                viewModel.onGalleryClick {
+                                    galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                }
+                            },
+                        )
+                    }
                 }
 
                 if (viewModel.errorMessage != null) {
@@ -318,7 +334,21 @@ private fun LiveCameraStage() {
  * already-live preview. */
 private object CameraSession {
     var lensFacing by mutableStateOf(CameraSelector.LENS_FACING_BACK)
-    val imageCapture: ImageCapture = ImageCapture.Builder().build()
+
+    // Resolution/JPEG-quality bounding was tried here (to speed up encoding) and explicitly
+    // rejected — the user wants full, unreduced capture quality, full stop, even though that
+    // means CameraX picks its own (often high) default resolution/quality. Left in place:
+    // CAPTURE_MODE_MINIMIZE_LATENCY (already CameraX's own default, stated explicitly so a future
+    // CameraX version changing that default can't silently slow this back down) and flash forced
+    // off — neither of those changes what the photo actually looks like, only how it's captured.
+    // Sensor readout, JPEG encode of whatever resolution the camera naturally produces, and any
+    // autofocus/auto-exposure convergence CameraX's pipeline still runs internally are camera
+    // hardware/driver latency from here on — not something app-level code can remove, and it
+    // varies by device.
+    val imageCapture: ImageCapture = ImageCapture.Builder()
+        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+        .setFlashMode(ImageCapture.FLASH_MODE_OFF)
+        .build()
 
     var previewView: PreviewView? = null
         private set
@@ -355,8 +385,9 @@ private object CameraSession {
     }
 }
 
-/** A small circular icon button with a translucent backing — used for gallery/flip so they read
- * as clean tappable controls instead of bare floating glyphs. */
+/** A bare icon button (gallery/flip) — no background circle, sized up so it still reads clearly
+ * as a control on its own against whatever's behind it (live feed or captured photo), the same
+ * plain-glyph-on-the-photo language every other icon on this screen uses now. */
 @Composable
 private fun RoundIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -365,18 +396,15 @@ private fun RoundIconButton(
     badge: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    val colors = EmberTheme.colors
     Box(modifier = modifier) {
         Box(
             modifier = Modifier
                 .size(46.dp)
                 .clip(CircleShape)
-                .background(colors.panel)
-                .border(1.dp, colors.border, CircleShape)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = contentDescription, tint = colors.cream, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(28.dp))
         }
         if (badge != null) {
             Box(modifier = Modifier.align(Alignment.TopEnd)) { badge() }
@@ -405,7 +433,7 @@ private fun RecipientAvatarStack(
                 .background(Color.White.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.5f))
+            Icon(Icons.Rounded.PersonAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.5f))
         }
         return
     }
@@ -472,6 +500,21 @@ private fun CaptureControls(
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
 
+    // A real capture (CameraX writing the JPEG to disk) is never instant — tens to hundreds of
+    // ms depending on the device. Without its own feedback, the shutter just sits there looking
+    // untouched for that whole stretch, then everything hard-cuts to the reviewing state at
+    // once — which is what read as "the whole page reloads" rather than "I took a photo".
+    // Shrinking the shutter the instant it's pressed (not waiting on the capture itself) is the
+    // standard fix every real camera app uses: the response to your tap is immediate even though
+    // the capture behind it isn't.
+    val shutterInteractionSource = remember { MutableInteractionSource() }
+    val isShutterPressed by shutterInteractionSource.collectIsPressedAsState()
+    val shutterScale by animateFloatAsState(
+        targetValue = if (isShutterPressed) 0.88f else 1f,
+        animationSpec = tween(100),
+        label = "shutterPressScale",
+    )
+
     // Clustered tightly around the shutter — same idea as every real camera app's control
     // strip — instead of flung to the far edges of the screen where they read as three
     // unrelated buttons rather than one control group with the shutter as its obvious center.
@@ -481,7 +524,7 @@ private fun CaptureControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RoundIconButton(
-            icon = Icons.Filled.Image,
+            icon = Icons.Rounded.Image,
             contentDescription = "Pick from gallery",
             onClick = onPickFromGallery,
             badge = if (!viewModel.isGoldMember) {
@@ -500,6 +543,11 @@ private fun CaptureControls(
             } else null,
         )
 
+        // The cream ring is the stationary anchor — only the gradient fill inside it shrinks on
+        // press (see shutterScale above), the same "the ring holds still, the button inside it
+        // presses down" feel every real camera app's shutter has. Scaling the outer ring too
+        // would just make the whole control shrink in place, which reads as the button itself
+        // getting smaller rather than being pressed.
         Box(
             modifier = Modifier
                 .size(76.dp)
@@ -510,9 +558,17 @@ private fun CaptureControls(
             Box(
                 modifier = Modifier
                     .size(62.dp)
+                    .graphicsLayer { scaleX = shutterScale; scaleY = shutterScale }
                     .clip(CircleShape)
                     .background(Brush.linearGradient(listOf(colors.glow, colors.glow2)))
-                    .clickable(enabled = !viewModel.isSending) {
+                    .clickable(
+                        interactionSource = shutterInteractionSource,
+                        // The scale animation above already IS this button's press feedback —
+                        // a ripple on top of it would double up two different "you pressed me"
+                        // cues for the same tap.
+                        indication = null,
+                        enabled = !viewModel.isSending,
+                    ) {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         capturePhoto(context, viewModel)
                     },
@@ -520,7 +576,7 @@ private fun CaptureControls(
         }
 
         RoundIconButton(
-            icon = Icons.Filled.Cameraswitch,
+            icon = Icons.Rounded.Cameraswitch,
             contentDescription = "Flip camera",
             onClick = {
                 CameraSession.lensFacing = if (CameraSession.lensFacing == CameraSelector.LENS_FACING_BACK) {
@@ -538,14 +594,38 @@ private fun CaptureControls(
 @Composable
 private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
     val colors = EmberTheme.colors
+    val context = LocalContext.current
     var isEditingCaption by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     // Fraction 0..1 from top -> vertical bias -1..1
     val captionAlignment = BiasAlignment(0f, CAPTION_Y_FRACTION * 2f - 1f)
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // The instant preview-snapshot bitmap (see CameraViewModel.previewBitmap's own doc
+        // comment), drawn directly — a plain, already-decoded Bitmap needs no async load at all,
+        // so it's on screen the same frame this composable first appears. Sits underneath the
+        // AsyncImage below as a fallback layer: while that request is still decoding the real
+        // file, this shows through instead of this Box having nothing drawn at all (which is what
+        // exposed the black background before, on *both* the live→snapshot and snapshot→real
+        // transitions — AsyncImage/Coil always decodes asynchronously, even for a local file).
+        viewModel.previewBitmap?.let { bitmap ->
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         AsyncImage(
-            model = file,
+            // The app-wide ImageLoader default (see EmberApplication.newImageLoader) turns on
+            // crossfade globally, for Home's feed — here it meant the just-captured photo faded
+            // in from blank over this Box's black background instead of just appearing, which is
+            // exactly the "fade from black" the user's now pointed out twice. Building the
+            // request explicitly with crossfade(false) overrides that default for this one image
+            // only, without touching the global setting Home still relies on. Still needed (not
+            // replaced by the bitmap layer above) because it's the one that handles the real
+            // file's EXIF-orientation-aware decode correctly.
+            model = remember(file) { ImageRequest.Builder(context).data(file).crossfade(false).build() },
             contentDescription = "Captured photo",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
@@ -591,17 +671,15 @@ private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
         // "Aa" toggle pinned inside the card's top-right, like Snapchat's text tool.
         if (!isEditingCaption) {
             Icon(
-                Icons.Filled.TextFields,
+                Icons.Rounded.TextFields,
                 contentDescription = "Add text",
                 tint = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(14.dp)
-                    .size(34.dp)
                     .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.4f))
                     .clickable { isEditingCaption = true }
-                    .padding(7.dp),
+                    .size(28.dp),
             )
         }
     }
@@ -610,7 +688,14 @@ private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
 /** Retake / send row shown while reviewing a captured shot. Recipients are shown once, in the
  * header chip above (live and preview both) — repeating a second "sending to" row here read as
  * two separate recipient pickers on the same screen, not one clearer one. Send just stays
- * disabled if nothing's selected, so the header chip is still the one place that matters. */
+ * disabled if nothing's selected, so the header chip is still the one place that matters.
+ *
+ * Send deliberately reuses the shutter's own exact circle (76dp ring, 62dp gradient fill, same
+ * position in the row) rather than a differently-shaped pill — the point is that the button you
+ * just pressed to take the photo is the same one that now sends it, just carrying a different
+ * icon, not a new control appearing out of nowhere. The gallery/flip-camera slots are gone, but a
+ * matching-size spacer on the outside holds their place so the center circle doesn't visibly
+ * shift when CaptureControls crossfades into this. */
 @Composable
 private fun PreviewControls(
     viewModel: CameraViewModel,
@@ -620,24 +705,59 @@ private fun PreviewControls(
     val hasRecipients = viewModel.selectedFriends.isNotEmpty()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, start = 22.dp, end = 22.dp),
-        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Balances the row the same way the gallery button's slot did in CaptureControls, so the
+        // send circle sits at the exact same x-position in both states and doesn't visibly shift
+        // when the row crossfades.
+        Spacer(modifier = Modifier.size(46.dp))
+
+        Box(
+            modifier = Modifier
+                .size(76.dp)
+                .clip(CircleShape)
+                .border(4.dp, colors.cream, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Looks (and is) disabled for the same reason a missing recipient does — briefly,
+            // right after tapping the shutter, capturedFile is still the instant preview
+            // snapshot rather than the real photo (see isRealCaptureReady's own doc comment) —
+            // reusing the exact same muted styling rather than a separate new "not ready yet"
+            // look for what's normally a near-instant window.
+            val canSend = hasRecipients && viewModel.isRealCaptureReady
+            Box(
+                modifier = Modifier
+                    .size(62.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (canSend) Brush.linearGradient(listOf(colors.glow, colors.glow2)) else Brush.linearGradient(listOf(colors.border, colors.border)),
+                    )
+                    .clickable(enabled = !viewModel.isSending && canSend) { viewModel.sendCaptured(onSent) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send",
+                    tint = if (canSend) colors.accentText else colors.mutedDim,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+        }
+
+        // On the right, matching where flip-camera sat in CaptureControls — a bare icon (no
+        // background circle), sized up so it reads clearly without one, same treatment as every
+        // other icon on this screen now.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.clickable(enabled = !viewModel.isSending, onClick = viewModel::discardCapture),
         ) {
             Icon(
-                Icons.Filled.Refresh,
+                Icons.Rounded.Replay,
                 contentDescription = "Retake",
-                tint = colors.cream,
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(colors.panel)
-                    .border(1.dp, colors.border, CircleShape)
-                    .padding(11.dp),
+                tint = Color.White,
+                modifier = Modifier.size(30.dp),
             )
             Text(
                 text = "Retake",
@@ -645,34 +765,6 @@ private fun PreviewControls(
                 fontSize = 11.sp,
                 color = colors.muted,
                 modifier = Modifier.padding(top = 6.dp),
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .padding(start = 34.dp)
-                .width(190.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(
-                    if (hasRecipients) Brush.linearGradient(listOf(colors.glow, colors.glow2)) else Brush.linearGradient(listOf(colors.border, colors.border)),
-                )
-                .clickable(enabled = !viewModel.isSending && hasRecipients) { viewModel.sendCaptured(onSent) }
-                .padding(vertical = 15.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Send",
-                fontFamily = PublicSansFontFamily,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (hasRecipients) colors.accentText else colors.mutedDim,
-            )
-            Icon(
-                Icons.AutoMirrored.Filled.Send,
-                contentDescription = null,
-                tint = if (hasRecipients) colors.accentText else colors.mutedDim,
-                modifier = Modifier.padding(start = 8.dp).size(15.dp),
             )
         }
     }
@@ -683,7 +775,6 @@ private fun PreviewControls(
 private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
-    val panelShape = RoundedCornerShape(24.dp)
 
     Box(
         modifier = Modifier
@@ -697,8 +788,7 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
             modifier = Modifier
                 .padding(horizontal = 36.dp)
                 .clickable(enabled = false) {} // absorb taps so they don't fall through to dismiss
-                .background(colors.panel, panelShape)
-                .border(1.dp, colors.border, panelShape)
+                .background(colors.overlayPanel, EmberRadii.dialogShape)
                 .padding(horizontal = 26.dp, vertical = 28.dp),
         ) {
             val badgeSizePx = Size(56f, 56f)
@@ -708,7 +798,7 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
                     .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), badgeSizePx), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(26.dp))
+                Icon(Icons.Rounded.WorkspacePremium, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(26.dp))
             }
             Text(
                 text = "Ember Gold",
@@ -757,6 +847,24 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
 }
 
 private fun capturePhoto(context: Context, viewModel: CameraViewModel) {
+    // Freezing the current live frame and showing it immediately, before the real hardware
+    // capture (real, unavoidable camera hardware/driver latency — see CameraSession.imageCapture's
+    // own doc comment) even completes, is what actually makes this feel instant — the same trick
+    // every mainstream camera app's shutter uses. previewView.bitmap grabs the currently-rendered
+    // frame synchronously; the *bitmap itself* (not a file re-read of it) is what gets shown, in
+    // CapturedPreview, via a plain Image(bitmap = ...) — see onPreviewSnapshotCaptured's own doc
+    // comment for why a second AsyncImage/Coil round trip here was still flickering. Still
+    // written to a temp file too, purely so capturedFile/discardCapture's existing File-based
+    // bookkeeping keeps working unchanged.
+    CameraSession.previewView?.bitmap?.let { previewBitmap ->
+        val snapshotFile = File(context.cacheDir, "ember_capture_preview_${System.currentTimeMillis()}.jpg")
+        runCatching {
+            FileOutputStream(snapshotFile).use { out -> previewBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out) }
+        }.onSuccess {
+            viewModel.onPreviewSnapshotCaptured(snapshotFile, previewBitmap)
+        }
+    }
+
     val file = File(context.cacheDir, "ember_capture_${System.currentTimeMillis()}.jpg")
     val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
     CameraSession.imageCapture.takePicture(

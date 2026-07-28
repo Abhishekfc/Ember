@@ -25,11 +25,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
+import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 
@@ -102,17 +103,16 @@ fun MyProfileScreen(
             .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
+        // Flat, icon-only back control — same treatment as the friend profile page, no capsule
+        // behind it competing with the profile itself for attention.
         Box(
             modifier = Modifier
                 .padding(top = 32.dp)
                 .size(40.dp)
-                .clip(CircleShape)
-                .background(colors.panel)
-                .border(1.dp, colors.border, CircleShape)
                 .clickable(onClick = onClose),
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.CenterStart,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(18.dp))
+            Icon(Icons.AutoMirrored.Rounded.ArrowBackIos, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(18.dp))
         }
 
         Text(
@@ -144,8 +144,7 @@ fun MyProfileScreen(
                 modifier = Modifier
                     .size(112.dp)
                     .clip(CircleShape)
-                    .background(colors.panel)
-                    .border(1.dp, colors.border, CircleShape)
+                    .background(colors.elevatedPanel)
                     .clickable {
                         galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
@@ -191,7 +190,7 @@ fun MyProfileScreen(
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Filled.CameraAlt, contentDescription = "Change photo", tint = colors.accentText, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Rounded.CameraAlt, contentDescription = "Change photo", tint = colors.accentText, modifier = Modifier.size(15.dp))
                 }
             }
 
@@ -284,9 +283,9 @@ fun MyProfileScreen(
     }
 }
 
-/** Shared chrome for both popups — dark panel card, corner radius and border matching the rest
- * of the app's cards, sized by content rather than the platform's default (narrower) dialog
- * width. */
+/** Shared chrome for both popups — overlayPanel, not plain panel: a dialog is exactly the
+ * "genuinely floating above everything else" surface that tier exists for, sized by content
+ * rather than the platform's default (narrower) dialog width. */
 @Composable
 private fun EditDialogShell(
     title: String,
@@ -301,9 +300,8 @@ private fun EditDialogShell(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(colors.panel)
-                .border(1.dp, colors.border, RoundedCornerShape(24.dp))
+                .clip(EmberRadii.dialogShape)
+                .background(colors.overlayPanel)
                 .padding(20.dp),
         ) {
             Text(text = title, fontFamily = typography.display, fontSize = 18.sp, color = colors.cream)
@@ -318,14 +316,14 @@ private fun DialogTextField(value: String, onValueChange: (String) -> Unit, pref
     val colors = EmberTheme.colors
     val shape = RoundedCornerShape(14.dp)
 
-    // No fill — the dialog card behind it is already colors.panel, so a field using that same
-    // color would have no visible boundary at all; the border alone is enough definition here
-    // without guessing a fixed pixel size for a gradient brush that isn't meant for this.
+    // Filled with plain panel now that the dialog card behind it is overlayPanel (a different,
+    // lower tier) — reads as a recessed input, the same relationship a text field usually has to
+    // its surrounding surface, rather than needing a border alone to carry the whole boundary.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .border(1.dp, colors.border, shape)
+            .background(colors.panel, shape)
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

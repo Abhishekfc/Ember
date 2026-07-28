@@ -9,6 +9,8 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.disk.directory
+import coil3.memory.MemoryCache
+import coil3.request.crossfade
 import com.ember.app.data.ActivityRepository
 import com.ember.app.data.AuthRepository
 import com.ember.app.data.FriendRepository
@@ -94,12 +96,26 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
+            // Explicit rather than relying on Coil's own implicit default (which is this same
+            // 25% figure) — so a decoded photo swiped to once stays in memory and reappearing
+            // (swipe back, reopen Home) is instant with no re-decode, and so the size is a
+            // documented choice here rather than something the next reader has to go verify.
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(context, 0.25)
+                    .build()
+            }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache").toOkioPath())
                     .maxSizePercent(0.02)
                     .build()
             }
+            // Applies to every AsyncImage app-wide unless a request overrides it — the rare
+            // case that's neither preloaded nor already cached (e.g. the very first cold start,
+            // or a genuinely brand-new photo mid-session) fades in instead of popping straight
+            // from blank to loaded.
+            .crossfade(true)
             .build()
     }
 }

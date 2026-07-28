@@ -66,8 +66,13 @@ class HomeViewModel(
 
     // Set once the very first real fetch (not the synchronous cache hydration at construction)
     // completes — see loadFeed, which always promotes that one fetch regardless of isPullRefresh
-    // since there's no established session yet to protect.
-    private var hasCompletedFirstSync = false
+    // since there's no established session yet to protect. Publicly readable (and a real Compose
+    // state, not a plain var) so HomeScreen's skeleton-loader condition can tell "we've never
+    // gotten a real answer yet" apart from "we already know this feed is empty, this is just a
+    // refresh of that same known-empty state" — showing a skeleton for the latter only to have it
+    // resolve right back to the empty state a moment later reads as a loading bug, not a refresh.
+    var hasCompletedFirstSync by mutableStateOf(false)
+        private set
 
     /** True once [syncedFeedItems] contains a photo [feedItems] doesn't — real new content has
      * synced in the background while the current session is still showing older content. Drives

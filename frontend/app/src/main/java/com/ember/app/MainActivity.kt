@@ -41,6 +41,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewmodel.initializer
+import com.ember.app.data.FirstPhotoPreloader
 import com.ember.app.data.local.LocalListCache
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.MemoryPhotoDto
@@ -186,6 +187,18 @@ class MainActivity : ComponentActivity() {
                 profile = localListCache.readObject<UserProfileDto>(LocalListCache.KEY_PROFILE),
             )
         }
+        // Just the one photo Home's featured card shows first (page 0 — see buildHomeCarousel/
+        // pageIndexFor in HomeScreen.kt: the first feed item's newest photo) — asking Coil for it
+        // this early, before Compose has even started, gives it a real head start on what would
+        // otherwise be the very first AsyncImage request of the whole session. Sized to the real
+        // screen width (not left at Coil's full-original-resolution default) — see
+        // FirstPhotoPreloader's own doc comment for why an unsized preload of one of this app's
+        // multi-MB test images was actually part of the problem, not just "not enough of a fix."
+        FirstPhotoPreloader.preload(
+            applicationContext,
+            initialHomeCache.feedItems.firstOrNull()?.photos?.lastOrNull()?.photoUrl,
+            targetWidthPx = resources.displayMetrics.widthPixels,
+        )
         setContent {
             val themeViewModel: ThemeViewModel = viewModel(
                 factory = viewModelFactory {
@@ -458,6 +471,16 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(pagerState.settledPage) {
                         if (pagerState.settledPage == PAGE_ACTIVITY) activityViewModel.markSeen()
                     }
+                    // cameraViewModel is scoped to this Activity, not recreated per visit —
+                    // without discarding here, a capture the user swiped away from (rather than
+                    // sent or explicitly retook) would still be sitting there in review,
+                    // unreachable-looking-fresh, next time this page comes back into view. Used
+                    // to be a button tap (Camera's own close button); Camera has no such button
+                    // any more (it's a plain page of this pager, not a modal screen), so this is
+                    // now the only place that cleanup happens.
+                    LaunchedEffect(pagerState.settledPage) {
+                        if (pagerState.settledPage != PAGE_CAMERA) cameraViewModel.discardCapture()
+                    }
                     // Home's featured card has its own inner pager for cycling through photos —
                     // same swipe axis as this outer one, nested inside it. Compose doesn't always
                     // hand a gesture off cleanly between two pagers on the same axis, and the
@@ -605,7 +628,22 @@ class MainActivity : ComponentActivity() {
                             FriendProfileScreen(
                                 viewModel = friendProfileViewModel,
                                 onBack = onCloseFriendProfile,
-                                onSendPhotoClick = onCameraClick,
+                                onSendPhotoClick = {
+                                    // Sending from a specific friend's profile means that friend,
+                                    // and only that friend, should end up selected in Camera — not
+                                    // whatever was already selected (typically the pinned partner,
+                                    // via CameraViewModel's own default). Safe unconditionally
+                                    // because Send a photo only ever shows for
+                                    // ProfileSubject.Friend, which always has a real friendId.
+                                    cameraViewModel.setSelectedRecipients(setOf(subject.userId))
+                                    // onCameraClick alone only scrolls the pager to Camera — it
+                                    // doesn't close this nested screen, so without this the pager
+                                    // was scrolling correctly underneath while FriendProfileScreen
+                                    // kept covering it, making Camera invisible until back was
+                                    // pressed (which calls onCloseFriendProfile itself).
+                                    onCloseFriendProfile()
+                                    onCameraClick()
+                                },
                                 // subject.friendshipId below is the same id this screen was
                                 // opened with — stable for as long as the screen is open, so it's
                                 // exactly the key each of these needs to update the Friends tab's
@@ -698,16 +736,6 @@ class MainActivity : ComponentActivity() {
 
                                         PAGE_CAMERA -> CameraScreen(
                                             viewModel = cameraViewModel,
-                                            // cameraViewModel is scoped to this Activity, not
-                                            // recreated per visit — without discarding here, a
-                                            // capture the user closed out of (rather than sent)
-                                            // would still be sitting there in review,
-                                            // unreachable-looking-fresh, next time this page
-                                            // comes back into view.
-                                            onClose = {
-                                                cameraViewModel.discardCapture()
-                                                coroutineScope.launch { pagerState.animateScrollToPage(PAGE_HOME) }
-                                            },
                                             onOpenRecipientPicker = { showRecipientPicker = true },
                                             onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                                             onSent = { response ->

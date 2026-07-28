@@ -20,9 +20,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -56,7 +56,6 @@ fun FindPeopleScreen(
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
     val searchShape = RoundedCornerShape(14.dp)
-    val rowShape = RoundedCornerShape(16.dp)
     val isActiveSearch = viewModel.query.isNotEmpty()
 
     // viewModel survives across visits to this screen (it's keyed the same every time in
@@ -91,7 +90,7 @@ fun FindPeopleScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.panel, searchShape)
+                .background(colors.surface, searchShape)
                 .border(1.5.dp, if (isActiveSearch) colors.glow else colors.border, searchShape)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -144,14 +143,10 @@ fun FindPeopleScreen(
                     color = colors.muted,
                 )
 
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
+                else -> LazyColumn(contentPadding = PaddingValues(bottom = 20.dp)) {
                     items(viewModel.results, key = { it.userId }) { result ->
                         FindPeopleRow(
                             result,
-                            shape = rowShape,
                             onClick = { onResultClick(result) },
                             onAdd = { viewModel.sendRequest(result.userId) },
                             onCancel = { result.friendshipId?.let { viewModel.cancelRequest(it) } },
@@ -163,10 +158,11 @@ fun FindPeopleScreen(
     }
 }
 
+// Flat, straight on the screen's own background — same language as the Friends list, not a
+// bordered card per row.
 @Composable
 private fun FindPeopleRow(
     result: FriendSearchResultDto,
-    shape: RoundedCornerShape,
     onClick: () -> Unit,
     onAdd: () -> Unit,
     onCancel: () -> Unit,
@@ -177,35 +173,31 @@ private fun FindPeopleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.panel, shape)
-            .border(1.dp, colors.border, shape)
             .clickable(onClick = onClick)
-            .padding(10.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Search results carry no photo URL at all today (FriendSearchResult doesn't fetch one) —
-        // GlowPhotoTile's colorful glow-with-no-letter fallback read as a broken/empty image with
-        // nothing behind it. Same plain "dark circle + initial letter" identity as
-        // ActivityScreen's ActivityRow and the rest of Friends' own avatars use instead.
+        // a plain "dark circle + initial letter" identity, same as everywhere else in Friends.
         Box(
-            modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.panel),
+            modifier = Modifier.size(48.dp).clip(CircleShape).background(colors.elevatedPanel),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = result.displayName.firstOrNull()?.uppercase() ?: "•",
                 fontFamily = typography.display,
-                fontSize = 17.sp,
+                fontSize = 18.sp,
                 color = colors.cream,
             )
         }
-        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-            Text(text = result.displayName, fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = colors.cream)
+        Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
+            Text(text = result.displayName, fontFamily = PublicSansFontFamily, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.cream)
             Text(
                 text = "@${result.username}",
                 fontFamily = PublicSansFontFamily,
-                fontSize = 11.5.sp,
+                fontSize = 12.5.sp,
                 color = colors.mutedDim,
-                modifier = Modifier.padding(top = 1.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
 
@@ -224,7 +216,7 @@ private fun FindPeopleRow(
                 Text(text = "Requested", fontFamily = PublicSansFontFamily, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.mutedDim)
                 if (result.isPendingFromMe) {
                     Icon(
-                        Icons.Filled.Close,
+                        Icons.Rounded.Cancel,
                         contentDescription = "Cancel request",
                         tint = colors.mutedDim,
                         modifier = Modifier.padding(start = 6.dp).size(12.dp),
@@ -240,7 +232,7 @@ private fun FindPeopleRow(
                     .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(12.dp))
+                Icon(Icons.Rounded.PersonAdd, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(12.dp))
                 Text(
                     text = "Add",
                     fontFamily = PublicSansFontFamily,

@@ -119,8 +119,8 @@ fun ThemeScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 16.dp)
                 .background(
-                    if (canApply) cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx) else SolidColor(colors.panel),
-                    RoundedCornerShape(16.dp),
+                    if (canApply) cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx) else SolidColor(colors.elevatedPanel),
+                    EmberRadii.buttonShape,
                 )
                 .clickable(enabled = canApply) {
                     viewModel.selectTheme(pendingTheme)

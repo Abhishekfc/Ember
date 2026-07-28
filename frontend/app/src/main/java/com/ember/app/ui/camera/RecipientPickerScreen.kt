@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 
@@ -53,7 +54,6 @@ fun RecipientPickerScreen(
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
-    val rowShape = RoundedCornerShape(16.dp)
     val pinnedFriend = viewModel.friends.firstOrNull { it.pinnedByMe }
     val allFriendIds = remember(viewModel.friends) { viewModel.friends.map { it.friendId }.toSet() }
 
@@ -76,8 +76,7 @@ fun RecipientPickerScreen(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(colors.panel)
-                    .border(1.dp, colors.border, CircleShape)
+                    .background(colors.elevatedPanel)
                     .clickable(onClick = onClose),
                 contentAlignment = Alignment.Center,
             ) {
@@ -127,7 +126,6 @@ fun RecipientPickerScreen(
                         RecipientRow(
                             friend = friend,
                             isSelected = friend.friendId in viewModel.selectedFriendIds,
-                            shape = rowShape,
                             onClick = { viewModel.toggleSelected(friend.friendId) },
                         )
                     }
@@ -140,7 +138,7 @@ fun RecipientPickerScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), RoundedCornerShape(16.dp))
+                .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), EmberRadii.buttonShape)
                 .clickable(enabled = recipientCount > 0) { onConfirm(viewModel.selectedFriendIds) }
                 .padding(vertical = 15.dp),
             horizontalArrangement = Arrangement.Center,
@@ -175,30 +173,35 @@ private fun QuickSelectLink(label: String, active: Boolean, onClick: () -> Unit)
  * no initial reads as an anonymous colored block, not a face, and every friend without a photo
  * looked identical. Selection is carried entirely by the row's own tint/border; there's no
  * separate checkbox competing for attention next to it. */
+// Flat baseline (no card, no border) — same language as Friends' own list — but selection is a
+// real functional state here (this screen's whole job is picking who gets the photo), so it
+// still earns a visible, deliberate treatment: a glow-tinted background and border rather than
+// disappearing into the same flatness as an unselected row.
 @Composable
 private fun RecipientRow(
     friend: FriendSummaryDto,
     isSelected: Boolean,
-    shape: RoundedCornerShape,
     onClick: () -> Unit,
 ) {
     val colors = EmberTheme.colors
+    val shape = RoundedCornerShape(16.dp)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (isSelected) colors.glow.copy(alpha = 0.12f) else colors.panel, shape)
-            .border(1.dp, if (isSelected) colors.glow else colors.border, shape)
+            .let {
+                if (isSelected) {
+                    it.background(colors.glow.copy(alpha = 0.12f), shape).border(1.dp, colors.glow, shape)
+                } else {
+                    it
+                }
+            }
             .clickable(onClick = onClick)
-            .padding(10.dp),
+            .padding(vertical = 10.dp, horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(colors.panel)
-                .border(1.dp, colors.border, CircleShape),
+            modifier = Modifier.size(48.dp).clip(CircleShape).background(colors.elevatedPanel),
             contentAlignment = Alignment.Center,
         ) {
             if (friend.profilePhotoUrl != null) {
@@ -212,17 +215,17 @@ private fun RecipientRow(
                 Text(
                     text = friend.displayName.firstOrNull()?.uppercase() ?: "•",
                     fontFamily = EmberTheme.typography.display,
-                    fontSize = 17.sp,
+                    fontSize = 18.sp,
                     color = colors.cream,
                 )
             }
         }
-        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+        Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = friend.displayName, fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = colors.cream)
+                Text(text = friend.displayName, fontFamily = PublicSansFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.cream)
                 if (friend.pinnedByMe) {
                     Icon(
-                        Icons.Filled.PushPin,
+                        Icons.Rounded.PushPin,
                         contentDescription = "Pinned",
                         tint = colors.glow,
                         modifier = Modifier.padding(start = 5.dp).size(11.dp),
@@ -232,9 +235,9 @@ private fun RecipientRow(
             Text(
                 text = "@${friend.username}",
                 fontFamily = PublicSansFontFamily,
-                fontSize = 10.5.sp,
+                fontSize = 11.sp,
                 color = colors.mutedDim,
-                modifier = Modifier.padding(top = 1.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }
