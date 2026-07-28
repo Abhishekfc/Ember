@@ -117,6 +117,34 @@ class FriendsViewModel(
         }
     }
 
+    /** Applied the moment a mutation succeeds on the friend-profile screen (pin/unpin, remove,
+     * accept, decline) — that screen already has the exact, fresh result of its own action in
+     * hand, so merging it straight into [friends]/[pendingRequests] here is instant and needs no
+     * network round trip of its own. Reaching for a full [loadFriends] on every return from that
+     * screen would work too, but would mean a visible refresh (spinner, brief stale-then-fresh
+     * flash) for a change this screen already knows the exact outcome of. */
+    fun applyUpdatedFriend(updated: FriendSummaryDto) {
+        friends = friends.map { if (it.friendshipId == updated.friendshipId) updated else it }
+    }
+
+    fun removeFriendLocally(friendshipId: String) {
+        friends = friends.filterNot { it.friendshipId == friendshipId }
+    }
+
+    fun removePendingRequestLocally(friendshipId: String) {
+        pendingRequests = pendingRequests.filterNot { it.friendshipId == friendshipId }
+    }
+
+    /** Companion to [removePendingRequestLocally] for the other half of accepting a request —
+     * shares the same de-dupe-on-friendshipId reasoning as [acceptRequest] below in case this
+     * races with an in-flight [loadFriends] that already picked the new friend up. */
+    fun addFriendLocally(newFriend: FriendSummaryDto) {
+        if (friends.none { it.friendshipId == newFriend.friendshipId }) {
+            friends = friends + newFriend
+        }
+        pendingRequests = pendingRequests.filterNot { it.friendshipId == newFriend.friendshipId }
+    }
+
     fun acceptRequest(request: PendingFriendRequestDto) {
         if (request.friendshipId in acceptingRequestIds) return
         viewModelScope.launch {

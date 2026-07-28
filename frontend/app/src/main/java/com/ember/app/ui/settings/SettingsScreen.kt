@@ -204,6 +204,7 @@ fun SettingsScreen(
                         text = "Notifications",
                         fontFamily = PublicSansFontFamily,
                         fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Medium,
                         color = colors.cream,
                         modifier = Modifier.padding(start = 12.dp).weight(1f),
                     )
@@ -296,6 +297,7 @@ private fun SettingsGroup(
                     text = row.label,
                     fontFamily = PublicSansFontFamily,
                     fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Medium,
                     color = colors.cream,
                     modifier = Modifier.padding(start = 12.dp).weight(1f),
                 )
