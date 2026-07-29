@@ -76,12 +76,15 @@ fun SettingsScreen(
     username: String?,
     profilePhotoUrl: String?,
     currentTheme: ThemeKey,
+    isGoldMember: Boolean,
+    widgetBadge: String,
     notificationsEnabled: Boolean,
     onNotificationsChange: (Boolean) -> Unit,
     onCameraClick: () -> Unit,
     onProfileClick: () -> Unit,
     onThemeClick: () -> Unit,
     onGoldClick: () -> Unit,
+    onWidgetClick: () -> Unit,
     onSignOut: () -> Unit,
     hazeState: HazeState,
 ) {
@@ -163,7 +166,7 @@ fun SettingsScreen(
             FlatSettingsRow(
                 icon = Icons.Rounded.AutoAwesome,
                 label = "Ember Gold",
-                badge = "Free",
+                badge = if (isGoldMember) "Gold" else "Free",
                 onClick = onGoldClick,
                 modifier = Modifier.padding(top = 8.dp),
             )
@@ -201,9 +204,10 @@ fun SettingsScreen(
                 }
             }
             FlatSettingsRow(Icons.Rounded.Palette, "Appearance", currentTheme.displayName, onThemeClick)
-            // No widget exists yet — listed so the setting isn't a surprise omission from a
-            // familiar app's settings screen, but it can't do anything until one's actually built.
-            FlatSettingsRow(Icons.Rounded.Widgets, "Widget", "Soon", null)
+            // widgetBadge reads "Anyone" (the default every account starts with) or a friend
+            // count once a Gold subscriber has chosen who to feature — see WidgetSettingsScreen,
+            // which is where choosing anyone at all is actually gated.
+            FlatSettingsRow(Icons.Rounded.Widgets, "Widget", widgetBadge, onWidgetClick)
 
             SectionLabel(text = "Support", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
             FlatSettingsRow(Icons.AutoMirrored.Rounded.HelpOutline, "Help & support", null, { openSupportEmail(context, "Ember support") })

@@ -108,7 +108,7 @@ class CameraViewModel(
         // picker specifically — MainActivity calls it once, lazily, the first time the user
         // actually reaches the Camera page (see its own comment for why), not here.
         viewModelScope.launch {
-            subscriptionRepository.getStatus().onSuccess { isGoldMember = it.isActive }
+            isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
         }
     }
 

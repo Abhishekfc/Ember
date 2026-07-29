@@ -40,7 +40,13 @@ android {
         // under deadline pressure (hardcoding a real prod URL as plain HTTP, or widening the
         // debug-only cleartext network security config to cover release too).
         debug {
-            buildConfigField("String", "BASE_URL", "\"http://localhost:8080/\"")
+            // Defaults to localhost for the normal USB/adb-reverse dev workflow; override via
+            // `-PEMBER_DEBUG_BASE_URL=https://...` (e.g. a Cloudflare Tunnel URL) to build a debug
+            // APK that reaches the backend over the real internet instead — for testing on a
+            // phone with no USB/adb connection to this machine at all.
+            val debugBaseUrl = (project.findProperty("EMBER_DEBUG_BASE_URL") as? String)
+                ?: "http://localhost:8080/"
+            buildConfigField("String", "BASE_URL", "\"$debugBaseUrl\"")
         }
         release {
             isMinifyEnabled = true

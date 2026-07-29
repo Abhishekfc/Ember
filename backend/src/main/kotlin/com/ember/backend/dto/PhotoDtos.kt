@@ -20,6 +20,10 @@ data class PhotoEntry(
     val seen: Boolean,
 )
 
+// Reaction feature disabled — see PhotoReactionService's own comment.
+// data class SetReactionRequest(val emoji: String)
+// data class SetReactionResponse(val myReaction: String?)
+
 data class FeedItem(
     val friendId: UUID,
     val displayName: String,

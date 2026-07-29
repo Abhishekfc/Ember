@@ -62,7 +62,7 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
     val friendRepository by lazy { FriendRepository(networkModule.api) }
     val activityRepository by lazy { ActivityRepository(networkModule.api) }
     val userRepository by lazy { UserRepository(networkModule.api) }
-    val subscriptionRepository by lazy { SubscriptionRepository(networkModule.api) }
+    val subscriptionRepository by lazy { SubscriptionRepository(networkModule.api, this) }
     val themePreferenceStore by lazy { ThemePreferenceStore(this) }
     val notificationPreferenceStore by lazy { NotificationPreferenceStore(this) }
     val localListCache by lazy { LocalListCache(this) }

@@ -17,4 +17,12 @@ class NotificationPreferenceStore(private val context: Context) {
     suspend fun save(value: Boolean) {
         context.emberDataStore.edit { it[enabledKey] = value }
     }
+
+    /** Called on sign-out alongside every other per-account preference (see MainActivity's own
+     * onSignOut) — this lives in the same shared, non-account-scoped DataStore as everything
+     * else here, so without an explicit clear a different account signing in on this device
+     * would silently inherit whatever the previous account had chosen. */
+    suspend fun clear() {
+        context.emberDataStore.edit { it.remove(enabledKey) }
+    }
 }

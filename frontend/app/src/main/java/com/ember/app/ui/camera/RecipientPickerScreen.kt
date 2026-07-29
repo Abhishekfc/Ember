@@ -155,7 +155,7 @@ fun RecipientPickerScreen(
 }
 
 @Composable
-private fun QuickSelectLink(label: String, active: Boolean, onClick: () -> Unit) {
+internal fun QuickSelectLink(label: String, active: Boolean, onClick: () -> Unit) {
     val colors = EmberTheme.colors
     Text(
         text = label,
@@ -178,7 +178,7 @@ private fun QuickSelectLink(label: String, active: Boolean, onClick: () -> Unit)
 // still earns a visible, deliberate treatment: a glow-tinted background and border rather than
 // disappearing into the same flatness as an unselected row.
 @Composable
-private fun RecipientRow(
+internal fun RecipientRow(
     friend: FriendSummaryDto,
     isSelected: Boolean,
     onClick: () -> Unit,

@@ -21,7 +21,11 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/photos")
-class PhotosController(private val photoService: PhotoService) {
+class PhotosController(
+    private val photoService: PhotoService,
+    // Reaction feature disabled — see PhotoReactionService's own comment.
+    // private val photoReactionService: PhotoReactionService,
+) {
 
     @PostMapping(consumes = ["multipart/form-data"])
     fun upload(
@@ -52,4 +56,16 @@ class PhotosController(private val photoService: PhotoService) {
         photoService.markSeen(me.id, photoId)
         return ResponseEntity.noContent().build()
     }
+
+    // Reaction endpoint disabled — see PhotoReactionService's own comment.
+    // /** PUT, not POST — this sets the caller's *current* reaction to [request.emoji] (toggling
+    //  * it off if it's already that), so calling it again with the same body is idempotent,
+    //  * unlike upload/markSeen which each represent a one-time event. */
+    // @PutMapping("/{photoId}/reaction")
+    // fun setReaction(
+    //     @AuthenticationPrincipal me: AuthenticatedUser,
+    //     @PathVariable photoId: UUID,
+    //     @RequestBody request: SetReactionRequest,
+    // ): SetReactionResponse =
+    //     SetReactionResponse(myReaction = photoReactionService.setReaction(photoId, me.id, request.emoji))
 }

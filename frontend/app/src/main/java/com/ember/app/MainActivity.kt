@@ -72,6 +72,8 @@ import com.ember.app.ui.profile.MyProfileScreen
 import com.ember.app.ui.profile.MyProfileViewModel
 import com.ember.app.ui.settings.EmberGoldScreen
 import com.ember.app.ui.settings.SettingsScreen
+import com.ember.app.ui.settings.WidgetSettingsScreen
+import com.ember.app.ui.settings.WidgetSettingsViewModel
 import com.ember.app.ui.theme.EmberAppTheme
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.ThemeKey
@@ -80,6 +82,7 @@ import com.ember.app.ui.theme.ThemeViewModel
 import com.ember.app.widget.EmberWidget
 import com.ember.app.widget.WidgetPhotoStore
 import com.ember.app.widget.WidgetPhotoSync
+import com.ember.app.widget.WidgetPreferenceStore
 import com.ember.app.widget.WidgetUpdateWorker
 import androidx.glance.appwidget.updateAll
 import com.google.firebase.messaging.FirebaseMessaging
@@ -95,7 +98,7 @@ import kotlinx.coroutines.tasks.await
  * so back navigation can pop just the nested screen without losing which page you were on.
  * Camera is NOT one of these any more — it's a swipeable page of the main pager, same as Home
  * or Friends, not a modal reached from a button. */
-private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD }
+private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS }
 
 /** The unified pager's page order — left to right, matching the bottom nav's own visual layout
  * (Home, Friends, [Camera in the center], Activity, Settings). Memories is no longer a page of
@@ -202,7 +205,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeViewModel: ThemeViewModel = viewModel(
                 factory = viewModelFactory {
-                    initializer { ThemeViewModel(themePreferenceStore) }
+                    initializer { ThemeViewModel(themePreferenceStore, subscriptionRepository) }
                 },
             )
             // Non-null only while ThemeScreen is being browsed with an unapplied pick staged —
@@ -229,6 +232,16 @@ class MainActivity : ComponentActivity() {
                 var nestedScreen by remember { mutableStateOf<NestedScreen?>(null) }
                 var selectedProfileSubject by remember { mutableStateOf<ProfileSubject?>(null) }
                 val appContext = LocalContext.current
+
+                // One shared instance — read reactively for the Settings badge below, written
+                // once per session by the Gold-status LaunchedEffect further down, and reused by
+                // onSignOut's own cleanup, rather than each site constructing its own.
+                val widgetPreferenceStore = remember { WidgetPreferenceStore(applicationContext) }
+                // Mirrors what gets written into widgetPreferenceStore's own cached Gold status
+                // (see that LaunchedEffect's doc comment) — kept as a plain Compose state too so
+                // Settings can show a real "Gold"/"Free" badge without re-reading DataStore itself.
+                var isGoldMember by remember { mutableStateOf(false) }
+                val widgetFeaturedFriendIds by widgetPreferenceStore.featuredFriendIds.collectAsState(initial = emptySet())
 
                 // Bars themselves are fully transparent (set once, in onCreate) — the only thing
                 // that needs updating per-recomposition is which set of icons (light content for
@@ -282,11 +295,27 @@ class MainActivity : ComponentActivity() {
                     photoRepository.clearCache()
                     friendRepository.clearCache()
                     activityRepository.clearCache()
-                    // The widget reads its cached photo independent of sign-in state — without
-                    // this, a friend's private photo (and their name) keeps rendering on the
-                    // home screen indefinitely after "signing out."
+                    subscriptionRepository.clearCache()
+                    // Persisted to disk (see SubscriptionRepository.lastKnownIsActive), so it
+                    // needs its own explicit clear here too — otherwise a different account
+                    // signing in offline on this device would inherit the previous account's
+                    // last-confirmed Gold status instead of defaulting to false like any other
+                    // brand-new session.
+                    coroutineScope.launch { subscriptionRepository.clearLastKnownStatus() }
+                    // Theme has no backend representation — it's a purely local, device-scoped
+                    // preference (see ThemePreferenceStore.clear's own doc comment) — without
+                    // this, a different account signing in on this device would inherit whatever
+                    // theme (Gold-gated ones included) the previous account had chosen.
+                    coroutineScope.launch { themePreferenceStore.clear() }
+                    coroutineScope.launch { notificationPreferenceStore.clear() }
+                    // The widget reads its cached photo (and, for a Gold subscriber, their
+                    // featured-friend choice + cached Gold status) independent of sign-in state —
+                    // without this, a friend's private photo (and their name), or a previous
+                    // account's widget customization, keeps applying indefinitely after "signing
+                    // out."
                     coroutineScope.launch {
                         WidgetPhotoStore(applicationContext).clear()
+                        widgetPreferenceStore.clear()
                         EmberWidget().updateAll(applicationContext)
                     }
                     // All per-account ViewModels (home feed, friends list, login form, etc.)
@@ -318,6 +347,25 @@ class MainActivity : ComponentActivity() {
                     if (authenticated) {
                         val token = runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()
                         if (token != null) authRepository.registerDeviceToken(token)
+                    }
+                }
+
+                // Refreshes the widget's locally-cached Gold status once per authenticated
+                // session — the same one-shot-on-open shape CameraViewModel/ThemeViewModel
+                // already use for their own Gold checks, not a new pattern. WidgetPhotoSync reads
+                // this cached value instead of checking live on every sync (including the 6h
+                // background worker and incoming pushes), so a lapsed subscription self-heals the
+                // next time the app is opened rather than needing a network call on every widget
+                // update. Shares SubscriptionRepository's own TTL cache with those other checks,
+                // so this rarely costs a genuinely new network round trip on top of them.
+                LaunchedEffect(authenticated) {
+                    if (authenticated) {
+                        // isGoldMemberOrLastKnown(), not a bare getStatus() read — opening the app
+                        // offline must never overwrite this cache with false for a genuine
+                        // subscriber just because the live check couldn't reach the server (see
+                        // SubscriptionRepository's own doc comment on that function).
+                        isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
+                        widgetPreferenceStore.setCachedIsGoldMember(isGoldMember)
                     }
                 }
 
@@ -574,9 +622,25 @@ class MainActivity : ComponentActivity() {
                         nestedScreen == NestedScreen.THEME -> ThemeScreen(
                             viewModel = themeViewModel,
                             onPreview = { previewThemeKey = it },
+                            onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                         )
 
                         nestedScreen == NestedScreen.GOLD -> EmberGoldScreen()
+
+                        nestedScreen == NestedScreen.WIDGET_SETTINGS -> {
+                            val widgetSettingsViewModel: WidgetSettingsViewModel = viewModel(
+                                factory = viewModelFactory {
+                                    initializer {
+                                        WidgetSettingsViewModel(friendRepository, subscriptionRepository, widgetPreferenceStore)
+                                    }
+                                },
+                            )
+                            WidgetSettingsScreen(
+                                viewModel = widgetSettingsViewModel,
+                                onClose = { nestedScreen = null },
+                                onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
+                            )
+                        }
 
                         nestedScreen == NestedScreen.FIND_PEOPLE -> {
                             val findPeopleViewModel: FindPeopleViewModel = viewModel(
@@ -769,6 +833,12 @@ class MainActivity : ComponentActivity() {
                                                 username = homeViewModel.username,
                                                 profilePhotoUrl = homeViewModel.profilePhotoUrl,
                                                 currentTheme = themeViewModel.selectedTheme,
+                                                isGoldMember = isGoldMember,
+                                                widgetBadge = if (widgetFeaturedFriendIds.isEmpty()) {
+                                                    "Anyone"
+                                                } else {
+                                                    "${widgetFeaturedFriendIds.size} friend${if (widgetFeaturedFriendIds.size == 1) "" else "s"}"
+                                                },
                                                 notificationsEnabled = notificationsEnabled,
                                                 onNotificationsChange = { enabled ->
                                                     coroutineScope.launch { notificationPreferenceStore.save(enabled) }
@@ -777,6 +847,7 @@ class MainActivity : ComponentActivity() {
                                                 onProfileClick = { nestedScreen = NestedScreen.PROFILE },
                                                 onThemeClick = { nestedScreen = NestedScreen.THEME },
                                                 onGoldClick = { nestedScreen = NestedScreen.GOLD },
+                                                onWidgetClick = { nestedScreen = NestedScreen.WIDGET_SETTINGS },
                                                 onSignOut = onSignOut,
                                                 hazeState = hazeState,
                                             )

@@ -19,11 +19,14 @@ import java.time.ZoneOffset
 import java.util.UUID
 
 private const val RECENT_PHOTOS_LIMIT = 20
+// Reaction feature disabled — see PhotoReactionService's own comment.
+// private const val RECENT_REACTIONS_LIMIT = 20
 
 @Service
 class ActivityService(
     private val friendshipRepository: FriendshipRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
+    // private val photoReactionRepository: PhotoReactionRepository,
     private val userRepository: UserRepository,
     private val r2StorageService: R2StorageService,
     private val cacheManager: CacheManager,
@@ -101,6 +104,19 @@ class ActivityService(
             )
             i = j
         }
+
+        // Reaction feature disabled — see PhotoReactionService's own comment.
+        // photoReactionRepository.findRecentReactionsReceived(userId, RECENT_REACTIONS_LIMIT).forEach { row ->
+        //     events += ActivityEvent(
+        //         type = ActivityEventType.PHOTO_REACTION,
+        //         actorId = row.reactorId,
+        //         actorDisplayName = row.reactorDisplayName,
+        //         actorProfilePhotoUrl = row.reactorProfilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
+        //         message = "${row.reactorDisplayName} reacted ${row.emoji} to your photo",
+        //         createdAt = row.createdAt,
+        //         photoUrl = r2StorageService.publicUrl(row.photoStorageKey),
+        //     )
+        // }
 
         val pending = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.PENDING)
         pending.filter { it.addressee.id == userId }.forEach { friendship ->

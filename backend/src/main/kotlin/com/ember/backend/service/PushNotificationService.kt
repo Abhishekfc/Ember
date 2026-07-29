@@ -56,6 +56,7 @@ class PushNotificationService(
     fun notifyNewPhoto(
         photoId: UUID,
         photoUrl: String,
+        senderId: UUID,
         senderDisplayName: String,
         createdAt: Instant,
         recipientUserIds: List<UUID>,
@@ -68,6 +69,7 @@ class PushNotificationService(
             .putData("type", "NEW_PHOTO")
             .putData("photoId", photoId.toString())
             .putData("photoUrl", photoUrl)
+            .putData("senderId", senderId.toString())
             .putData("senderName", senderDisplayName)
             .putData("createdAt", createdAt.toString())
             .setAndroidConfig(AndroidConfig.builder().setPriority(AndroidConfig.Priority.HIGH).build())
@@ -102,6 +104,15 @@ class PushNotificationService(
             type = "FRIEND_REQUEST_ACCEPTED",
             recipientUserId = recipientUserId,
         )
+
+    // Reaction feature disabled — see PhotoReactionService's own comment.
+    // fun notifyPhotoReaction(reactorDisplayName: String, emoji: String, recipientUserId: UUID) =
+    //     sendSimpleNotification(
+    //         title = "New reaction",
+    //         body = "$reactorDisplayName reacted $emoji to your photo",
+    //         type = "PHOTO_REACTION",
+    //         recipientUserId = recipientUserId,
+    //     )
 
     private fun sendSimpleNotification(title: String, body: String, type: String, recipientUserId: UUID) {
         val app = firebaseApp ?: return
