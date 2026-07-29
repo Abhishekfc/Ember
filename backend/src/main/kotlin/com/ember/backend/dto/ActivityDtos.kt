@@ -3,6 +3,10 @@ package com.ember.backend.dto
 import java.time.Instant
 import java.util.UUID
 
+// PHOTO_REACTION was added for the reaction feature (now disabled, see PhotoReactionService's
+// own comment) and deliberately left out of this enum again — the Android client's own
+// ActivityEventType enum doesn't have that case, and since nothing can produce a PHOTO_REACTION
+// event with the feature disabled, there's no reason to reintroduce the mismatch risk.
 enum class ActivityEventType { PHOTO_RECEIVED, STREAK_EXPIRING, REQUEST_ACCEPTED, REQUEST_INCOMING }
 
 data class ActivityEvent(

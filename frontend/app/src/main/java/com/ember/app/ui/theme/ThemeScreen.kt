@@ -56,6 +56,7 @@ import com.ember.app.ui.theme.PublicSansFontFamily
 fun ThemeScreen(
     viewModel: ThemeViewModel,
     onPreview: (ThemeKey?) -> Unit,
+    onUpgradeToGold: () -> Unit,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -104,6 +105,7 @@ fun ThemeScreen(
                 ThemeChip(
                     option = option,
                     isSelected = option == pendingTheme,
+                    isGoldMember = viewModel.isGoldMember,
                     onClick = {
                         pendingTheme = option
                         onPreview(option)
@@ -112,29 +114,44 @@ fun ThemeScreen(
             }
         }
 
-        val canApply = pendingTheme != viewModel.selectedTheme
+        // Staging/previewing any theme (tapping a chip, above) stays free for everyone, locked or
+        // not — a harmless "see what it looks like" that never persists anything, and the closest
+        // thing to a try-before-you-buy moment for the Gold themes. The gate is here instead, on
+        // actually applying one: a locked theme with no subscription swaps this button's own
+        // label/action to send you to Ember Gold rather than silently doing nothing or, worse,
+        // applying anyway.
+        val needsUpgrade = pendingTheme.locked && !viewModel.isGoldMember
+        val canApply = pendingTheme != viewModel.selectedTheme && !needsUpgrade
         val buttonSizePx = Size(300f, 52f)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 16.dp)
                 .background(
-                    if (canApply) cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx) else SolidColor(colors.elevatedPanel),
+                    if (canApply || needsUpgrade) cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx) else SolidColor(colors.elevatedPanel),
                     EmberRadii.buttonShape,
                 )
-                .clickable(enabled = canApply) {
-                    viewModel.selectTheme(pendingTheme)
-                    onPreview(null)
+                .clickable(enabled = canApply || needsUpgrade) {
+                    if (needsUpgrade) {
+                        onUpgradeToGold()
+                    } else {
+                        viewModel.selectTheme(pendingTheme)
+                        onPreview(null)
+                    }
                 }
                 .padding(vertical = 15.dp),
             horizontalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = if (canApply) "Apply theme" else "Applied",
+                text = when {
+                    needsUpgrade -> "Get Ember Gold"
+                    canApply -> "Apply theme"
+                    else -> "Applied"
+                },
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (canApply) colors.accentText else colors.mutedDim,
+                color = if (canApply || needsUpgrade) colors.accentText else colors.mutedDim,
             )
         }
     }
@@ -144,6 +161,7 @@ fun ThemeScreen(
 private fun ThemeChip(
     option: ThemeKey,
     isSelected: Boolean,
+    isGoldMember: Boolean,
     onClick: () -> Unit,
 ) {
     val activeColors = EmberTheme.colors
@@ -168,7 +186,9 @@ private fun ThemeChip(
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            if (option.locked) {
+            // Only an *inaccessible* Gold theme gets the padlock — a confirmed subscriber sees
+            // every theme the same way, with nothing left implying they still don't have it.
+            if (option.locked && !isGoldMember) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)

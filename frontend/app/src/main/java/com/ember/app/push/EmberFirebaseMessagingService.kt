@@ -54,6 +54,7 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
         if (message.data["type"] != "NEW_PHOTO") return
         val photoId = message.data["photoId"] ?: return
         val photoUrl = message.data["photoUrl"] ?: return
+        val senderId = message.data["senderId"] ?: return
         val senderName = message.data["senderName"] ?: return
         val createdAt = message.data["createdAt"] ?: return
 
@@ -62,8 +63,10 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
             // Updates the widget directly from the payload — no feed refetch needed for that —
             // and separately pings any *live* HomeViewModel to do its own real refetch, which
             // only ever updates syncedFeedItems (see HomeViewModel), never the visible browsing
-            // session, so this can't interrupt someone mid-swipe through Home.
-            WidgetPhotoSync.syncFromPush(app, photoId = photoId, photoUrl = photoUrl, senderName = senderName, createdAtIso = createdAt)
+            // session, so this can't interrupt someone mid-swipe through Home. senderId is what
+            // lets the widget honor a Gold subscriber's featured-friend choice on this path too —
+            // see WidgetPhotoSync.syncFromPush's own doc comment.
+            WidgetPhotoSync.syncFromPush(app, photoId = photoId, photoUrl = photoUrl, senderId = senderId, senderName = senderName, createdAtIso = createdAt)
             app.notifyNewPhotoPush()
         }
         showNewPhotoNotification(senderName)

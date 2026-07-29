@@ -33,6 +33,8 @@ private const val MAX_RECIPIENTS_PER_PHOTO = 50
 class PhotoService(
     private val photoRepository: PhotoRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
+    // Reaction feature disabled — see PhotoReactionService's own comment.
+    // private val photoReactionRepository: PhotoReactionRepository,
     private val friendshipRepository: FriendshipRepository,
     private val userRepository: UserRepository,
     private val r2StorageService: R2StorageService,
@@ -106,6 +108,7 @@ class PhotoService(
         pushNotificationService.notifyNewPhoto(
             photoId = photo.id,
             photoUrl = r2StorageService.publicUrl(storageKey),
+            senderId = sender.id,
             senderDisplayName = sender.displayName,
             createdAt = photo.createdAt,
             recipientUserIds = photoRecipients.map { it.recipient.id },
@@ -181,6 +184,14 @@ class PhotoService(
             photoRecipientRepository.findExchangeTimestampsBatch(userId, rowsBySender.keys)
                 .groupBy({ it.otherPartyId }, { it.createdAt })
         }
+        // Reaction feature disabled — this batched "my reaction per photo" lookup (see
+        // PhotoReactionService's own comment) is commented out alongside it.
+        // val myReactionByPhotoId = if (rows.isEmpty()) {
+        //     emptyMap()
+        // } else {
+        //     photoReactionRepository.findMyReactions(userId, rows.map { it.photoId })
+        //         .associate { it.photoId to it.emoji }
+        // }
 
         val feed = rowsBySender.map { (senderId, senderRows) ->
             val exchangeTimestamps = timestampsBySender[senderId] ?: emptyList()

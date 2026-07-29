@@ -721,12 +721,15 @@ private fun PreviewControls(
                 .border(4.dp, colors.cream, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            // Looks (and is) disabled for the same reason a missing recipient does — briefly,
-            // right after tapping the shutter, capturedFile is still the instant preview
-            // snapshot rather than the real photo (see isRealCaptureReady's own doc comment) —
-            // reusing the exact same muted styling rather than a separate new "not ready yet"
-            // look for what's normally a near-instant window.
-            val canSend = hasRecipients && viewModel.isRealCaptureReady
+            // Color/icon reflect only whether there's someone to send to — not whether the real
+            // file has landed yet (viewModel.isRealCaptureReady). That real-capture guard still
+            // fully blocks the tap itself (both here and, belt-and-suspenders, inside
+            // sendCaptured() itself), it's just not something the button visibly flashes through:
+            // gating the *color* on it too briefly painted the button the muted/gray "disabled"
+            // look right after every single capture, then snapped to the theme gradient a moment
+            // later once the real file saved — a jarring flash rather than the instant, premium
+            // feel every other control on this screen already has.
+            val canSend = hasRecipients
             Box(
                 modifier = Modifier
                     .size(62.dp)
@@ -746,12 +749,16 @@ private fun PreviewControls(
             }
         }
 
-        // On the right, matching where flip-camera sat in CaptureControls — a bare icon (no
-        // background circle), sized up so it reads clearly without one, same treatment as every
-        // other icon on this screen now.
+        // Fixed to the same 46dp width as the gallery/flip RoundIconButtons in CaptureControls
+        // (and the balancing Spacer above) — Retake's icon+label content is narrower than that on
+        // its own, and letting the Column just wrap-content made its width differ from 46dp,
+        // which shifted this Row's total width vs. CaptureControls' and threw the centered send
+        // circle out of alignment with where the shutter had just been.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.clickable(enabled = !viewModel.isSending, onClick = viewModel::discardCapture),
+            modifier = Modifier
+                .width(46.dp)
+                .clickable(enabled = !viewModel.isSending, onClick = viewModel::discardCapture),
         ) {
             Icon(
                 Icons.Rounded.Replay,

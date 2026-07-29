@@ -43,6 +43,13 @@ class EmberWidget : GlanceAppWidget() {
             ?.let { BitmapFactory.decodeFile(it.absolutePath) }
         val snapshot = if (state != null && bitmap != null) state to bitmap else null
 
+        // Same effective-filter logic WidgetPhotoSync uses (cached Gold status, never a live
+        // check here either) — purely to pick the right empty-state copy below; an empty widget
+        // because a Gold subscriber's chosen friends haven't sent anything yet is a different,
+        // more specific situation than a brand new account that's never opened the app.
+        val preferenceStore = WidgetPreferenceStore(context)
+        val hasFeaturedFriends = preferenceStore.cachedIsGoldMember() && preferenceStore.currentFeaturedFriendIds().isNotEmpty()
+
         provideContent {
             Box(
                 modifier = GlanceModifier
@@ -87,14 +94,14 @@ class EmberWidget : GlanceAppWidget() {
                         }
                     }
                 } else {
-                    EmptyState()
+                    EmptyState(hasFeaturedFriends = hasFeaturedFriends)
                 }
             }
         }
     }
 
     @Composable
-    private fun EmptyState() {
+    private fun EmptyState(hasFeaturedFriends: Boolean) {
         Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
@@ -102,7 +109,11 @@ class EmberWidget : GlanceAppWidget() {
                     style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp, fontWeight = FontWeight.Medium),
                 )
                 Text(
-                    text = "Open the app to see friends' photos here",
+                    text = if (hasFeaturedFriends) {
+                        "Waiting for a photo from your chosen friends"
+                    } else {
+                        "Open the app to see friends' photos here"
+                    },
                     style = TextStyle(color = ColorProvider(Color(0xFFB9B2C9)), fontSize = 11.sp),
                 )
             }

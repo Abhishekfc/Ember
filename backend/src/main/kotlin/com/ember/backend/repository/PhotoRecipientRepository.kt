@@ -26,6 +26,10 @@ interface ExchangeTimestampRow {
 
 interface PhotoRecipientRepository : JpaRepository<PhotoRecipient, UUID> {
 
+    // Was the authorization check for the reaction feature (see PhotoReactionService.setReaction,
+    // commented out) — disabled alongside it rather than deleted.
+    // fun existsByPhoto_IdAndRecipient_Id(photoId: UUID, recipientId: UUID): Boolean
+
     /** Every photo received in the last [since] window, across all senders — used for the
      * Snapchat-style Home feed where a friend can have several photos to page through rather
      * than just their single latest one. */

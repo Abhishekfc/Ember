@@ -18,37 +18,88 @@ private const val TAG = "WidgetPhotoSync"
 
 /** Keeps the home-screen widget's cached photo in step with whatever the app itself just
  * fetched — called after [com.ember.app.ui.home.HomeViewModel] loads the feed. Never hits the
- * backend on its own: it only asks Coil for the bitmap behind a URL the app's own UI already
- * requested, which Coil serves from its memory/disk cache in the common case since the Home
- * screen just rendered that exact photo. */
+ * backend on its own for the feed itself: it only asks Coil for the bitmap behind a URL the
+ * app's own UI already requested, which Coil serves from its memory/disk cache in the common
+ * case since the Home screen just rendered that exact photo.
+ *
+ * A Gold subscriber can choose a set of friends to always feature (see [WidgetPreferenceStore]);
+ * everyone else (and a subscriber who hasn't chosen anyone) gets the original behavior — the
+ * single most recent photo across every friend. Whether that choice is honored is decided
+ * entirely from [WidgetPreferenceStore]'s locally-cached Gold status, not a live check here —
+ * see that class's own doc comment for why. */
 object WidgetPhotoSync {
 
     suspend fun sync(context: Context, feedItems: List<FeedItem>) {
-        val latest = feedItems
-            .mapNotNull { item -> item.photos.maxByOrNull { it.createdAt }?.let { item.displayName to it } }
-            .maxByOrNull { (_, photo) -> photo.createdAt }
+        val effectiveFriendIds = effectiveFeaturedFriendIds(context)
+        val candidates = if (effectiveFriendIds.isEmpty()) feedItems else feedItems.filter { it.friendId in effectiveFriendIds }
+
+        val latest = candidates
+            .mapNotNull { item -> item.photos.maxByOrNull { it.createdAt }?.let { photo -> Triple(item.friendId, item.displayName, photo) } }
+            .maxByOrNull { (_, _, photo) -> photo.createdAt }
             ?: return
 
-        val (senderName, photo) = latest
-        applyLatestPhoto(context, senderName = senderName, photoId = photo.photoId, createdAtIso = photo.createdAt, photoUrl = photo.photoUrl)
+        val (friendId, senderName, photo) = latest
+        applyLatestPhoto(
+            context,
+            friendId = friendId,
+            senderName = senderName,
+            photoId = photo.photoId,
+            createdAtIso = photo.createdAt,
+            photoUrl = photo.photoUrl,
+            effectiveFriendIds = effectiveFriendIds,
+        )
     }
 
     /** Called directly from EmberFirebaseMessagingService's data-only NEW_PHOTO push — unlike
      * [sync], this never touches the network for anything but the image bytes themselves: the
-     * push payload already carries everything else needed (sender name, photo id, timestamp,
-     * URL), so there's no feed refetch involved in updating the widget at all. */
-    suspend fun syncFromPush(context: Context, photoId: String, photoUrl: String, senderName: String, createdAtIso: String) {
-        applyLatestPhoto(context, senderName = senderName, photoId = photoId, createdAtIso = createdAtIso, photoUrl = photoUrl)
+     * push payload already carries everything else needed, so there's no feed refetch involved
+     * in updating the widget at all. [senderId] lets this honor the same featured-friend choice
+     * [sync] does — a push from someone who isn't currently featured is silently ignored rather
+     * than overriding the widget, exactly as if their photo just hadn't been the most recent one
+     * during a normal sync. */
+    suspend fun syncFromPush(context: Context, photoId: String, photoUrl: String, senderId: String, senderName: String, createdAtIso: String) {
+        val effectiveFriendIds = effectiveFeaturedFriendIds(context)
+        if (effectiveFriendIds.isNotEmpty() && senderId !in effectiveFriendIds) return
+
+        applyLatestPhoto(
+            context,
+            friendId = senderId,
+            senderName = senderName,
+            photoId = photoId,
+            createdAtIso = createdAtIso,
+            photoUrl = photoUrl,
+            effectiveFriendIds = effectiveFriendIds,
+        )
     }
 
-    private suspend fun applyLatestPhoto(context: Context, senderName: String, photoId: String, createdAtIso: String, photoUrl: String) {
+    /** The featured-friend set only actually applies while genuinely subscribed — a lapsed
+     * subscription (cachedIsGoldMember false, refreshed once per app open rather than here) falls
+     * back to the same empty-set "anyone" behavior a free account always had. */
+    private suspend fun effectiveFeaturedFriendIds(context: Context): Set<String> {
+        val store = WidgetPreferenceStore(context)
+        val isGoldMember = store.cachedIsGoldMember()
+        return if (isGoldMember) store.currentFeaturedFriendIds() else emptySet()
+    }
+
+    private suspend fun applyLatestPhoto(
+        context: Context,
+        friendId: String,
+        senderName: String,
+        photoId: String,
+        createdAtIso: String,
+        photoUrl: String,
+        effectiveFriendIds: Set<String>,
+    ) {
         val store = WidgetPhotoStore(context)
         val current = store.current()
-        // Guards against both an exact repeat (FCM's at-least-once delivery can redeliver the
-        // same push) and an out-of-order arrival (two pushes landing out of sequence shouldn't
-        // let the older one clobber a newer one already applied) — ISO-8601 UTC timestamps
-        // compare correctly as plain strings.
-        val isNewer = current == null || (photoId != current.photoId && createdAtIso >= current.createdAtIso)
+        // Whatever's currently cached might no longer qualify at all — the user could have just
+        // narrowed their featured-friend selection to exclude whoever that photo was from. A
+        // disqualified photo must be replaced regardless of timestamp; only when the cached photo
+        // still qualifies does the normal "is this candidate actually newer" comparison apply
+        // (guards against both an exact repeat — FCM's at-least-once delivery can redeliver the
+        // same push — and an out-of-order arrival).
+        val currentStillQualifies = current != null && (effectiveFriendIds.isEmpty() || current.friendId in effectiveFriendIds)
+        val isNewer = !currentStillQualifies || (photoId != current!!.photoId && createdAtIso >= current.createdAtIso)
         if (isNewer) {
             val bitmap = fetchBitmap(context, photoUrl)
             if (bitmap != null) {
@@ -61,6 +112,7 @@ object WidgetPhotoSync {
                     store.save(
                         WidgetPhotoState(
                             photoId = photoId,
+                            friendId = friendId,
                             senderName = senderName,
                             createdAtIso = createdAtIso,
                             localFilePath = file.absolutePath,

@@ -238,9 +238,13 @@ private fun NavItem(
     Box(
         // 44dp is the accessibility touch-target floor — the previous 38dp-wide, 8dp-padded
         // box rendered at only 36dp tall, under that minimum.
+        //
+        // Deliberately no .clip(CircleShape) here (indication = null means there's no ripple for
+        // it to bound anyway) — the badge below sits at this Box's TopEnd corner, and a corner
+        // falls outside a circle inscribed in the same bounds, so that clip was silently slicing
+        // the badge down to the thin crescent that was the whole bug report.
         modifier = Modifier
             .size(44.dp)
-            .clip(CircleShape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigate(destination) },
         contentAlignment = Alignment.Center,
     ) {

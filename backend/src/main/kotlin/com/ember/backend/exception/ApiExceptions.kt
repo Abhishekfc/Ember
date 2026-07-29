@@ -17,6 +17,9 @@ class ResourceNotFoundException(message: String) : ApiException(HttpStatus.NOT_F
 
 class InvalidFriendRequestException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
 
+// Reaction feature disabled — see PhotoReactionService's own comment.
+// class InvalidReactionException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
+
 class SubscriptionVerificationException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
 
 class PurchaseTokenAlreadyClaimedException :
