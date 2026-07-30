@@ -1,5 +1,6 @@
 package com.ember.app.ui.camera
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -19,7 +20,6 @@ import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
 import com.ember.app.data.SubscriptionRepository
 import com.ember.app.data.remote.dto.FriendSummaryDto
-import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,7 +44,14 @@ class CameraViewModel(
         private set
     var selectedRecipientIds by mutableStateOf<Set<String>>(emptySet())
         private set
-    var isSending by mutableStateOf(false)
+
+    /** True only for the brief local step (baking the caption in, moving the file into durable
+     * storage) between tapping Send and it actually being handed to [PendingSendWorker] — purely
+     * a double-tap guard for that short window, not a "network in flight" flag any more. The
+     * actual upload happens in the background regardless of whether this screen is even open;
+     * see [PendingSendWorker.TAG_PENDING_SEND], which CameraScreen observes directly from
+     * WorkManager to show its own "Sending…" indicator. */
+    var isQueuingSend by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
@@ -218,41 +225,63 @@ class CameraViewModel(
         captionText = ""
     }
 
-    fun sendCaptured(onSuccess: (PhotoUploadResponseDto) -> Unit) {
+    /** Queues the captured photo for background sending and returns immediately — this no
+     * longer waits on (or even needs) a live network connection, and never blocks the screen.
+     * [PendingSendWorker] does the actual upload whenever the device next has connectivity, even
+     * if the app is later closed. [context] is used transiently (moving a file, enqueuing
+     * WorkManager) and never retained — the caller passes `context.applicationContext`, not an
+     * Activity Context, since this can outlive the screen that called it. */
+    fun sendCaptured(context: Context, onQueued: () -> Unit) {
         // Guards the top of the function itself, not just the button's own `enabled` — enabled
-        // only takes effect once Compose recomposes after isSending flips true, so a fast
-        // double-tap landing inside that window could otherwise launch this twice and send the
-        // same photo to every recipient twice over. isRealCaptureReady is the same idea for the
-        // instant preview-snapshot stage — without it, a send fired in the brief window before
-        // the real capture lands would upload the temporary frame instead.
-        if (isSending || !isRealCaptureReady) return
+        // only takes effect once Compose recomposes after isQueuingSend flips true, so a fast
+        // double-tap landing inside that window could otherwise queue the same photo twice.
+        // isRealCaptureReady is the same idea for the instant preview-snapshot stage — without
+        // it, a send fired in the brief window before the real capture lands would queue the
+        // temporary frame instead.
+        if (isQueuingSend || !isRealCaptureReady) return
         val file = capturedFile ?: return
         if (selectedRecipientIds.isEmpty()) {
             errorMessage = "Select at least one friend first"
             return
         }
+        val recipientIds = selectedRecipientIds.toList()
         viewModelScope.launch {
-            isSending = true
+            isQueuingSend = true
             errorMessage = null
-            val toSend = withContext(Dispatchers.Default) {
+            val baked = withContext(Dispatchers.Default) {
                 runCatching { bakeCaptionIntoPhoto(file, captionText) }.getOrDefault(file)
             }
-            photoRepository.uploadPhoto(toSend, selectedRecipientIds.toList()).fold(
-                onSuccess = { response ->
-                    // Cleans up the cache file(s) now that they've actually been sent — this
-                    // used to only drop the in-memory reference, leaving every sent photo (plus
-                    // its captioned copy, when there was a caption) on disk forever.
-                    file.delete()
-                    if (toSend != file) toSend.delete()
-                    capturedFile = null
-                    captionText = ""
-                    onSuccess(response)
-                },
-                onFailure = { errorMessage = it.message ?: "Couldn't send your photo" },
-            )
-            isSending = false
+            val queuedFile = withContext(Dispatchers.IO) {
+                runCatching { moveToPendingSendStorage(context, baked) }.getOrNull()
+            }
+            // The captioned copy (if there was one) supersedes the original the instant baking
+            // succeeds, same as the old inline-upload path did — nothing else still needs it.
+            if (baked != file) file.delete()
+            if (queuedFile == null) {
+                errorMessage = "Couldn't queue your photo — please try again"
+                isQueuingSend = false
+                return@launch
+            }
+            PendingSendWorker.enqueue(context, queuedFile, recipientIds)
+            capturedFile = null
+            captionText = ""
+            isQueuingSend = false
+            onQueued()
         }
     }
+}
+
+/** Moves [source] out of the cache dir (which the OS can clear at any moment) into a durable
+ * spot under [Context.getFilesDir] that survives until [PendingSendWorker] actually uploads and
+ * deletes it — a photo waiting on connectivity, possibly for a long time, can't be left
+ * somewhere the system is free to reclaim. Copy-then-delete rather than `File.renameTo`, which
+ * isn't guaranteed to work across different storage areas on every Android version/device. */
+private fun moveToPendingSendStorage(context: Context, source: File): File {
+    val dir = File(context.filesDir, "pending_sends").apply { mkdirs() }
+    val dest = File(dir, source.name)
+    source.copyTo(dest, overwrite = true)
+    source.delete()
+    return dest
 }
 
 /** Draws the caption onto the photo itself so recipients see it everywhere (feed, widget) with

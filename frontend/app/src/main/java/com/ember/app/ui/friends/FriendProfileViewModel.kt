@@ -6,7 +6,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ember.app.data.FriendRepository
+import com.ember.app.data.SafetyRepository
 import com.ember.app.data.remote.dto.FriendSummaryDto
+import com.ember.app.data.remote.dto.ReportReason
 import kotlinx.coroutines.launch
 
 // Matches RECIPIENT_PICKER_FRIENDS_LIMIT (CameraViewModel/RecipientPickerViewModel) — same
@@ -16,6 +18,7 @@ private const val FULL_FRIENDS_LOOKUP_LIMIT = 500
 
 class FriendProfileViewModel(
     private val repository: FriendRepository,
+    private val safetyRepository: SafetyRepository,
     initialSubject: ProfileSubject,
 ) : ViewModel() {
 
@@ -32,6 +35,15 @@ class FriendProfileViewModel(
     var isSendingRequest by mutableStateOf(false)
         private set
     var isCancelling by mutableStateOf(false)
+        private set
+    var isBlocking by mutableStateOf(false)
+        private set
+    var isReporting by mutableStateOf(false)
+        private set
+    /** Set only on a successful report — the screen shows a brief confirmation off this rather
+     * than a toast, then the caller clears it once shown. Separate from [errorMessage] since
+     * a report failure and a report success both need their own distinct, one-shot message. */
+    var reportSubmitted by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
@@ -166,5 +178,41 @@ class FriendProfileViewModel(
             )
             isCancelling = false
         }
+    }
+
+    /** Blocking always leaves the profile — there's nothing left to show once it succeeds (the
+     * backend also removes any friendship/pending request between the two, see BlockService's
+     * own doc comment), so [onBlocked] mirrors [removeFriend]'s own "leave the screen" callback
+     * rather than updating [subject] in place the way [togglePin] does. */
+    fun blockUser(onBlocked: () -> Unit) {
+        viewModelScope.launch {
+            isBlocking = true
+            errorMessage = null
+            safetyRepository.blockUser(subject.userId).fold(
+                onSuccess = { onBlocked() },
+                onFailure = { errorMessage = it.message ?: "Couldn't block this person" },
+            )
+            isBlocking = false
+        }
+    }
+
+    /** Stays on the profile, unlike [blockUser] — reporting doesn't change the relationship at
+     * all, it's purely a moderation record (see ReportService's own doc comment), so there's
+     * nothing here that needs the screen to close. [reportSubmitted] drives a brief confirmation
+     * the screen shows and then clears via [dismissReportConfirmation]. */
+    fun reportUser(reason: ReportReason, details: String? = null) {
+        viewModelScope.launch {
+            isReporting = true
+            errorMessage = null
+            safetyRepository.reportUser(subject.userId, reason, details).fold(
+                onSuccess = { reportSubmitted = true },
+                onFailure = { errorMessage = it.message ?: "Couldn't submit report" },
+            )
+            isReporting = false
+        }
+    }
+
+    fun dismissReportConfirmation() {
+        reportSubmitted = false
     }
 }

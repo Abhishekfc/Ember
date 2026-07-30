@@ -15,6 +15,7 @@ import com.ember.app.data.ActivityRepository
 import com.ember.app.data.AuthRepository
 import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
+import com.ember.app.data.SafetyRepository
 import com.ember.app.data.SubscriptionRepository
 import com.ember.app.data.UserRepository
 import com.ember.app.data.local.LocalListCache
@@ -63,6 +64,7 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
     val activityRepository by lazy { ActivityRepository(networkModule.api) }
     val userRepository by lazy { UserRepository(networkModule.api) }
     val subscriptionRepository by lazy { SubscriptionRepository(networkModule.api, this) }
+    val safetyRepository by lazy { SafetyRepository(networkModule.api) }
     val themePreferenceStore by lazy { ThemePreferenceStore(this) }
     val notificationPreferenceStore by lazy { NotificationPreferenceStore(this) }
     val localListCache by lazy { LocalListCache(this) }

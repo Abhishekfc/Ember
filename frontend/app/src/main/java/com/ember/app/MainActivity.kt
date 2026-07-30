@@ -18,6 +18,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -56,6 +57,8 @@ import com.ember.app.ui.camera.CameraViewModel
 import com.ember.app.ui.camera.RecipientPickerScreen
 import com.ember.app.ui.camera.RecipientPickerViewModel
 import com.ember.app.ui.components.BottomNavDock
+import com.ember.app.ui.components.FALLBACK_NAV_DOCK_HEIGHT_DP
+import com.ember.app.ui.components.LocalNavDockHeight
 import com.ember.app.ui.components.NavDestination
 import com.ember.app.ui.friends.FindPeopleScreen
 import com.ember.app.ui.friends.FindPeopleViewModel
@@ -70,6 +73,8 @@ import com.ember.app.ui.home.InitialHomeCache
 import com.ember.app.ui.home.MEMORIES_REVEAL_SCROLL_DP
 import com.ember.app.ui.profile.MyProfileScreen
 import com.ember.app.ui.profile.MyProfileViewModel
+import com.ember.app.ui.settings.BlockedUsersScreen
+import com.ember.app.ui.settings.BlockedUsersViewModel
 import com.ember.app.ui.settings.EmberGoldScreen
 import com.ember.app.ui.settings.SettingsScreen
 import com.ember.app.ui.settings.WidgetSettingsScreen
@@ -98,7 +103,7 @@ import kotlinx.coroutines.tasks.await
  * so back navigation can pop just the nested screen without losing which page you were on.
  * Camera is NOT one of these any more — it's a swipeable page of the main pager, same as Home
  * or Friends, not a modal reached from a button. */
-private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS }
+private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS, BLOCKED_USERS }
 
 /** The unified pager's page order — left to right, matching the bottom nav's own visual layout
  * (Home, Friends, [Camera in the center], Activity, Settings). Memories is no longer a page of
@@ -142,6 +147,7 @@ class MainActivity : ComponentActivity() {
     private val activityRepository get() = emberApplication.activityRepository
     private val userRepository get() = emberApplication.userRepository
     private val subscriptionRepository get() = emberApplication.subscriptionRepository
+    private val safetyRepository get() = emberApplication.safetyRepository
     private val themePreferenceStore get() = emberApplication.themePreferenceStore
     private val notificationPreferenceStore get() = emberApplication.notificationPreferenceStore
     private val localListCache get() = emberApplication.localListCache
@@ -396,6 +402,12 @@ class MainActivity : ComponentActivity() {
                     // across every page, not something each screen renders for itself.
                     var isHomePhotoFocused by remember { mutableStateOf(false) }
 
+                    // Home's own real, measured header height — reported up so CameraScreen can
+                    // size its own header spacer against Home's real layout instead of a separate
+                    // guessed constant that has no way to stay in sync with it. See CameraScreen's
+                    // own call site below.
+                    var homeHeaderHeightPx by remember { mutableStateOf(0f) }
+
                     // Hoisted up from HomeScreen (rather than let it own its own rememberScrollState)
                     // so the nav dock — which lives outside HomeScreen entirely, alongside every
                     // other page — can read Home's live scroll position for the icon-morph below,
@@ -608,6 +620,8 @@ class MainActivity : ComponentActivity() {
                                     initializer {
                                         MyProfileViewModel(
                                             userRepository,
+                                            localListCache,
+                                            initialProfile = initialHomeCache.profile,
                                             onProfileUpdated = { profile ->
                                                 coroutineScope.launch { networkModule.tokenStore.saveDisplayName(profile.displayName) }
                                                 homeViewModel.applyProfileUpdate(profile)
@@ -639,6 +653,18 @@ class MainActivity : ComponentActivity() {
                                 viewModel = widgetSettingsViewModel,
                                 onClose = { nestedScreen = null },
                                 onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
+                            )
+                        }
+
+                        nestedScreen == NestedScreen.BLOCKED_USERS -> {
+                            val blockedUsersViewModel: BlockedUsersViewModel = viewModel(
+                                factory = viewModelFactory {
+                                    initializer { BlockedUsersViewModel(safetyRepository) }
+                                },
+                            )
+                            BlockedUsersScreen(
+                                viewModel = blockedUsersViewModel,
+                                onClose = { nestedScreen = null },
                             )
                         }
 
@@ -686,7 +712,7 @@ class MainActivity : ComponentActivity() {
                             val friendProfileViewModel: FriendProfileViewModel = viewModel(
                                 viewModelStoreOwner = profileViewModelStoreOwner,
                                 factory = viewModelFactory {
-                                    initializer { FriendProfileViewModel(friendRepository, subject) }
+                                    initializer { FriendProfileViewModel(friendRepository, safetyRepository, subject) }
                                 },
                             )
                             FriendProfileScreen(
@@ -728,6 +754,18 @@ class MainActivity : ComponentActivity() {
                                     nestedScreen = null
                                     selectedProfileSubject = null
                                 },
+                                onBlocked = {
+                                    // Same local-list update as onRemoved above — blocking also
+                                    // deletes any existing friendship server-side (BlockService's
+                                    // own doc comment), and a pending request between the two is
+                                    // just as invalid to keep showing once blocked.
+                                    subject.friendshipId?.let {
+                                        friendsViewModel.removeFriendLocally(it)
+                                        friendsViewModel.removePendingRequestLocally(it)
+                                    }
+                                    nestedScreen = null
+                                    selectedProfileSubject = null
+                                },
                             )
                         }
 
@@ -751,6 +789,15 @@ class MainActivity : ComponentActivity() {
 
                         else -> {
                             Box(modifier = Modifier.fillMaxSize()) {
+                                // The dock's own real measured height (footprint + true system
+                                // nav-bar inset on this device) — starts at a generous guess for
+                                // the single frame before BottomNavDock's own onSizeChanged below
+                                // first fires, then is never guessed again. Screens read this via
+                                // LocalNavDockHeight instead of a fixed dp constant, which is what
+                                // still left the Settings screen's Log out button partly covered
+                                // by the dock on at least one real device.
+                                var navDockHeight by remember { mutableStateOf(FALLBACK_NAV_DOCK_HEIGHT_DP) }
+                                CompositionLocalProvider(LocalNavDockHeight provides navDockHeight) {
                                 HorizontalPager(
                                     state = pagerState,
                                     modifier = Modifier.fillMaxSize(),
@@ -781,6 +828,7 @@ class MainActivity : ComponentActivity() {
                                             onDismissFocus = { isHomePhotoFocused = false },
                                             scrollState = homeScrollState,
                                             isActive = pagerState.settledPage == PAGE_HOME,
+                                            onHeaderHeightChanged = { homeHeaderHeightPx = it },
                                         )
 
                                         PAGE_FRIENDS -> FriendsScreen(
@@ -802,20 +850,22 @@ class MainActivity : ComponentActivity() {
                                             viewModel = cameraViewModel,
                                             onOpenRecipientPicker = { showRecipientPicker = true },
                                             onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
-                                            onSent = { response ->
-                                                // Shows up in the Memories grid instantly,
-                                                // rather than waiting on loadMemories()'s own
-                                                // round trip below (which still runs, in the
-                                                // background, to reconcile with the server).
-                                                homeViewModel.prependMemory(
-                                                    photoId = response.photoId,
-                                                    photoUrl = response.url,
-                                                    createdAt = response.createdAt,
-                                                )
-                                                coroutineScope.launch { pagerState.animateScrollToPage(PAGE_HOME) }
+                                            onSent = {
+                                                // Fires the instant the photo is queued, not once
+                                                // it's actually uploaded — PendingSendWorker now
+                                                // sends it in the background (possibly much later,
+                                                // if there's no connectivity yet). Deliberately
+                                                // stays on Camera rather than navigating to Home —
+                                                // CameraScreen's own header shows Sending/Sent
+                                                // directly, so there's no need to leave the page
+                                                // to see the outcome. These two still refresh right
+                                                // away regardless, quietly in the background, so
+                                                // Home/Memories are ready with the real photo by
+                                                // the time the user does swipe over there.
                                                 homeViewModel.loadFeed()
                                                 homeViewModel.loadMemories()
                                             },
+                                            homeHeaderHeightPx = homeHeaderHeightPx,
                                         )
 
                                         PAGE_ACTIVITY -> ActivityScreen(
@@ -848,6 +898,7 @@ class MainActivity : ComponentActivity() {
                                                 onThemeClick = { nestedScreen = NestedScreen.THEME },
                                                 onGoldClick = { nestedScreen = NestedScreen.GOLD },
                                                 onWidgetClick = { nestedScreen = NestedScreen.WIDGET_SETTINGS },
+                                                onBlockedUsersClick = { nestedScreen = NestedScreen.BLOCKED_USERS },
                                                 onSignOut = onSignOut,
                                                 hazeState = hazeState,
                                             )
@@ -890,7 +941,9 @@ class MainActivity : ComponentActivity() {
                                                 .coerceIn(0f, 1f)
                                         },
                                     hazeState = hazeState,
+                                    onHeightMeasured = { navDockHeight = it },
                                 )
+                                }
                             }
                         }
                     }

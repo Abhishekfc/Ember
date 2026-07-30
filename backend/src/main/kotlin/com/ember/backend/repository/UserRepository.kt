@@ -13,12 +13,23 @@ interface UserRepository : JpaRepository<User, UUID> {
     fun findByUsername(username: String): User?
     fun existsByUsername(username: String): Boolean
 
+    // Excludes either direction of a block (see BlockedUserRepository.existsBetween's own doc
+    // comment for why mutual, not one-directional) — a blocked user must not be findable by, or
+    // able to find, the person who blocked them. This is the only place that check needs to
+    // live: FriendProfileViewModel never fetches a specific user's profile on its own, it only
+    // ever reuses data from search/friends/pending list responses, so nobody reachable through
+    // any of those three has a way to view a profile they shouldn't.
     @Query(
         """
         select u from User u
         where u.id <> :selfId
         and (lower(u.username) like lower(concat('%', :query, '%'))
              or lower(u.displayName) like lower(concat('%', :query, '%')))
+        and not exists (
+            select 1 from BlockedUser b
+            where (b.blocker.id = :selfId and b.blocked.id = u.id)
+               or (b.blocker.id = u.id and b.blocked.id = :selfId)
+        )
         order by u.displayName asc
         """
     )

@@ -108,6 +108,11 @@ class PhotoRepository(private val api: EmberApi) {
         val body = response.body()
         if (response.isSuccessful && body != null) {
             Result.success(body)
+        } else if (response.code() == 401) {
+            // Distinguished the same way getFeed does above — PendingSendWorker (which can run
+            // long after the app that queued it is gone) needs to tell "session expired, stop
+            // retrying" apart from every other, possibly-transient failure shape.
+            Result.failure(UnauthorizedException())
         } else {
             val message = response.errorBody()?.string()?.let {
                 runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()

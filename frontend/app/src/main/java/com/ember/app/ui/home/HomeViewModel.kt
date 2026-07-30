@@ -409,20 +409,6 @@ class HomeViewModel(
         }
     }
 
-    /** Called immediately after a successful send (see MainActivity's `onSent`), right alongside
-     * the real [loadMemories] refetch that already ran there — this is purely so the just-sent
-     * photo appears in the grid instantly instead of waiting on that network round trip, not a
-     * replacement for it. The following [loadMemories] call overwrites the current month wholesale
-     * with the server's real state anyway, which already includes this same photo by then, so
-     * there's no lasting duplicate: this only ever matters for the brief window before that fetch
-     * lands. A no-op if the photo is somehow already present (defensive against the two racing
-     * either way). Always the real current month — a send can't be attributed to any other one. */
-    fun prependMemory(photoId: String, photoUrl: String, createdAt: String) {
-        val month = YearMonth.now()
-        val current = memoriesByMonth[month] ?: emptyList()
-        if (current.any { it.photoId == photoId }) return
-        memoriesByMonth[month] = listOf(MemoryPhotoDto(photoId = photoId, photoUrl = photoUrl, createdAt = createdAt)) + current
-    }
 }
 
 /** Parses an ISO-8601 instant string into the [YearMonth] it falls in, in local time — null for

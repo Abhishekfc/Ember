@@ -67,10 +67,13 @@ class GlobalExceptionHandler {
         )
     }
 
+    // Same reasoning as handleNotFound below — a malformed request body/param is always a client
+    // bug (this app's own client sending something it shouldn't), never something the user did,
+    // so it gets the same generic apologetic message rather than a technical one.
     @ExceptionHandler(HttpMessageNotReadableException::class, MethodArgumentTypeMismatchException::class, MissingServletRequestParameterException::class)
     fun handleBadRequest(ex: Exception): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-            ErrorResponse(status = HttpStatus.BAD_REQUEST.value(), error = "Bad Request", message = "Malformed request")
+            ErrorResponse(status = HttpStatus.BAD_REQUEST.value(), error = "Bad Request", message = "Something went wrong — please try again")
         )
 
     // NoResourceFoundException (not just NoHandlerFoundException) because Spring Boot 3's default
@@ -81,16 +84,25 @@ class GlobalExceptionHandler {
     // stack trace — left uncaught here, NoResourceFoundException fell through to the generic
     // handleUnexpected below and logged a full stack trace for something as routine as a typo'd
     // URL or a client hitting an endpoint (e.g. /actuator/health) this app never implemented.
+    //
+    // `message` is deliberately the same generic, apologetic copy handleUnexpected's 500 uses
+    // below, not a technical "no such endpoint"/raw exception message — every repository on the
+    // client parses this exact field and shows it straight to the user with no filtering (by
+    // design, since most ApiException messages above genuinely are meant to be read verbatim,
+    // e.g. "That username is already taken"). A 404/405 only ever happens from a real bug or a
+    // stale client hitting a route that doesn't exist yet (as just happened testing this feature
+    // against a not-yet-restarted backend) — never something the user did wrong, and "No such
+    // endpoint" or a raw Spring exception string is meaningless and alarming to see on screen.
     @ExceptionHandler(NoHandlerFoundException::class, NoResourceFoundException::class)
     fun handleNotFound(ex: Exception): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-            ErrorResponse(status = HttpStatus.NOT_FOUND.value(), error = "Not Found", message = "No such endpoint")
+            ErrorResponse(status = HttpStatus.NOT_FOUND.value(), error = "Not Found", message = "Something went wrong — please try again")
         )
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
     fun handleMethodNotAllowed(ex: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(
-            ErrorResponse(status = HttpStatus.METHOD_NOT_ALLOWED.value(), error = "Method Not Allowed", message = ex.message)
+            ErrorResponse(status = HttpStatus.METHOD_NOT_ALLOWED.value(), error = "Method Not Allowed", message = "Something went wrong — please try again")
         )
 
     @ExceptionHandler(Exception::class)

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,8 +36,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ember.app.ui.theme.EmberAppTheme
 import com.ember.app.ui.theme.EmberTheme
@@ -45,6 +48,23 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
+
+/** A generous guess for the one frame before the dock's own real [onSizeChanged] below has
+ * landed — every screen that needs to keep content clear of the floating dock should read
+ * [LocalNavDockHeight] instead of this directly. Internal (not private) purely so MainActivity
+ * can seed [LocalNavDockHeight]'s hoisted state with the same starting value, rather than a
+ * second copy of this same magic number living in a different file. */
+internal val FALLBACK_NAV_DOCK_HEIGHT_DP = 140.dp
+
+/** The dock's own true rendered height on THIS device — footprint and real system nav-bar inset
+ * both included, never a guessed constant. One fixed dp number can't cover every OEM's actual
+ * navigationBarsPadding() value (gesture nav vs. 3-button nav vs. taller custom skins all
+ * differ), which is exactly what still left the Settings screen's Log out button partly covered
+ * by the dock on at least one real device even after a generous fixed reserve. Provided once
+ * near the root (see MainActivity, wired from this composable's own onSizeChanged below), read
+ * wherever a screen needs to keep content clear of the dock (Settings' trailing spacer, Home's
+ * Memories grid padding + top-fold height clamp, Memories' day-card centering). */
+val LocalNavDockHeight = compositionLocalOf { FALLBACK_NAV_DOCK_HEIGHT_DP }
 
 enum class NavDestination(val label: String) {
     HOME("Home"),
@@ -88,12 +108,26 @@ fun BottomNavDock(
     // on where each of these is computed; this composable just renders whatever it's handed).
     showFriendsBadge: Boolean = false,
     showActivityBadge: Boolean = false,
+    // Reports this Box's own real laid-out height — after navigationBarsPadding() and this
+    // Box's own bottom inset are both applied — so callers can feed it into LocalNavDockHeight
+    // instead of a guessed dp constant. Fires once per real layout pass, essentially only once
+    // per device/orientation in practice.
+    onHeightMeasured: (Dp) -> Unit = {},
 ) {
     val colors = EmberTheme.colors
+    val density = LocalDensity.current
     val dockShape = RoundedCornerShape(percent = 50)
 
     Box(
+        // onSizeChanged has to come BEFORE navigationBarsPadding()/padding() below, not after —
+        // a modifier placed after padding in the chain only observes the already-shrunk content
+        // size, not the padding that was applied around it. Placed last (a real bug, since
+        // fixed), it silently reported just the inner Row's own height (~74dp), missing the
+        // system nav-bar inset and this Box's own 26dp bottom padding entirely — a far smaller
+        // number than the fixed dp guess it was meant to replace, which is exactly what made
+        // content on Home/Settings/Memories start overlapping the dock instead of clearing it.
         modifier = modifier
+            .onSizeChanged { onHeightMeasured(with(density) { it.height.toDp() }) }
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(start = 24.dp, end = 24.dp, bottom = 26.dp),

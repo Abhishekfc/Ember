@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ember.app.data.UserRepository
+import com.ember.app.data.local.LocalListCache
 import com.ember.app.data.remote.dto.UserProfileDto
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,10 +28,15 @@ private const val USERNAME_DEBOUNCE_MS = 400L
 
 class MyProfileViewModel(
     private val repository: UserRepository,
+    private val localCache: LocalListCache,
+    initialProfile: UserProfileDto? = null,
     private val onProfileUpdated: (UserProfileDto) -> Unit = {},
 ) : ViewModel() {
 
-    var profile by mutableStateOf<UserProfileDto?>(null)
+    // Seeded from the same synchronous cold-start cache read Home itself uses (see
+    // InitialHomeCache in HomeViewModel.kt) so a returning, already-signed-in user sees their
+    // own name/username/photo the instant this screen opens, network round trip or not.
+    var profile by mutableStateOf(initialProfile)
         private set
     var isLoading by mutableStateOf(true)
         private set
@@ -66,8 +72,17 @@ class MyProfileViewModel(
         viewModelScope.launch {
             isLoading = true
             repository.getMyProfile().fold(
-                onSuccess = { applyProfile(it) },
-                onFailure = { errorMessage = it.message ?: "Couldn't load your profile" },
+                onSuccess = {
+                    errorMessage = null
+                    applyProfile(it)
+                },
+                onFailure = {
+                    // A logged-in user going offline should keep seeing their own cached
+                    // picture/name/username exactly as-is, not a "couldn't connect" state where
+                    // their profile used to be — only surface the error when there's truly
+                    // nothing cached yet to fall back on (mirrors Home's own empty-state rule).
+                    if (profile == null) errorMessage = it.message ?: "Couldn't load your profile"
+                },
             )
             isLoading = false
         }
@@ -189,5 +204,6 @@ class MyProfileViewModel(
     private fun applyProfile(updated: UserProfileDto) {
         profile = updated
         onProfileUpdated(updated)
+        viewModelScope.launch { localCache.writeObject(LocalListCache.KEY_PROFILE, updated) }
     }
 }
