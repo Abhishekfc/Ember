@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
@@ -80,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.ember.app.data.remote.dto.MemoryPhotoDto
+import com.ember.app.ui.components.LocalNavDockHeight
 import com.ember.app.ui.theme.EmberTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -504,12 +504,11 @@ internal fun DayFeaturedOverlay(
         // already in the right coordinate space as-is.
         val sidePaddingPx = with(density) { FEATURED_CARD_SIDE_PADDING.toPx() }
         val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
-        // True edge-to-edge means screenSize now includes the real gesture-bar strip at the
-        // bottom too (previously the system reserved that space outside the window, so this
-        // term didn't exist) — NAV_DOCK_RESERVE_DP alone no longer accounts for it.
-        val navigationBarPx = WindowInsets.navigationBars.getBottom(density).toFloat()
-        val navDockReservePx = with(density) { NAV_DOCK_RESERVE_DP.dp.toPx() }
-        val usableHeightPx = (screenSize.height - statusBarPx - navigationBarPx - navDockReservePx).coerceAtLeast(1f)
+        // LocalNavDockHeight is the dock's own real measured height, which already includes the
+        // true system nav-bar inset (BottomNavDock applies navigationBarsPadding() internally) —
+        // no separate WindowInsets.navigationBars term needed on top of it any more.
+        val navDockReservePx = with(density) { LocalNavDockHeight.current.toPx() }
+        val usableHeightPx = (screenSize.height - statusBarPx - navDockReservePx).coerceAtLeast(1f)
         val cardWidthPx = (screenSize.width - sidePaddingPx * 2).coerceAtLeast(1f)
         val cardHeightPx = cardWidthPx / FEATURED_CARD_ASPECT_RATIO
         val destLeft = sidePaddingPx

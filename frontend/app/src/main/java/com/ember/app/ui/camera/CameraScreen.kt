@@ -14,9 +14,12 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -77,8 +81,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -91,15 +97,17 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.ember.app.data.remote.dto.FriendSummaryDto
-import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
+import kotlinx.coroutines.delay
 import java.io.File
 import java.io.FileOutputStream
 import java.lang.ref.WeakReference
@@ -109,13 +117,57 @@ fun CameraScreen(
     viewModel: CameraViewModel,
     onOpenRecipientPicker: () -> Unit,
     onUpgradeToGold: () -> Unit,
-    onSent: (PhotoUploadResponseDto) -> Unit,
+    onSent: () -> Unit,
+    // Home's own real, measured header height (see HomeScreen's onHeaderHeightChanged) — used
+    // below to size this screen's own header spacer so the camera card lands at exactly the same
+    // absolute Y position on screen as Home's featured card, rather than a separately-guessed
+    // constant that had no way to track Home's real layout and drifted out of alignment.
+    homeHeaderHeightPx: Float,
 ) {
     val colors = EmberTheme.colors
     val context = LocalContext.current
+    val density = LocalDensity.current
     var screenSize by remember { mutableStateOf(Size.Zero) }
     val cardShape = RoundedCornerShape(30.dp)
     val captured = viewModel.capturedFile
+
+    // This screen's own header row real height — measured the same way, not guessed either.
+    var headerRowHeightPx by remember { mutableStateOf(0f) }
+
+    // Reflects WorkManager's own real, persisted state for every queued send — not a second,
+    // hand-maintained counter that could drift from it — so this stays correct even across a
+    // process restart while photos are still waiting on connectivity. null (not emptyList()) for
+    // the one frame before the Flow's first real emission lands — collectAsState's own
+    // `initial = emptyList()` would otherwise look identical to "confirmed, there are zero
+    // pending/succeeded sends," and the *real* first emission arriving a moment later (which,
+    // once WorkManager has any send history at all, reports a nonzero succeeded count already)
+    // then looked exactly like a brand new completion — this was showing "Sent" every single
+    // time Camera opened, not only right after an actual send.
+    val workManager = remember { WorkManager.getInstance(context.applicationContext) }
+    val pendingSendInfos by produceState<List<WorkInfo>?>(initialValue = null, workManager) {
+        workManager.getWorkInfosByTagFlow(PendingSendWorker.TAG_PENDING_SEND).collect { value = it }
+    }
+    val pendingSendCount = pendingSendInfos.orEmpty().count { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
+    val succeededSendCount = pendingSendInfos?.count { it.state == WorkInfo.State.SUCCEEDED }
+
+    // A brief "Sent" flash the moment a queued send actually finishes — placeholder wording/
+    // timing for now (a fancier version is a follow-up idea), just needs to visibly distinguish
+    // "still sending" from "actually landed" rather than only ever saying "Sending…". Only ever
+    // compares against a REAL previous snapshot (never null) so the first real emission this
+    // screen ever sees just establishes the baseline silently, instead of being mistaken for a
+    // fresh completion.
+    var lastKnownSucceededCount by remember { mutableStateOf<Int?>(null) }
+    var showSentBadge by remember { mutableStateOf(false) }
+    LaunchedEffect(succeededSendCount) {
+        val current = succeededSendCount ?: return@LaunchedEffect
+        val previous = lastKnownSucceededCount
+        if (previous != null && current > previous) {
+            showSentBadge = true
+            delay(2500)
+            showSentBadge = false
+        }
+        lastKnownSucceededCount = current
+    }
 
     // Reviewing a shot? Back retakes instead of leaving the camera.
     BackHandler(enabled = captured != null) { viewModel.discardCapture() }
@@ -139,9 +191,20 @@ fun CameraScreen(
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(
                 modifier = Modifier
+                    // Must come before fillMaxWidth()/padding() below, not after — see this
+                    // screen's own Spacer further down for why: reporting this Row's *total*
+                    // height (26dp top padding included) is what lets that spacer be computed
+                    // instead of guessed.
+                    .onGloballyPositioned { headerRowHeightPx = it.size.height.toFloat() }
                     .fillMaxWidth()
                     .padding(top = 26.dp, start = 22.dp, end = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                // Sending/Sent status (below) is a sibling of the recipient chip in this same
+                // row, not its own row underneath — sharing the row's already-fixed height (set
+                // by the chip, which is always present) means it appearing/disappearing never
+                // shifts the card or controls below. SpaceBetween pins the chip left and the
+                // status right, with nothing in between when there's no status to show.
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 // Real faces, not a text label — who this is going to should be something you
                 // can recognize at a glance, not something you have to read and parse. This is
@@ -184,15 +247,33 @@ fun CameraScreen(
                         modifier = Modifier.size(16.dp),
                     )
                 }
+
+                AnimatedVisibility(
+                    visible = pendingSendCount > 0 || showSentBadge,
+                    enter = fadeIn(tween(200)),
+                    exit = fadeOut(tween(200)),
+                ) {
+                    if (pendingSendCount > 0) {
+                        SendStatusPill(
+                            text = if (pendingSendCount == 1) "Sending" else "Sending $pendingSendCount",
+                            showSpinner = true,
+                        )
+                    } else {
+                        SendStatusPill(text = "Sent", showSpinner = false)
+                    }
+                }
             }
 
             // Home's card sits below three stacked header lines (wordmark, greeting, date);
             // this screen's header is a single row, so matching just the "18dp after header"
-            // padding isn't enough — this extra spacer makes up the difference in header height
-            // so the card lands at the same absolute position on screen as Home's does, and
-            // feels like the same card carrying through both screens rather than two layouts
-            // that happen to share a corner radius.
-            Spacer(modifier = Modifier.height(64.dp))
+            // padding below isn't enough on its own — this spacer makes up the *real* difference
+            // between Home's real measured header height and this screen's own real measured
+            // header row height (both computed above), so the card lands at exactly the same
+            // absolute position on screen as Home's does and feels like the same card carrying
+            // through both screens. A fixed dp guess lived here before — it was calibrated once
+            // and had no way to track Home's header height actually changing (a connection-error
+            // line wrapping, a longer name, font scale), so it silently drifted out of alignment.
+            Spacer(modifier = Modifier.height(with(density) { (homeHeaderHeightPx - headerRowHeightPx).coerceAtLeast(0f).toDp() }))
 
             Box(
                 modifier = Modifier
@@ -251,21 +332,6 @@ fun CameraScreen(
             }
         }
 
-        if (viewModel.isSending) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = colors.glow)
-                    Text(
-                        text = "Sending…",
-                        fontFamily = PublicSansFontFamily,
-                        fontSize = 13.sp,
-                        color = Color.White,
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
-                }
-            }
-        }
-
         if (viewModel.showGoldUpsell) {
             GoldUpsellOverlay(
                 onDismiss = viewModel::dismissGoldUpsell,
@@ -275,6 +341,35 @@ fun CameraScreen(
                 },
             )
         }
+    }
+}
+
+/** Small, quiet status chip sharing the header row with the recipient chip — deliberately just
+ * text (plus a spinner while actually sending), not a second card competing for attention. Wording
+ * is a placeholder for now (there's a fancier version planned later); this only needs to tell
+ * "still sending" apart from "actually landed." */
+@Composable
+private fun SendStatusPill(text: String, showSpinner: Boolean) {
+    val colors = EmberTheme.colors
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(percent = 50))
+            .background(colors.panel)
+            .border(1.dp, colors.border, RoundedCornerShape(percent = 50))
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showSpinner) {
+            CircularProgressIndicator(color = colors.glow, strokeWidth = 2.dp, modifier = Modifier.size(12.dp))
+        }
+        Text(
+            text = text,
+            fontFamily = PublicSansFontFamily,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.cream,
+            modifier = Modifier.padding(start = if (showSpinner) 8.dp else 0.dp),
+        )
     }
 }
 
@@ -567,7 +662,7 @@ private fun CaptureControls(
                         // a ripple on top of it would double up two different "you pressed me"
                         // cues for the same tap.
                         indication = null,
-                        enabled = !viewModel.isSending,
+                        enabled = !viewModel.isQueuingSend,
                     ) {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         capturePhoto(context, viewModel)
@@ -699,9 +794,10 @@ private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
 @Composable
 private fun PreviewControls(
     viewModel: CameraViewModel,
-    onSent: (PhotoUploadResponseDto) -> Unit,
+    onSent: () -> Unit,
 ) {
     val colors = EmberTheme.colors
+    val context = LocalContext.current
     val hasRecipients = viewModel.selectedFriends.isNotEmpty()
 
     Row(
@@ -737,7 +833,9 @@ private fun PreviewControls(
                     .background(
                         if (canSend) Brush.linearGradient(listOf(colors.glow, colors.glow2)) else Brush.linearGradient(listOf(colors.border, colors.border)),
                     )
-                    .clickable(enabled = !viewModel.isSending && canSend) { viewModel.sendCaptured(onSent) },
+                    .clickable(enabled = !viewModel.isQueuingSend && canSend) {
+                        viewModel.sendCaptured(context.applicationContext, onSent)
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -758,7 +856,7 @@ private fun PreviewControls(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .width(46.dp)
-                .clickable(enabled = !viewModel.isSending, onClick = viewModel::discardCapture),
+                .clickable(enabled = !viewModel.isQueuingSend, onClick = viewModel::discardCapture),
         ) {
             Icon(
                 Icons.Rounded.Replay,

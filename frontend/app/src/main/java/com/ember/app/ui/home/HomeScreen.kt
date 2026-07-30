@@ -109,6 +109,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.PhotoEntryDto
+import com.ember.app.ui.components.LocalNavDockHeight
 import com.ember.app.ui.theme.CourgetteFontFamily
 import com.ember.app.ui.theme.EmberTheme
 import dev.chrisbanes.haze.HazeState
@@ -121,15 +122,6 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Roughly the floating nav dock's own visual footprint (button size + its internal padding +
- * its inset from the true screen bottom) — kept as one named constant, reused everywhere content
- * needs to clear it, rather than a fixed padding number copied at each call site. Internal (not
- * private) so MemoriesScreen's day-featured overlay can reserve the same space when centering
- * itself against the full screen. Generous on purpose: the real inset here is
- * `navigationBarsPadding()`'s actual value, which varies a lot by device — roughly 16dp for
- * gesture navigation up to roughly 48dp for old-style 3-button navigation, a real ~32dp swing
- * this constant needs to cover regardless of which one a given phone uses. */
-internal const val NAV_DOCK_RESERVE_DP = 140
 
 /** Floor for the featured card's height clamp below — however short a screen gets, the card
  * never shrinks past a size that still reads as a real photo rather than a sliver. */
@@ -173,6 +165,11 @@ fun HomeScreen(
     // HomeViewModel.onHomeSessionStart for why this specifically is what's allowed to reveal
     // background-synced content into the visible feed.
     isActive: Boolean = true,
+    // Reports headerHeightPx (below) up to MainActivity every time it's actually measured, so
+    // CameraScreen's own header can size its own spacer against Home's *real* header height
+    // instead of a separate guessed constant — see CameraScreen's own call site for why that
+    // guess kept drifting out of sync with this screen's real layout.
+    onHeaderHeightChanged: (Float) -> Unit = {},
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -311,7 +308,10 @@ fun HomeScreen(
             FocusShield(active = isPhotoFocused, onDismiss = onDismissFocus) {
             Column(
                 modifier = Modifier
-                    .onGloballyPositioned { headerHeightPx = it.size.height.toFloat() }
+                    .onGloballyPositioned {
+                        headerHeightPx = it.size.height.toFloat()
+                        onHeaderHeightChanged(headerHeightPx)
+                    }
                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                     .graphicsLayer { alpha = chromeFade },
             ) {
@@ -627,8 +627,9 @@ fun HomeScreen(
                     // real natural size FIRST and gives the card whatever's left, never more than
                     // that bound allows. This can't overflow past the dock, structurally, on any
                     // device — nothing here is a guess except the dock's own already-accepted
-                    // NAV_DOCK_RESERVE_DP constant.
+                    // the dock's own real measured footprint (LocalNavDockHeight), not a guess.
                     val statusBarPx = WindowInsets.statusBars.getTop(density)
+                    val navDockHeightPx = with(density) { LocalNavDockHeight.current.toPx() }
                     // screenSize and headerHeightPx both start at zero for one frame before their
                     // real onSizeChanged/onGloballyPositioned callbacks land (see their own doc
                     // comments) — computing topFoldMaxHeightDp from zero-or-near-zero inputs on
@@ -641,7 +642,7 @@ fun HomeScreen(
                     // instead of appearing wrong and then correcting itself.
                     if (screenSize != Size.Zero && headerHeightPx > 0f) {
                     val topFoldMaxHeightDp = with(density) {
-                        (screenSize.height - statusBarPx - headerHeightPx - NAV_DOCK_RESERVE_DP.dp.toPx()).toDp()
+                        (screenSize.height - statusBarPx - headerHeightPx - navDockHeightPx).toDp()
                     }
                     Column(modifier = Modifier.fillMaxWidth().heightIn(max = topFoldMaxHeightDp)) {
                         AnimatedVisibility(
@@ -791,7 +792,7 @@ private fun HomeMemoriesSection(
                 .fillMaxWidth()
                 .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                 .graphicsLayer { alpha = revealProgress() * chromeFade }
-                .padding(bottom = NAV_DOCK_RESERVE_DP.dp),
+                .padding(bottom = LocalNavDockHeight.current),
         )
     }
 }

@@ -2,12 +2,9 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
-    // Reads app/google-services.json (must match the same Firebase project — ember-app06 — the
+    // Reads app/google-services.json (matches the same Firebase project — ember-app06 — the
     // backend's service-account credential already belongs to) to configure this app for FCM.
-    // Commented out for now — this plugin hard-fails the whole build the moment it's applied
-    // without that file present, and there's no reason the rest of the app should be stuck
-    // un-buildable while that's still pending. Re-enable once google-services.json exists.
-    // id("com.google.gms.google-services")
+    id("com.google.gms.google-services")
 }
 
 android {

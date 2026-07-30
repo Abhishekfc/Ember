@@ -28,7 +28,6 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.ember.app.MainActivity
-import com.ember.app.ui.home.formatRelativeTime
 import java.io.File
 
 /** The home-screen widget: shows the single most recent photo any friend has sent, matching the
@@ -67,28 +66,15 @@ class EmberWidget : GlanceAppWidget() {
                             contentScale = ContentScale.Crop,
                             modifier = GlanceModifier.fillMaxSize(),
                         )
-                        // Scrim sized to the text only (wrap-content height), not the whole
-                        // image — an earlier version darkened the entire photo with a
-                        // full-size overlay, making it look grey/washed out.
-                        Column(
-                            modifier = GlanceModifier
-                                .fillMaxWidth()
-                                .background(Color(0x99000000))
-                                .padding(12.dp),
-                        ) {
+                        // No scrim behind this any more, and no timestamp — just the sender's
+                        // name sitting directly on the photo.
+                        Column(modifier = GlanceModifier.fillMaxWidth().padding(12.dp)) {
                             Text(
                                 text = state.senderName,
                                 style = TextStyle(
                                     color = ColorProvider(Color.White),
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Medium,
-                                ),
-                            )
-                            Text(
-                                text = formatRelativeTime(state.createdAtIso),
-                                style = TextStyle(
-                                    color = ColorProvider(Color.White.copy(alpha = 0.75f)),
-                                    fontSize = 11.sp,
                                 ),
                             )
                         }

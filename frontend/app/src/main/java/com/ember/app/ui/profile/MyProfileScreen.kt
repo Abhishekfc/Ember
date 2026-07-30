@@ -283,11 +283,15 @@ fun MyProfileScreen(
     }
 }
 
-/** Shared chrome for both popups — overlayPanel, not plain panel: a dialog is exactly the
- * "genuinely floating above everything else" surface that tier exists for, sized by content
- * rather than the platform's default (narrower) dialog width. */
+/** Shared chrome for both popups — sized by content rather than the platform's default (narrower)
+ * dialog width. Internal, not private — reused as-is by FriendProfileScreen's own Block-confirm
+ * and Report dialogs, rather than a second near-identical shell hand-copied there.
+ *
+ * `panel`, not `overlayPanel` — overlayPanel is the *lightest* tier in the theme's surface
+ * ladder, which read as an oddly light popup against the rest of this dark theme. panel is the
+ * genuinely dark tone every other surface here actually wants by default. */
 @Composable
-private fun EditDialogShell(
+internal fun EditDialogShell(
     title: String,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
@@ -301,7 +305,7 @@ private fun EditDialogShell(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .clip(EmberRadii.dialogShape)
-                .background(colors.overlayPanel)
+                .background(colors.panel)
                 .padding(20.dp),
         ) {
             Text(text = title, fontFamily = typography.display, fontSize = 18.sp, color = colors.cream)

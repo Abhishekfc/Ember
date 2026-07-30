@@ -270,7 +270,16 @@ fun FriendsScreen(
                             }
                         }
 
-                        items(viewModel.filteredFriends, key = { it.friendshipId }) { friend ->
+                        // Whoever's pinned already gets their own hero card above (only while not
+                        // searching — search results should still include them, since the hero
+                        // itself is hidden then) — without this exclusion, they rendered a second
+                        // time here as a plain FriendRow right below their own hero.
+                        val friendRows = if (!isSearching && pinnedPartner != null) {
+                            viewModel.filteredFriends.filterNot { it.friendshipId == pinnedPartner.friendshipId }
+                        } else {
+                            viewModel.filteredFriends
+                        }
+                        items(friendRows, key = { it.friendshipId }) { friend ->
                             FriendRow(friend, onClick = { onFriendClick(friend) })
                         }
 
@@ -349,11 +358,12 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
             } else {
                 // Same "no photo yet" identity as ActivityScreen's ActivityRow — an initial
                 // letter, not just an empty placeholder, so a friend without a profile photo
-                // still reads as *them* rather than as a broken/missing image.
+                // still reads as *them* rather than as a broken/missing image. Flat panel tone,
+                // no gradient — matches ActivityRow's own fallback exactly, this app stays flat.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Brush.radialGradient(listOf(colors.glow.copy(alpha = 0.28f), colors.elevatedPanel))),
+                        .background(colors.elevatedPanel),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -418,7 +428,7 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
 /** Circular ring avatar whose colour is the streak-intensity signature — used everywhere a
  * friend's identity needs to carry that "how much is this glowing" information at a glance. */
 @Composable
-private fun StreakAvatar(photoUrl: String?, displayName: String, streak: Int, size: Dp) {
+internal fun StreakAvatar(photoUrl: String?, displayName: String, streak: Int, size: Dp) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     val ringWidth = if (streak > 0) 2.5.dp else 1.5.dp

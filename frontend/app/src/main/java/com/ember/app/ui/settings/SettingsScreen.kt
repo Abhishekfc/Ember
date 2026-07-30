@@ -10,16 +10,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Feedback
 import androidx.compose.material.icons.rounded.NotificationsNone
@@ -49,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.ember.app.ui.components.LocalNavDockHeight
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 import com.ember.app.ui.theme.ThemeKey
@@ -85,6 +91,7 @@ fun SettingsScreen(
     onThemeClick: () -> Unit,
     onGoldClick: () -> Unit,
     onWidgetClick: () -> Unit,
+    onBlockedUsersClick: () -> Unit,
     onSignOut: () -> Unit,
     hazeState: HazeState,
 ) {
@@ -104,7 +111,21 @@ fun SettingsScreen(
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize)),
     ) {
-        Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState).statusBarsPadding()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(hazeState)
+                .statusBarsPadding()
+                // Wasn't scrollable at all before — content taller than one screen (which the new
+                // Privacy section pushed this over, on shorter devices especially) had no way to
+                // reach. LocalNavDockHeight as trailing padding, not navigationBarsPadding alone,
+                // is what actually clears the floating nav dock rather than just the system bar
+                // behind it — same reserve Home's own scrollable content already uses for the
+                // identical reason, now the dock's own real measured height rather than a fixed
+                // dp guess (see LocalNavDockHeight's own doc comment for why that guess still
+                // left this exact button partly covered on at least one real device).
+                .verticalScroll(rememberScrollState()),
+        ) {
             // Centered, plain title — Settings is a bottom-nav tab (swipe between Home/Friends/
             // .../Settings), not a screen pushed on top of one you'd back out of, so no back
             // arrow.
@@ -209,6 +230,9 @@ fun SettingsScreen(
             // which is where choosing anyone at all is actually gated.
             FlatSettingsRow(Icons.Rounded.Widgets, "Widget", widgetBadge, onWidgetClick)
 
+            SectionLabel(text = "Privacy", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
+            FlatSettingsRow(Icons.Rounded.Block, "Blocked accounts", null, onBlockedUsersClick)
+
             SectionLabel(text = "Support", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
             FlatSettingsRow(Icons.AutoMirrored.Rounded.HelpOutline, "Help & support", null, { openSupportEmail(context, "Ember support") })
             FlatSettingsRow(Icons.Rounded.Feedback, "Send feedback", null, { openSupportEmail(context, "Ember feedback") })
@@ -229,16 +253,22 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null, tint = Color(0xFFE8756C), modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null, tint = Color(0xFFB3261E), modifier = Modifier.size(16.dp))
                 Text(
                     text = "Log out",
                     fontFamily = PublicSansFontFamily,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFE8756C),
+                    color = Color(0xFFB3261E),
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
+
+            // Clears the floating nav dock rather than just the system nav bar behind it — same
+            // reserve Home's own scrollable content uses, so Log out is reachable on every
+            // device, not just tall ones. Plus a bit of extra breathing room on top of the
+            // dock's own real height, so Log out doesn't sit right at the very edge of it.
+            Spacer(modifier = Modifier.height(LocalNavDockHeight.current + 24.dp))
         }
     }
 }

@@ -3,6 +3,7 @@ package com.ember.app.data.remote
 import com.ember.app.data.remote.dto.ActivityEventDto
 import com.ember.app.data.remote.dto.ActivityLastSeenDto
 import com.ember.app.data.remote.dto.AuthResponse
+import com.ember.app.data.remote.dto.BlockedUserDto
 import com.ember.app.data.remote.dto.DeviceTokenRequestDto
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.FriendAcceptBody
@@ -15,6 +16,7 @@ import com.ember.app.data.remote.dto.PageDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
 import com.ember.app.data.remote.dto.PhotoUploadResponseDto
 import com.ember.app.data.remote.dto.RegisterRequest
+import com.ember.app.data.remote.dto.ReportUserRequestDto
 import com.ember.app.data.remote.dto.SubscriptionStatusDto
 import com.ember.app.data.remote.dto.UpdateProfileRequestDto
 import com.ember.app.data.remote.dto.UsernameAvailabilityDto
@@ -125,4 +127,19 @@ interface EmberApi {
 
     @POST("devices/register")
     suspend fun registerDevice(@Body request: DeviceTokenRequestDto): Response<Unit>
+
+    @GET("users/blocked")
+    suspend fun getBlockedUsers(): Response<List<BlockedUserDto>>
+
+    @POST("users/{userId}/block")
+    suspend fun blockUser(@Path("userId") userId: String): Response<Unit>
+
+    @DELETE("users/{userId}/block")
+    suspend fun unblockUser(@Path("userId") userId: String): Response<Unit>
+
+    @POST("users/{userId}/report")
+    suspend fun reportUser(
+        @Path("userId") userId: String,
+        @Body request: ReportUserRequestDto,
+    ): Response<Unit>
 }

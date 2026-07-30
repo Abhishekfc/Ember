@@ -10,9 +10,11 @@ import com.ember.backend.exception.ResourceNotFoundException
 import com.ember.backend.model.Friendship
 import com.ember.backend.model.FriendshipStatus
 import com.ember.backend.model.User
+import com.ember.backend.repository.BlockedUserRepository
 import com.ember.backend.repository.FriendshipRepository
 import com.ember.backend.repository.PhotoRecipientRepository
 import com.ember.backend.repository.UserRepository
+import com.ember.backend.repository.existsBetween
 import org.slf4j.LoggerFactory
 import org.springframework.cache.CacheManager
 import org.springframework.data.domain.PageRequest
@@ -28,6 +30,7 @@ class FriendService(
     private val friendshipRepository: FriendshipRepository,
     private val userRepository: UserRepository,
     private val photoRecipientRepository: PhotoRecipientRepository,
+    private val blockedUserRepository: BlockedUserRepository,
     private val r2StorageService: R2StorageService,
     private val cacheManager: CacheManager,
     private val pushNotificationService: PushNotificationService,
@@ -159,6 +162,12 @@ class FriendService(
         }
         if (friendshipRepository.findBetween(requester.id, addressee.id) != null) {
             throw InvalidFriendRequestException("A friendship or pending request already exists")
+        }
+        // Defense-in-depth — search already excludes blocked pairs (UserRepository.search), so
+        // this path is normally unreachable through the UI, but a request naming a userId
+        // directly (a stale client cache, a direct API call) must still be rejected server-side.
+        if (blockedUserRepository.existsBetween(requester.id, addressee.id)) {
+            throw InvalidFriendRequestException("You can't send a friend request to this person")
         }
 
         val friendship = friendshipRepository.save(

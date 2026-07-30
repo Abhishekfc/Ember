@@ -20,6 +20,8 @@ class InvalidFriendRequestException(message: String) : ApiException(HttpStatus.B
 // Reaction feature disabled — see PhotoReactionService's own comment.
 // class InvalidReactionException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
 
+class InvalidSafetyActionException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
+
 class SubscriptionVerificationException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
 
 class PurchaseTokenAlreadyClaimedException :

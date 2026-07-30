@@ -1,5 +1,6 @@
 package com.ember.app.ui.friends
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,13 +18,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -46,10 +52,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
+import com.ember.app.data.remote.dto.ReportReason
 import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.profile.EditDialogShell
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
+
+/** Same coral used by the existing "Remove friend" destructive action below — one consistent
+ * "this is a leaving/negative action" color across the whole profile screen, not a second one
+ * invented just for Block/Report. */
+private val DestructiveColor = Color(0xFFE8756C)
 
 /** One profile layout for every person — an existing friend, someone who's sent a pending
  * request, and a stranger found via search all share the exact same header (avatar, name,
@@ -74,6 +87,7 @@ fun FriendProfileScreen(
     onRemoved: () -> Unit,
     onAccepted: (FriendSummaryDto) -> Unit,
     onRejected: () -> Unit,
+    onBlocked: () -> Unit,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -81,6 +95,10 @@ fun FriendProfileScreen(
     val subject = viewModel.subject
     val streak = (subject as? ProfileSubject.Friend)?.summary?.streak ?: 0
     val pillShape = EmberRadii.buttonShape
+
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var showBlockConfirm by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -91,16 +109,85 @@ fun FriendProfileScreen(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, bottom = 30.dp),
     ) {
-        // Flat, icon-only back control — no capsule behind it. A boxed button here would be
-        // one more panel competing with the profile itself for attention.
-        Box(
-            modifier = Modifier
-                .padding(top = 20.dp)
-                .size(40.dp)
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.CenterStart,
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBackIos, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(20.dp))
+            // Flat, icon-only back control — no capsule behind it. A boxed button here would be
+            // one more panel competing with the profile itself for attention.
+            Box(
+                modifier = Modifier.size(40.dp).clickable(onClick = onBack),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBackIos, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(20.dp))
+            }
+
+            // Same flat, icon-only treatment as the back control on the other side — Block/Report
+            // are safety actions relevant to any subject (friend, pending request, or a stranger
+            // found via search), not gated on relationship state the way Pin/Remove are.
+            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.CenterEnd) {
+                Box(
+                    modifier = Modifier.size(40.dp).clickable { showOverflowMenu = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = colors.cream, modifier = Modifier.size(22.dp))
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                    // Unstyled, this falls back to Material3's own default light surface — jars
+                    // badly against Ember's dark theme. `panel`, not `overlayPanel` — panel is the
+                    // darker of the two. tonalElevation = 0.dp is the part that actually matters:
+                    // Material3 automatically blends a lightening tint on top of containerColor
+                    // based on elevation (its own dark-theme "closer to light source" convention),
+                    // so leaving this at its default silently washed out `panel` back toward the
+                    // same pale gray as before — setting it to 0 is what makes the color actually
+                    // render as specified instead of tinted lighter. A shadow alone doesn't read
+                    // on a pure black background either (nothing for it to cast onto), so a thin
+                    // border is what actually gives this floating card its edge.
+                    containerColor = colors.panel,
+                    shape = EmberRadii.dialogShape,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 8.dp,
+                    border = BorderStroke(1.dp, colors.border),
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "Block",
+                                fontFamily = PublicSansFontFamily,
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = DestructiveColor,
+                            )
+                        },
+                        leadingIcon = { Icon(Icons.Rounded.Block, contentDescription = null, tint = DestructiveColor, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showOverflowMenu = false
+                            showBlockConfirm = true
+                        },
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                    HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(horizontal = 12.dp))
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "Report",
+                                fontFamily = PublicSansFontFamily,
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.cream,
+                            )
+                        },
+                        leadingIcon = { Icon(Icons.Rounded.Flag, contentDescription = null, tint = colors.cream, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showOverflowMenu = false
+                            showReportDialog = true
+                        },
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
+            }
         }
 
         Box(
@@ -207,6 +294,190 @@ fun FriendProfileScreen(
                 onAccepted = onAccepted,
                 onRejected = onRejected,
             )
+        }
+    }
+
+    if (showBlockConfirm) {
+        BlockConfirmDialog(
+            displayName = subject.displayName,
+            isBlocking = viewModel.isBlocking,
+            onDismiss = { showBlockConfirm = false },
+            onConfirm = { viewModel.blockUser(onBlocked) },
+        )
+    }
+
+    if (showReportDialog) {
+        ReportUserDialog(
+            isReporting = viewModel.isReporting,
+            reportSubmitted = viewModel.reportSubmitted,
+            onDismiss = {
+                showReportDialog = false
+                viewModel.dismissReportConfirmation()
+            },
+            onSubmit = { reason -> viewModel.reportUser(reason) },
+        )
+    }
+}
+
+/** Same shell MyProfileScreen's own edit dialogs use (EditDialogShell), so this reads as the same
+ * kind of popup rather than a visually separate "safety feature" dialog bolted on. Text/button
+ * color leans on [DestructiveColor] — the same coral the existing "Remove friend" action already
+ * uses — since blocking is the same kind of "leaving/negative" action. */
+@Composable
+private fun BlockConfirmDialog(
+    displayName: String,
+    isBlocking: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val colors = EmberTheme.colors
+    EditDialogShell(title = "Block $displayName?", onDismiss = onDismiss) {
+        Text(
+            text = "They won't be able to find your profile, send you friend requests, or send you photos. This won't notify them.",
+            fontFamily = PublicSansFontFamily,
+            fontSize = 13.sp,
+            color = colors.muted,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.panel)
+                    .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+                    .clickable(enabled = !isBlocking, onClick = onDismiss)
+                    .padding(vertical = 13.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(text = "Cancel", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(DestructiveColor)
+                    .clickable(enabled = !isBlocking, onClick = onConfirm)
+                    .padding(vertical = 13.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (isBlocking) {
+                    CircularProgressIndicator(modifier = Modifier.size(15.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Text(text = "Block", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+private val REPORT_REASON_LABELS = listOf(
+    ReportReason.SPAM to "Spam",
+    ReportReason.HARASSMENT to "Harassment or bullying",
+    ReportReason.INAPPROPRIATE_CONTENT to "Inappropriate content",
+    ReportReason.FAKE_ACCOUNT to "Fake account",
+    ReportReason.OTHER to "Other",
+)
+
+/** Stays open through a successful submit (showing a brief confirmation in place of the reason
+ * list) rather than closing immediately — reporting is a one-shot action with no visible effect
+ * anywhere else on screen, so without this there'd be no feedback at all that it actually went
+ * through. */
+@Composable
+private fun ReportUserDialog(
+    isReporting: Boolean,
+    reportSubmitted: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (ReportReason) -> Unit,
+) {
+    val colors = EmberTheme.colors
+    var selectedReason by remember { mutableStateOf<ReportReason?>(null) }
+
+    EditDialogShell(title = if (reportSubmitted) "Report submitted" else "Report this account", onDismiss = onDismiss) {
+        if (reportSubmitted) {
+            Text(
+                text = "Thanks — we'll look into it.",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 13.sp,
+                color = colors.muted,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.glow)
+                    .clickable(onClick = onDismiss)
+                    .padding(vertical = 13.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(text = "Done", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.accentText)
+            }
+        } else {
+            Text(
+                text = "What's wrong with this account?",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 13.sp,
+                color = colors.muted,
+            )
+            Column(modifier = Modifier.padding(top = 12.dp)) {
+                REPORT_REASON_LABELS.forEach { (reason, label) ->
+                    val isSelected = selectedReason == reason
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) colors.glow.copy(alpha = 0.14f) else Color.Transparent)
+                            .clickable { selectedReason = reason }
+                            .padding(horizontal = 10.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .border(1.5.dp, if (isSelected) colors.glow else colors.border, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (isSelected) {
+                                Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(colors.glow))
+                            }
+                        }
+                        Text(
+                            text = label,
+                            fontFamily = PublicSansFontFamily,
+                            fontSize = 13.5.sp,
+                            color = colors.cream,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                }
+            }
+            val canSubmit = selectedReason != null && !isReporting
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (canSubmit) colors.glow else colors.panel)
+                    .clickable(enabled = canSubmit) { selectedReason?.let(onSubmit) }
+                    .padding(vertical = 13.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (isReporting) {
+                    CircularProgressIndicator(modifier = Modifier.size(15.dp), color = colors.accentText, strokeWidth = 2.dp)
+                } else {
+                    Text(
+                        text = "Submit report",
+                        fontFamily = PublicSansFontFamily,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canSubmit) colors.accentText else colors.mutedDim,
+                    )
+                }
+            }
         }
     }
 }
