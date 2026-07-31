@@ -59,6 +59,11 @@ class PendingSendWorker(
         return app.photoRepository.uploadPhoto(file, recipientIds).fold(
             onSuccess = {
                 file.delete()
+                // Lets a live HomeViewModel (if the app happens to be open) refresh Feed/Memories
+                // immediately instead of only finding out on its own next unrelated trigger — see
+                // EmberApplication.photoSendCompletedEvents' own doc comment. A no-op if nothing's
+                // currently collecting it (app closed, or MainActivity not yet composed).
+                app.notifyPhotoSendCompleted()
                 Result.success()
             },
             onFailure = { error ->

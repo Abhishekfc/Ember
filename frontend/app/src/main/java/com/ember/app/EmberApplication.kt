@@ -82,6 +82,32 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
         _newPhotoPushEvents.tryEmit(Unit)
     }
 
+    // Same bridge, same reasoning, for the other direction: PendingSendWorker runs a queued send
+    // in the background — possibly long after CameraScreen queued it, possibly with the app fully
+    // killed in between — and has no reference of its own to a live HomeViewModel either. Kept
+    // separate from newPhotoPushEvents (not reused) because a friend's incoming push only ever
+    // needs Feed refreshed; a send finishing is *my own* new photo, so it needs Memories refreshed
+    // too — collapsing the two into one event would refresh the wrong things for one of them.
+    private val _photoSendCompletedEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val photoSendCompletedEvents: SharedFlow<Unit> = _photoSendCompletedEvents.asSharedFlow()
+
+    fun notifyPhotoSendCompleted() {
+        _photoSendCompletedEvents.tryEmit(Unit)
+    }
+
+    // Same bridge again, this time for "the friend graph changed" (a request accepted, a friend
+    // removed or blocked). Several long-lived ViewModels each keep their own independent copy of
+    // "who am I friends with" (CameraViewModel's recipient list, RecipientPickerViewModel, Friends'
+    // own tab) fetched once and never refetched on their own — without this, accepting a request
+    // from one screen left every other screen's own copy stale until the app restarted, since
+    // nothing told them anything had changed.
+    private val _friendsChangedEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val friendsChangedEvents: SharedFlow<Unit> = _friendsChangedEvents.asSharedFlow()
+
+    fun notifyFriendsChanged() {
+        _friendsChangedEvents.tryEmit(Unit)
+    }
+
     override fun onCreate() {
         super.onCreate()
         // Notification channels are a one-time, idempotent registration — safe (and normal) to

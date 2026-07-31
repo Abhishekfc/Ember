@@ -608,17 +608,32 @@ internal fun DayFeaturedOverlay(
             // Per-day photo count, same as before flattening to a month-wide carousel — how many
             // *that specific day* has and which one's showing, not a position in the whole month.
             if (currentEntry.totalForDay > 1) {
+                // Same rule Home's own featured card uses (see its own doc comment): stays at
+                // FEATURED_CARD_DOT_WIDTH each as long as they fit within the card's own
+                // FEATURED_CARD_SIDE_PADDING inset, otherwise all shrink together rather than
+                // running past the card's rounded edges — this card uses the exact same shared
+                // recipe (cardWidthPx above), so it had the exact same overflow bug.
+                val dotCount = currentEntry.totalForDay
+                val cardWidthDp = with(density) { cardWidthPx.toDp() }
+                val availableWidth = cardWidthDp - FEATURED_CARD_SIDE_PADDING * 2
+                val naturalWidth = FEATURED_CARD_DOT_WIDTH * dotCount + FEATURED_CARD_DOT_SPACING * (dotCount - 1)
+                val dotWidth = if (naturalWidth <= availableWidth) {
+                    FEATURED_CARD_DOT_WIDTH
+                } else {
+                    ((availableWidth - FEATURED_CARD_DOT_SPACING * (dotCount - 1)) / dotCount)
+                        .coerceAtLeast(FEATURED_CARD_DOT_MIN_WIDTH)
+                }
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)
                         .alpha(progress),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(FEATURED_CARD_DOT_SPACING),
                 ) {
-                    repeat(currentEntry.totalForDay) { index ->
+                    repeat(dotCount) { index ->
                         Box(
                             modifier = Modifier
-                                .width(16.dp)
+                                .width(dotWidth)
                                 .height(3.dp)
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(if (index == currentEntry.indexWithinDay) Color.White else Color.White.copy(alpha = 0.35f)),

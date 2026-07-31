@@ -29,7 +29,6 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -47,7 +46,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -115,34 +117,16 @@ fun MyProfileScreen(
             Icon(Icons.AutoMirrored.Rounded.ArrowBackIos, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(18.dp))
         }
 
-        Text(
-            text = "Profile",
-            fontFamily = typography.display,
-            fontSize = 26.sp,
-            color = colors.cream,
-            modifier = Modifier.padding(top = 18.dp),
-        )
-        Text(
-            text = "This is what friends see",
-            fontFamily = typography.body,
-            fontSize = 12.5.sp,
-            color = colors.muted,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-
-        // A plain circular avatar, not the big portrait hero card this used to be — that card
-        // borrowed Home's featured-photo shape (0.8 aspect ratio) for a photo that's a fixed
-        // square (see PhotoCropScreen) and always shown circularly everywhere else in the app
-        // (Friends rows, Home avatar row), so it never actually needed that shape, and a full-
-        // width portrait card just for a profile picture read as oversized. A circle is also the
-        // one treatment that makes the underlying image's real 1:1 crop legible at a glance.
+        // Centered avatar + name + username, no "Profile" title above it any more — the avatar
+        // and name together already say what this page is, the same way a contact card doesn't
+        // need its own label repeating "this is a contact."
         Column(
-            modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
                 modifier = Modifier
-                    .size(112.dp)
+                    .size(100.dp)
                     .clip(CircleShape)
                     .background(colors.elevatedPanel)
                     .clickable {
@@ -162,7 +146,7 @@ fun MyProfileScreen(
                     Text(
                         text = viewModel.profile?.displayName?.firstOrNull()?.uppercase() ?: "•",
                         fontFamily = typography.display,
-                        fontSize = 40.sp,
+                        fontSize = 36.sp,
                         color = colors.cream,
                     )
                 }
@@ -175,69 +159,54 @@ fun MyProfileScreen(
                         CircularProgressIndicator(color = colors.glow, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
                     }
                 }
-
-                // Aligned to the square Box's own corner, not the circle's curve — that's what
-                // makes it sit half on, half off the avatar's edge, the same look every other
-                // app's profile-photo badge has, for free, with no extra offset math.
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(colors.glow)
-                        .clickable {
-                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.CameraAlt, contentDescription = "Change photo", tint = colors.accentText, modifier = Modifier.size(15.dp))
-                }
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .padding(top = 16.dp)
-                    .clickable {
-                        viewModel.openNameEditor()
-                        showNameDialog = true
-                    },
-            ) {
-                Text(
-                    text = viewModel.profile?.displayName.orEmpty(),
-                    fontFamily = typography.display,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = colors.cream,
-                )
-                Icon(
-                    Icons.Filled.Edit,
-                    contentDescription = "Change name",
-                    tint = colors.mutedDim,
-                    modifier = Modifier.padding(start = 8.dp).size(14.dp),
-                )
+            // Bold italic display font — the one place on this screen that reads like a proper
+            // signature/nameplate rather than a settings label, same spirit as the reference this
+            // redesign follows.
+            Text(
+                text = viewModel.profile?.displayName.orEmpty(),
+                fontFamily = typography.display,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                fontStyle = FontStyle.Italic,
+                color = colors.cream,
+                modifier = Modifier.padding(top = 14.dp),
+            )
+            Text(
+                text = viewModel.profile?.username?.let { "@$it" }.orEmpty(),
+                fontFamily = PublicSansFontFamily,
+                fontSize = 13.5.sp,
+                color = colors.muted,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        // Grouped card of editable fields — tapping a row opens the exact same popups the old
+        // inline name/username rows did (see NameEditDialog/UsernameEditDialog below); this is
+        // just a different, more scannable entry point into the same editing flow, plus a
+        // dedicated row for the photo instead of only the avatar itself being tappable. No
+        // "Avatar" row — Ember has no separate Bitmoji-style avatar feature, just the one photo.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 28.dp)
+                .clip(EmberRadii.dialogShape)
+                .background(colors.panel)
+                .border(1.dp, colors.border, EmberRadii.dialogShape),
+        ) {
+            ProfileFieldRow(label = "Name") {
+                viewModel.openNameEditor()
+                showNameDialog = true
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .clickable {
-                        viewModel.openUsernameEditor()
-                        showUsernameDialog = true
-                    },
-            ) {
-                Text(
-                    text = viewModel.profile?.username?.let { "@$it" }.orEmpty(),
-                    fontFamily = typography.body,
-                    fontSize = 13.5.sp,
-                    color = colors.muted,
-                )
-                Icon(
-                    Icons.Filled.Edit,
-                    contentDescription = "Change username",
-                    tint = colors.mutedDim,
-                    modifier = Modifier.padding(start = 6.dp).size(12.dp),
-                )
+            HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(horizontal = 18.dp))
+            ProfileFieldRow(label = "Username") {
+                viewModel.openUsernameEditor()
+                showUsernameDialog = true
+            }
+            HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(horizontal = 18.dp))
+            ProfileFieldRow(label = "Profile picture") {
+                galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
         }
 
@@ -245,7 +214,7 @@ fun MyProfileScreen(
         // part of "what friends see," so it stays quiet and separate rather than implying it's
         // one more editable identity field.
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp, start = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 18.dp, start = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Filled.Lock, contentDescription = "Not editable", tint = colors.mutedDim, modifier = Modifier.size(12.dp))
@@ -279,6 +248,36 @@ fun MyProfileScreen(
         UsernameEditDialog(
             viewModel = viewModel,
             onDismiss = { showUsernameDialog = false },
+        )
+    }
+}
+
+/** One row of the grouped fields card — label only, no icon and no current-value preview,
+ * since the avatar/name/username above already show the live values. Matches the reference
+ * design's plain settings-list look rather than this app's usual icon-badged rows (see
+ * FlatSettingsRow in SettingsScreen.kt), which read as too busy for a 3-row card this small. */
+@Composable
+private fun ProfileFieldRow(label: String, onClick: () -> Unit) {
+    val colors = EmberTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            fontFamily = PublicSansFontFamily,
+            fontSize = 15.sp,
+            color = colors.cream,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = colors.mutedDim,
+            modifier = Modifier.size(16.dp),
         )
     }
 }

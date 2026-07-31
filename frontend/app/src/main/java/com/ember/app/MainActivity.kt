@@ -313,6 +313,11 @@ class MainActivity : ComponentActivity() {
                     // this, a different account signing in on this device would inherit whatever
                     // theme (Gold-gated ones included) the previous account had chosen.
                     coroutineScope.launch { themePreferenceStore.clear() }
+                    // Disk-level clear above has no effect on this same-instance-for-the-whole-
+                    // session ViewModel's own already-resolved in-memory state — see
+                    // ThemeViewModel.reset's own doc comment for why that's the actual reason a
+                    // Gold-gated theme kept visibly applying after signing out.
+                    themeViewModel.reset()
                     coroutineScope.launch { notificationPreferenceStore.clear() }
                     // The widget reads its cached photo (and, for a Gold subscriber, their
                     // featured-friend choice + cached Gold status) independent of sign-in state —
@@ -378,7 +383,16 @@ class MainActivity : ComponentActivity() {
                 if (!sessionChecked) {
                     Box(modifier = Modifier.fillMaxSize().background(EmberTheme.colors.background.asBrush(Size.Zero)))
                 } else if (!authenticated) {
-                    LoginScreen(viewModel = loginViewModel, onAuthenticated = { authenticated = true })
+                    LoginScreen(
+                        viewModel = loginViewModel,
+                        onAuthenticated = {
+                            authenticated = true
+                            // Re-resolves this newly signed-in account's own saved theme + real
+                            // Gold status — see ThemeViewModel.reload's own doc comment for why
+                            // this doesn't just happen on its own otherwise.
+                            themeViewModel.reload()
+                        },
+                    )
                 } else {
                     var showRecipientPicker by remember { mutableStateOf(false) }
 
@@ -434,7 +448,13 @@ class MainActivity : ComponentActivity() {
                     // receive).
                     val friendsViewModel: FriendsViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { FriendsViewModel(friendRepository, localListCache) }
+                            initializer {
+                                FriendsViewModel(
+                                    friendRepository,
+                                    localListCache,
+                                    onFriendsChanged = { emberApplication.notifyFriendsChanged() },
+                                )
+                            }
                         },
                     )
                     val homeViewModel: HomeViewModel = viewModel(
@@ -463,6 +483,15 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(Unit) {
                         emberApplication.newPhotoPushEvents.collect { homeViewModel.loadFeed() }
                     }
+                    // Same bridge, the other direction: a queued send (see PendingSendWorker)
+                    // finishing is *my own* new photo, so both Feed and Memories need refreshing
+                    // — unlike the push case above, which only ever needs Feed.
+                    LaunchedEffect(Unit) {
+                        emberApplication.photoSendCompletedEvents.collect {
+                            homeViewModel.loadFeed()
+                            homeViewModel.loadMemories()
+                        }
+                    }
                     // Also hoisted, for the same reason: created here means its fetch starts as
                     // soon as the app opens, in the background, rather than only starting the
                     // moment the user first taps the Activity tab — that lazy-create pattern is
@@ -482,6 +511,15 @@ class MainActivity : ComponentActivity() {
                             initializer { CameraViewModel(friendRepository, photoRepository, subscriptionRepository) }
                         },
                     )
+
+                    // Camera's own recipient list (see hasLoadedCameraFriends below) is fetched
+                    // exactly once per session and never on its own initiative afterward — without
+                    // this, a friend request accepted anywhere kept being invisible in Camera's
+                    // picker until the app was restarted, since nothing ever told this long-lived
+                    // ViewModel its own copy had gone stale.
+                    LaunchedEffect(Unit) {
+                        emberApplication.friendsChangedEvents.collect { cameraViewModel.loadFriends() }
+                    }
 
                     // Home, Friends, Camera, Activity and Settings are all pages of one
                     // full-screen pager now — not separate conditionally-composed screens, so a
@@ -741,11 +779,13 @@ class MainActivity : ComponentActivity() {
                                 onPinChanged = { updated -> friendsViewModel.applyUpdatedFriend(updated) },
                                 onRemoved = {
                                     subject.friendshipId?.let { friendsViewModel.removeFriendLocally(it) }
+                                    emberApplication.notifyFriendsChanged()
                                     nestedScreen = null
                                     selectedProfileSubject = null
                                 },
                                 onAccepted = { newFriend ->
                                     friendsViewModel.addFriendLocally(newFriend)
+                                    emberApplication.notifyFriendsChanged()
                                     nestedScreen = null
                                     selectedProfileSubject = null
                                 },
@@ -763,6 +803,7 @@ class MainActivity : ComponentActivity() {
                                         friendsViewModel.removeFriendLocally(it)
                                         friendsViewModel.removePendingRequestLocally(it)
                                     }
+                                    emberApplication.notifyFriendsChanged()
                                     nestedScreen = null
                                     selectedProfileSubject = null
                                 },
@@ -777,6 +818,14 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                             )
+                            // Same reasoning as cameraViewModel's own collector above — this
+                            // screen's ViewModel can be an existing (not freshly re-fetched)
+                            // instance depending on how Compose's own viewModel() store reuse
+                            // lands, so it needs the same "tell me if I've gone stale" signal
+                            // rather than assuming its very first fetch is still good.
+                            LaunchedEffect(Unit) {
+                                emberApplication.friendsChangedEvents.collect { recipientPickerViewModel.loadFriends() }
+                            }
                             RecipientPickerScreen(
                                 viewModel = recipientPickerViewModel,
                                 onClose = { showRecipientPicker = false },

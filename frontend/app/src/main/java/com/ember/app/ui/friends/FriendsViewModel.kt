@@ -18,6 +18,10 @@ private const val PAGE_SIZE = 30
 class FriendsViewModel(
     private val repository: FriendRepository,
     private val localCache: LocalListCache,
+    // Lets other long-lived ViewModels with their own separate copy of the friend list (Camera's
+    // recipient picker, mainly) find out a request was just accepted here, without this ViewModel
+    // needing any reference back to them — see EmberApplication.friendsChangedEvents.
+    private val onFriendsChanged: () -> Unit = {},
 ) : ViewModel() {
 
     var friends by mutableStateOf<List<FriendSummaryDto>>(emptyList())
@@ -153,6 +157,7 @@ class FriendsViewModel(
                 onSuccess = { newFriend ->
                     pendingRequests = pendingRequests.filterNot { it.friendshipId == request.friendshipId }
                     friends = friends + newFriend
+                    onFriendsChanged()
                 },
                 onFailure = { errorMessage = it.message ?: "Couldn't accept request" },
             )

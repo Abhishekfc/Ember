@@ -25,6 +25,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -325,7 +326,11 @@ fun HomeScreen(
                     Text(
                         text = "Ember",
                         fontFamily = CourgetteFontFamily,
-                        fontSize = 30.sp,
+                        fontSize = 34.sp,
+                        letterSpacing = (-0.5).sp,
+                        // Plain neutral cream, not the theme accent — the accent color read as
+                        // distracting here. Size and tighter tracking alone carry the "this is
+                        // the brand mark" distinction instead.
                         color = colors.cream,
                     )
                     ProfileChip(
@@ -375,7 +380,7 @@ fun HomeScreen(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.3).sp,
                     color = colors.cream,
-                    modifier = Modifier.padding(top = 10.dp, start = 22.dp, end = 22.dp),
+                    modifier = Modifier.padding(top = 14.dp, start = 22.dp, end = 22.dp),
                 )
                 // "Tap to retry" folds into this line rather than the hero line above — the hero
                 // line already runs long enough on its own ("Couldn't connect") that adding retry
@@ -935,7 +940,9 @@ internal fun ProfileChip(name: String?, photoUrl: String?, onClick: () -> Unit) 
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
 
-    Box(modifier = Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onClick)) {
+    // 48dp, not 40dp — Android's own minimum recommended touch target (48x48dp); the old size
+    // was noticeably under that for the one control that opens your own profile.
+    Box(modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClick)) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -973,18 +980,11 @@ internal fun ProfileChip(name: String?, photoUrl: String?, onClick: () -> Unit) 
                 Text(
                     text = name?.firstOrNull()?.uppercase() ?: "•",
                     fontFamily = typography.display,
-                    fontSize = 17.sp,
+                    fontSize = 19.sp,
                     color = colors.cream,
                 )
             }
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .size(12.dp)
-                .clip(CircleShape)
-                .background(colors.glow),
-        )
     }
 }
 
@@ -1161,7 +1161,7 @@ private fun FeaturedPhotoCard(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
@@ -1180,6 +1180,11 @@ private fun FeaturedPhotoCard(
                 onClick = onToggleFocus,
             ),
     ) {
+        // BoxWithConstraints (not a plain Box) purely so the photo-count segments below know the
+        // card's own real width — needed to shrink them evenly once there are enough photos that
+        // they'd otherwise run past the card's edges instead of staying within its same 22dp
+        // side inset every other overlay element (name/streak row) already respects.
+        val cardWidth = maxWidth
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -1262,13 +1267,27 @@ private fun FeaturedPhotoCard(
                 val friendEntries = remember(entries, current.friendId) {
                     entries.filter { it.friendId == current.friendId }.sortedBy { it.indexWithinFriend }
                 }
+                // Same 16dp width every dot already used as long as they all fit — only actually
+                // shrinks (evenly, all of them together) once there are enough photos that 16dp
+                // each would run past the card's own 22dp-inset edges, same margin the name/streak
+                // row below already respects. Never fewer dots, never one dot a different size
+                // from its neighbors — just the whole row scaling down together to still fit.
+                val dotCount = current.totalForFriend
+                val availableWidth = cardWidth - FEATURED_CARD_SIDE_PADDING * 2
+                val naturalWidth = FEATURED_CARD_DOT_WIDTH * dotCount + FEATURED_CARD_DOT_SPACING * (dotCount - 1)
+                val dotWidth = if (naturalWidth <= availableWidth) {
+                    FEATURED_CARD_DOT_WIDTH
+                } else {
+                    ((availableWidth - FEATURED_CARD_DOT_SPACING * (dotCount - 1)) / dotCount)
+                        .coerceAtLeast(FEATURED_CARD_DOT_MIN_WIDTH)
+                }
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(FEATURED_CARD_DOT_SPACING),
                 ) {
-                    repeat(current.totalForFriend) { index ->
+                    repeat(dotCount) { index ->
                         val isUnseen = friendEntries.getOrNull(index)?.photo?.seen == false
                         val targetDotColor = when {
                             index == current.indexWithinFriend -> Color.White
@@ -1289,7 +1308,7 @@ private fun FeaturedPhotoCard(
                         )
                         Box(
                             modifier = Modifier
-                                .width(16.dp)
+                                .width(dotWidth)
                                 .height(3.dp)
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(dotColor),
@@ -1496,11 +1515,6 @@ private fun FriendAvatarRow(
                 animationSpec = tween(100, easing = FastOutSlowInEasing),
                 label = "avatarRingUnseenAlpha",
             )
-            val dotColor by animateColorAsState(
-                targetValue = if (hasUnseen) colors.glow else colors.mutedDim,
-                animationSpec = tween(100, easing = FastOutSlowInEasing),
-                label = "avatarDotColor",
-            )
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1528,10 +1542,17 @@ private fun FriendAvatarRow(
                         Box(
                             modifier = Modifier
                                 .matchParentSize()
-                                .padding(2.5.dp)
+                                // 3.5dp, not the original 2.5dp — bolder, but the previous 4.5dp
+                                // attempt (plus only a 2dp gap before the photo) left the ring and
+                                // photo reading as one thick solid disc with barely any visible
+                                // separation, not an actual ring. The 3dp gap below (up from 2dp)
+                                // is just as important as this width — it's the gap that makes the
+                                // colored band read as a ring wrapping the photo, not a border
+                                // fused to it.
+                                .padding(3.5.dp)
                                 .clip(CircleShape)
                                 .background(colors.panel)
-                                .padding(2.dp)
+                                .padding(3.dp)
                                 .clip(CircleShape)
                                 .clickable { onAvatarClick(item.friendId) },
                         ) {
@@ -1565,16 +1586,6 @@ private fun FriendAvatarRow(
                             )
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(14.dp)
-                            .clip(CircleShape)
-                            .background(colors.panel)
-                            .padding(2.dp)
-                            .clip(CircleShape)
-                            .background(dotColor),
-                    )
                 }
                 // Streak lives on the featured card itself now, not duplicated here too —
                 // just the name below each avatar.
