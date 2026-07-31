@@ -29,6 +29,17 @@ class ThemeViewModel(
         private set
 
     init {
+        reload()
+    }
+
+    /** Re-runs the same persisted-theme + Gold-status resolution [init] does — this ViewModel is
+     * constructed once, at the very top of the whole Compose tree (see MainActivity), and outlives
+     * any single signed-in account for the entire app session, so signing into a *different*
+     * account never naturally re-triggers this on its own the way a fresh ViewModel would. Called
+     * again from MainActivity's own onAuthenticated, right after a successful login, so the newly
+     * signed-in account's own saved theme (and real Gold status) actually gets applied instead of
+     * silently keeping whatever [reset] (or the previous account) last left this showing. */
+    fun reload() {
         viewModelScope.launch {
             // Deliberately sequential in one coroutine, not two separate launches racing each
             // other — the persisted-theme fallback below needs the *real, final* Gold status,
@@ -43,6 +54,18 @@ class ThemeViewModel(
             selectedTheme = effective
             store.saveEffectiveThemeSync(effective)
         }
+    }
+
+    /** Called from MainActivity's onSignOut, alongside its own themePreferenceStore.clear() —
+     * that clears the *persisted* theme so a different account signing in later doesn't inherit
+     * it, but has no effect on this ViewModel's own already-resolved, in-memory [selectedTheme]/
+     * [isGoldMember], since (see [reload]'s own doc comment) this instance is never recreated on
+     * sign-out. Without this, a Gold-gated theme selected by the outgoing account kept visibly
+     * applying — correctly cleared on disk, but still showing on screen — until the process was
+     * killed and relaunched from scratch. */
+    fun reset() {
+        selectedTheme = ThemeKey.EMBER
+        isGoldMember = false
     }
 
     fun selectTheme(themeKey: ThemeKey) {

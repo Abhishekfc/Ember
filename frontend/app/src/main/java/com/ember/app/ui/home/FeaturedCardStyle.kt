@@ -45,3 +45,12 @@ fun rememberFocusFade(active: Boolean): State<Float> = animateFloatAsState(
 internal const val FEATURED_CARD_ASPECT_RATIO = 0.8f
 internal val FEATURED_CARD_CORNER_RADIUS = 30.dp
 internal val FEATURED_CARD_SIDE_PADDING = 22.dp
+
+/** The per-friend photo-count segments along the top of the featured card — sized at
+ * [FEATURED_CARD_DOT_WIDTH] each as long as they all fit within the card's own
+ * [FEATURED_CARD_SIDE_PADDING] inset; once there are enough photos that they wouldn't, they
+ * shrink evenly (never below [FEATURED_CARD_DOT_MIN_WIDTH]) rather than running past the card's
+ * rounded edges. */
+internal val FEATURED_CARD_DOT_WIDTH = 16.dp
+internal val FEATURED_CARD_DOT_SPACING = 4.dp
+internal val FEATURED_CARD_DOT_MIN_WIDTH = 3.dp

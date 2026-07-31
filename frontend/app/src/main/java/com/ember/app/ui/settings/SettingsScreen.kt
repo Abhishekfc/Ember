@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -194,7 +195,12 @@ fun SettingsScreen(
 
             SectionLabel(text = "Preferences", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(vertical = 12.dp),
+                // Same explicit floor as FlatSettingsRow below — without it, this row's real
+                // content height was governed by the Switch (~32dp) while every other row's was
+                // governed by a plain icon (~20dp), so rows ended up visibly different heights
+                // once the old icon-badge circle (which happened to be tall enough to mask that
+                // difference) was removed.
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 24.dp).padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 SettingsIconBadge(Icons.Rounded.NotificationsNone)
@@ -281,12 +287,8 @@ fun SettingsScreen(
 @Composable
 private fun SettingsIconBadge(icon: ImageVector) {
     val colors = EmberTheme.colors
-    Box(
-        modifier = Modifier.size(34.dp).clip(CircleShape).background(colors.glow.copy(alpha = 0.14f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = null, tint = colors.glow, modifier = Modifier.size(17.dp))
-    }
+    // No background circle behind the icon any more — plain tinted glyph only.
+    Icon(icon, contentDescription = null, tint = colors.glow, modifier = Modifier.size(20.dp))
 }
 
 @Composable
@@ -301,6 +303,7 @@ private fun FlatSettingsRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 56.dp)
             .padding(horizontal = 24.dp)
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .padding(vertical = 12.dp),

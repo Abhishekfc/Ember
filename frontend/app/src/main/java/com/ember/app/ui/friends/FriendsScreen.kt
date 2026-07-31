@@ -279,6 +279,19 @@ fun FriendsScreen(
                         } else {
                             viewModel.filteredFriends
                         }
+                            // More than one friend can be pinned at once (pinning one never
+                            // unpins another) — the hero above only ever features the first of
+                            // them, so any *other* pinned friend still needs to stand out here.
+                            // Within (and below) that, most-recently-shared-a-moment-with-us
+                            // first — lastActivityAt is an ISO-8601 string, so plain lexicographic
+                            // descending comparison already sorts it chronologically; a friend
+                            // with none yet (null) falls back to "", which is always the "oldest"
+                            // possible value, so they land at the very end of their group instead
+                            // of before real timestamps.
+                            .sortedWith(
+                                compareByDescending<FriendSummaryDto> { it.pinnedByMe }
+                                    .thenByDescending { it.lastActivityAt ?: "" },
+                            )
                         items(friendRows, key = { it.friendshipId }) { friend ->
                             FriendRow(friend, onClick = { onFriendClick(friend) })
                         }
