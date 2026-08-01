@@ -7,18 +7,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
@@ -38,29 +33,24 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.ui.components.LocalNavDockHeight
+import com.ember.app.ui.components.TabScreenScaffold
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 import com.ember.app.ui.theme.ThemeKey
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 
 /** Where "Help & Support" and "Send Feedback" open an email composer to — there's no dedicated
  * support inbox or feedback form yet, so both point at the same address for now. */
@@ -99,47 +89,29 @@ fun SettingsScreen(
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     val context = LocalContext.current
-    var screenSize by remember { mutableStateOf(Size.Zero) }
 
     val versionName = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "—"
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
-            .background(colors.background.asBrush(screenSize)),
+    // No pull-to-refresh — nothing on this screen is fetched from the network, so there's
+    // nothing for a pull gesture to refresh (isRefreshing/onRefresh both left at their defaults).
+    TabScreenScaffold(
+        title = "Settings",
+        hazeState = hazeState,
+        // Clears the floating nav dock rather than just the system nav bar behind it — same
+        // reserve Home's own scrollable content uses, so Log out is reachable on every device,
+        // not just tall ones. Plus a bit of extra breathing room on top of the dock's own real
+        // height, so Log out doesn't sit right at the very edge of it.
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = LocalNavDockHeight.current + 24.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .hazeSource(hazeState)
-                .statusBarsPadding()
-                // Wasn't scrollable at all before — content taller than one screen (which the new
-                // Privacy section pushed this over, on shorter devices especially) had no way to
-                // reach. LocalNavDockHeight as trailing padding, not navigationBarsPadding alone,
-                // is what actually clears the floating nav dock rather than just the system bar
-                // behind it — same reserve Home's own scrollable content already uses for the
-                // identical reason, now the dock's own real measured height rather than a fixed
-                // dp guess (see LocalNavDockHeight's own doc comment for why that guess still
-                // left this exact button partly covered on at least one real device).
-                .verticalScroll(rememberScrollState()),
-        ) {
-            // Centered, plain title — Settings is a bottom-nav tab (swipe between Home/Friends/
-            // .../Settings), not a screen pushed on top of one you'd back out of, so no back
-            // arrow.
-            Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp, bottom = 26.dp), contentAlignment = Alignment.Center) {
-                Text(text = "Settings", fontFamily = PublicSansFontFamily, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = colors.cream)
-            }
-
+        item(key = "profile") {
             // The one identity element every comparable app leads Settings with — tapping your
             // own name/photo to edit your profile.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
                     .clickable(onClick = onProfileClick)
                     .padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -153,7 +125,7 @@ fun SettingsScreen(
                             model = profilePhotoUrl,
                             contentDescription = "Your profile photo",
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            modifier = Modifier.size(56.dp).clip(CircleShape),
                         )
                     } else {
                         Text(
@@ -184,7 +156,9 @@ fun SettingsScreen(
                 }
                 Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.mutedDim, modifier = Modifier.size(16.dp))
             }
+        }
 
+        item(key = "gold") {
             FlatSettingsRow(
                 icon = Icons.Rounded.AutoAwesome,
                 label = "Ember Gold",
@@ -192,15 +166,19 @@ fun SettingsScreen(
                 onClick = onGoldClick,
                 modifier = Modifier.padding(top = 8.dp),
             )
+        }
 
-            SectionLabel(text = "Preferences", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
+        item(key = "preferences-header") {
+            SectionLabel(text = "Preferences", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+        }
+        item(key = "notifications") {
             Row(
                 // Same explicit floor as FlatSettingsRow below — without it, this row's real
                 // content height was governed by the Switch (~32dp) while every other row's was
                 // governed by a plain icon (~20dp), so rows ended up visibly different heights
                 // once the old icon-badge circle (which happened to be tall enough to mask that
                 // difference) was removed.
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 24.dp).padding(vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 SettingsIconBadge(Icons.Rounded.NotificationsNone)
@@ -230,20 +208,38 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+        item(key = "appearance") {
             FlatSettingsRow(Icons.Rounded.Palette, "Appearance", currentTheme.displayName, onThemeClick)
+        }
+        item(key = "widget") {
             // widgetBadge reads "Anyone" (the default every account starts with) or a friend
             // count once a Gold subscriber has chosen who to feature — see WidgetSettingsScreen,
             // which is where choosing anyone at all is actually gated.
             FlatSettingsRow(Icons.Rounded.Widgets, "Widget", widgetBadge, onWidgetClick)
+        }
 
-            SectionLabel(text = "Privacy", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
+        item(key = "privacy-header") {
+            SectionLabel(text = "Privacy", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+        }
+        item(key = "blocked") {
             FlatSettingsRow(Icons.Rounded.Block, "Blocked accounts", null, onBlockedUsersClick)
+        }
 
-            SectionLabel(text = "Support", modifier = Modifier.padding(top = 22.dp, start = 24.dp, bottom = 2.dp))
+        item(key = "support-header") {
+            SectionLabel(text = "Support", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+        }
+        item(key = "help") {
             FlatSettingsRow(Icons.AutoMirrored.Rounded.HelpOutline, "Help & support", null, { openSupportEmail(context, "Ember support") })
+        }
+        item(key = "feedback") {
             FlatSettingsRow(Icons.Rounded.Feedback, "Send feedback", null, { openSupportEmail(context, "Ember feedback") })
+        }
+        item(key = "about") {
             FlatSettingsRow(Icons.Rounded.Article, "About Ember", versionName, null)
+        }
 
+        item(key = "logout") {
             // The one loud element on an otherwise quiet screen — a light pill rather than
             // Ember's usual gradient-glow button, because signing out isn't a positive action
             // worth the same visual weight as "send a photo". Deliberately a full capsule (28dp
@@ -251,7 +247,6 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
                     .padding(top = 26.dp)
                     .background(colors.cream, RoundedCornerShape(28.dp))
                     .clickable(onClick = onSignOut)
@@ -269,12 +264,6 @@ fun SettingsScreen(
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
-
-            // Clears the floating nav dock rather than just the system nav bar behind it — same
-            // reserve Home's own scrollable content uses, so Log out is reachable on every
-            // device, not just tall ones. Plus a bit of extra breathing room on top of the
-            // dock's own real height, so Log out doesn't sit right at the very edge of it.
-            Spacer(modifier = Modifier.height(LocalNavDockHeight.current + 24.dp))
         }
     }
 }
@@ -304,7 +293,6 @@ private fun FlatSettingsRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .padding(horizontal = 24.dp)
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

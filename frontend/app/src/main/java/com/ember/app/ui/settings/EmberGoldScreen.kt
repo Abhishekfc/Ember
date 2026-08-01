@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
@@ -41,7 +42,7 @@ import com.ember.app.ui.theme.PublicSansFontFamily
 private data class GoldPerk(val icon: ImageVector, val title: String, val detail: String)
 
 @Composable
-fun EmberGoldScreen() {
+fun EmberGoldScreen(onBack: () -> Unit) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
@@ -59,13 +60,15 @@ fun EmberGoldScreen() {
             .background(colors.background.asBrush(screenSize))
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 30.dp),
+            .padding(start = 20.dp, end = 20.dp, bottom = 30.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        NestedScreenHeader(onBack = onBack)
+
         val badgeSizePx = Size(72f, 72f)
         Box(
             modifier = Modifier
-                .padding(top = 26.dp)
+                .padding(top = 12.dp)
                 .size(72.dp)
                 .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), badgeSizePx), CircleShape),
             contentAlignment = Alignment.Center,

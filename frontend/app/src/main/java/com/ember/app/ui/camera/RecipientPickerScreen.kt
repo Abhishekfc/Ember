@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -40,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
+import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
@@ -64,31 +64,15 @@ fun RecipientPickerScreen(
             .background(colors.background.asBrush(screenSize))
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 26.dp),
+            .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = "Send to", fontFamily = typography.display, fontSize = 22.sp, color = colors.cream)
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(colors.elevatedPanel)
-                    .clickable(onClick = onClose),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.cream, modifier = Modifier.size(16.dp))
-            }
-        }
+        NestedScreenHeader(onBack = onClose, title = "Send to")
 
         // Quiet inline text, not bordered chips — the two shortcuts worth a single tap, stated
         // as plainly as possible rather than given their own visual weight on a screen whose
         // only real job is a short list of people.
         if (pinnedFriend != null) {
-            Row(modifier = Modifier.padding(top = 18.dp)) {
+            Row(modifier = Modifier.padding(top = 14.dp)) {
                 QuickSelectLink(
                     label = "Everyone",
                     active = viewModel.selectedFriendIds == allFriendIds,

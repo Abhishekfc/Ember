@@ -23,6 +23,10 @@ import com.ember.app.R
  */
 enum class ThemeKey(val displayName: String, val locked: Boolean) {
     EMBER("Ember", locked = false),
+    // Same background, panel, and overlayPanel (nav dock) as EMBER, pixel-for-pixel — only the
+    // accent trio (glow/glow2/violet, a user-supplied purple/blue/green gradient) and the
+    // camera/featured-card fill change. See emberNewDefinition's own comment for the full reasoning.
+    EMBER_NEW("Ember New", locked = false),
     // The original warm-orange/violet "Ember" look, kept as its own free theme under a new name
     // once EMBER itself became the icon-matched cream/black look instead — nothing was deleted,
     // just renamed and given its own slot alongside it.
@@ -143,7 +147,7 @@ private val DmSerifDisplayFontFamily = FontFamily(
 // same color, rather than the radial falloff every other theme uses. panel/surface/elevated/
 // overlay are all still derived from this exact value via deriveSurfaceLadder, so the tonal
 // hierarchy gap holds automatically without needing its own separate re-tuning.
-private val emberBackgroundBase = Color(0xFF0F0F0F)
+private val emberBackgroundBase = Color(0xFF121212)
 private val emberPanel = Color(0xFF424242)
 private val emberLadder = deriveSurfaceLadder(emberBackgroundBase, emberPanel, accent = Color(0xFFEDEAE0))
 private val emberDefinition = EmberThemeDefinition(
@@ -170,19 +174,57 @@ private val emberDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
 )
 
+// Reuses emberLadder directly (not a fresh deriveSurfaceLadder call) so surface/overlayPanel come
+// out pixel-identical to EMBER's own — deriveSurfaceLadder nudges elevatedPanel/overlayPanel a few
+// percent toward whatever accent it's given, and the whole point here is that the nav dock's own
+// background (overlayPanel) must not shift toward the new purple/blue accent at all. Only the
+// accent trio (glow/glow2/violet) and elevatedPanel (the camera/featured-card fill, the one
+// "detail" surface actually meant to change) differ from EMBER.
+private val emberNewDefinition = EmberThemeDefinition(
+    key = ThemeKey.EMBER_NEW,
+    colors = EmberColors(
+        background = EmberBackground.Radial(listOf(emberBackgroundBase, emberBackgroundBase), 0.20f, 0.0f),
+        surface = emberLadder.surface,
+        panel = emberPanel,
+        // The one background users asked to actually change here ("camera background... make it
+        // white") — everything else stays EMBER's own dark tone.
+        elevatedPanel = Color(0xFFF6F3E9),
+        overlayPanel = emberLadder.overlayPanel,
+        // Pure white, not EMBER's own warm-cream — this is the one other spot asked to move
+        // away from cream specifically.
+        cream = Color(0xFFFFFFFF),
+        // Neutral grays, not EMBER's own warm taupe (0xFFA8A399/0xFF6E6A61) — that warmth is what
+        // still read as "cream" in placeholder text and disabled-button states even after cream
+        // itself became white, since it's a whole extra place the same warm bias was hiding.
+        muted = Color(0xFFA3A3AA),
+        mutedDim = Color(0xFF69696F).ensureLightnessGap(emberPanel, minGap = 0.26f, awayFromWhite = false),
+        // User-supplied "Aurora Gradient" palette: Ember Purple -> Sky Mist -> Soft Sage. Used
+        // exactly where every theme's accent trio already shows up — the avatar ring's sweep,
+        // the streak icon, CTA button fills, the camera shutter's own gradient — never the
+        // background or the nav dock.
+        glow = Color(0xFF7B61FF),
+        glow2 = Color(0xFF5DADE2),
+        violet = Color(0xFF7ED8B3),
+        accentText = Color(0xFFFFFFFF),
+        border = whiteBorder(0.08f),
+        isLight = false,
+    ),
+    typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
+)
+
 // The original warm-orange/violet look this same slot used before EMBER became the icon-matched
 // cream/black theme above — kept exactly as it was, just under its own name now instead of
 // being lost.
 // Kept at its original depth (only Ember got the brighter background treatment) — background
 // unchanged from this theme's own original tone, panel still widened +14% for real tonal
 // separation, outer gradient stop just lifted off literal pure black.
-private val blazeBackgroundBase = Color(0xFF0E0D14)
+private val blazeBackgroundBase = Color(0xFF121212)
 private val blazePanel = Color(0xFF313038)
 private val blazeLadder = deriveSurfaceLadder(blazeBackgroundBase, blazePanel, accent = Color(0xFFFFA94D))
 private val blazeDefinition = EmberThemeDefinition(
     key = ThemeKey.BLAZE,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(blazeBackgroundBase, Color(0xFF0C0B11)), 0.20f, 0.0f),
+        background = EmberBackground.Radial(listOf(blazeBackgroundBase, blazeBackgroundBase), 0.20f, 0.0f),
         surface = blazeLadder.surface,
         panel = blazePanel,
         elevatedPanel = blazeLadder.elevatedPanel,
@@ -202,13 +244,13 @@ private val blazeDefinition = EmberThemeDefinition(
 
 // Kept at its original depth — see blazeDefinition's identical comment. Noir's own "luxury
 // monochrome" identity leans on real darkness, not just Ember's brighter, more everyday one.
-private val noirBackgroundBase = Color(0xFF0A0A0A)
+private val noirBackgroundBase = Color(0xFF121212)
 private val noirPanel = Color(0xFF2E2E2E)
 private val noirLadder = deriveSurfaceLadder(noirBackgroundBase, noirPanel, accent = Color(0xFFF5F5F5))
 private val noirDefinition = EmberThemeDefinition(
     key = ThemeKey.NOIR,
     colors = EmberColors(
-        background = EmberBackground.Linear(listOf(noirBackgroundBase, Color(0xFF0E0E0E))),
+        background = EmberBackground.Linear(listOf(noirBackgroundBase, noirBackgroundBase)),
         surface = noirLadder.surface,
         panel = noirPanel,
         elevatedPanel = noirLadder.elevatedPanel,
@@ -421,6 +463,7 @@ private val frostDefinition = EmberThemeDefinition(
 
 fun emberThemeDefinition(key: ThemeKey): EmberThemeDefinition = when (key) {
     ThemeKey.EMBER -> emberDefinition
+    ThemeKey.EMBER_NEW -> emberNewDefinition
     ThemeKey.BLAZE -> blazeDefinition
     ThemeKey.NOIR -> noirDefinition
     ThemeKey.AURORA -> auroraDefinition

@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.StartOffsetType
@@ -16,6 +17,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
@@ -111,6 +113,7 @@ import coil3.compose.rememberAsyncImagePainter
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.PhotoEntryDto
 import com.ember.app.ui.components.LocalNavDockHeight
+import com.ember.app.ui.components.PULL_REFRESH_CONTENT_OFFSET_DP
 import com.ember.app.ui.theme.CourgetteFontFamily
 import com.ember.app.ui.theme.EmberTheme
 import dev.chrisbanes.haze.HazeState
@@ -123,11 +126,6 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-
-/** Floor for the featured card's height clamp below — however short a screen gets, the card
- * never shrinks past a size that still reads as a real photo rather than a sliver. */
-private val FEATURED_CARD_MIN_HEIGHT_DP = 240.dp
-
 /** How far the user needs to scroll before the nav dock's Home icon has fully morphed into the
  * Memories one. Lives here (`internal`, not `private`) rather than in MainActivity, since it's
  * really describing this screen's own Memories section, not the dock itself. */
@@ -137,6 +135,13 @@ internal const val MEMORIES_REVEAL_SCROLL_DP = 220
  * own — see the LaunchedEffect using this in HomeScreen's carousel branch for why this one
  * specific page needs a fallback the rest of the carousel doesn't. */
 private const val LAST_PHOTO_DWELL_MARK_SEEN_MS = 3000L
+
+
+/** Where the page rests, as a fraction of [PULL_REFRESH_CONTENT_OFFSET_DP], while a pull-triggered
+ * refresh is actually running — the fixed destination the release settle eases toward (see its
+ * call site for why a fixed value, rather than the live pull distance, is what makes that easing
+ * take effect at all). 1f leaves the whole offset open, so the spinner stays fully visible. */
+private const val PULL_REFRESH_RESTING_FRACTION = 1f
 
 /** Home's own page — greeting header, then whichever of loading / error / empty / the featured
  * carousel applies, with the Memories grid embedded further down the same scroll (below the
@@ -182,6 +187,11 @@ fun HomeScreen(
     // for one frame before the first real measurement lands, same trade-off screenSize above
     // already makes.
     var headerHeightPx by remember { mutableStateOf(0f) }
+
+    // HomeBrandHeader's own real height — just that row, not the combined block headerHeightPx
+    // above tracks — used only to park the pull-to-refresh spinner directly beneath it (see the
+    // indicator's own modifier further down).
+    var brandHeaderHeightPx by remember { mutableStateOf(0f) }
 
     // Whichever photo the featured card is currently showing — hoisted up here (rather than kept
     // local to the carousel branch below) so AmbientPhotoBackdrop, rendered from this composable's
@@ -267,6 +277,56 @@ fun HomeScreen(
     // verticalScroll is what lets the pull-to-refresh gesture register even though the
     // content itself fits on one screen.
     val pullRefreshState = rememberPullToRefreshState()
+    // Material3's own PullToRefreshBox only moves the indicator as you pull — the content behind
+    // it stays put, which read as broken ("nothing happens, just an icon appears") compared to
+    // the tactile feel most apps' own pull-to-refresh has, where the whole page visibly shifts
+    // down with your finger. Driving that shift by hand here — as a plain computed value, not
+    // wrapped in its own animateFloatAsState. pullRefreshState.distanceFraction is already
+    // smoothly animated by Material3 itself through every phase of the gesture (drag, release,
+    // held open while isRefreshing is true, then settling back to 0) — layering a second,
+    // independent animation on top of that fought with it instead of following it: on release,
+    // this state's own value would already be easing toward its next target while a separate
+    // tween chased a different target of its own, producing the "dips further down, then jumps
+    // back up" stutter. A plain per-frame formula has nothing of its own to fight with; it just
+    // rides Material3's existing animation directly.
+    //
+    // Deliberately a plain linear multiple of distanceFraction — no curve, no clamp, no easing.
+    // A resistance curve was tried here and is what caused the "settles down, then jerks back up"
+    // motion on release: any curve makes the offset at a deep pull (distanceFraction > 1) larger
+    // than the offset at the settled refreshing position (distanceFraction == 1), so letting go
+    // after a long pull always moved the page back UP before the refresh finished. Straight
+    // proportionality means the position your finger left it at IS the resting position, so
+    // release is a single continuous settle with nothing to bounce back from.
+    //
+    // The one place an animation of our own is warranted is the settle that happens when you let
+    // go while a refresh is already running: Material3 pulls the page back up to its held-open
+    // position at a flat, constant speed, which reads as an abrupt snap. A decelerating tween
+    // over that phase only (LinearOutSlowInEasing — fast at first, easing out as it arrives) is
+    // what makes it land softly instead. Every other phase uses snap(), i.e. no animation at all:
+    // while dragging, the offset must track the finger exactly (anything else feels laggy), and
+    // once the refresh finishes Material3 is already animating distanceFraction smoothly back to
+    // zero on its own, so following it verbatim is both smoother and simpler than re-animating a
+    // value that's already animated.
+    // The target during that settle is a fixed constant, NOT distanceFraction. Material3 is
+    // already animating distanceFraction itself down toward its resting value the moment you let
+    // go — so an eased tween pointed at that value is chasing a target that moves every frame,
+    // which just makes it track Material3's own timing and leaves the easing with nothing to
+    // slow down (the reason a tween here appeared to change nothing at all). Aiming at a fixed
+    // number instead gives the tween a stationary destination, so its full duration and
+    // deceleration actually apply.
+    val pullOffsetFraction by animateFloatAsState(
+        targetValue = if (viewModel.isPullRefreshing) {
+            PULL_REFRESH_RESTING_FRACTION
+        } else {
+            pullRefreshState.distanceFraction.coerceAtLeast(0f)
+        },
+        animationSpec = if (viewModel.isPullRefreshing) {
+            tween(durationMillis = 420, easing = LinearOutSlowInEasing)
+        } else {
+            snap()
+        },
+        label = "pullOffsetFraction",
+    )
     PullToRefreshBox(
         // Tracks isPullRefreshing specifically, not the general isLoading — loadFeed() also
         // runs silently in the background (e.g. right after sending a photo, so streaks and
@@ -275,18 +335,34 @@ fun HomeScreen(
         isRefreshing = viewModel.isPullRefreshing,
         onRefresh = { viewModel.loadFeed(isPullRefresh = true) },
         state = pullRefreshState,
-        // The stock indicator otherwise renders in Material's own default scheme (a light
-        // container, a generic primary-color arc) — nothing about it reads as part of this app.
-        // Recoloring it to the theme's own panel/glow tokens is what makes it look like Ember's
-        // own refresh moment instead of a plain system control dropped on top of it.
+        // A plain white spinner, not Material's stock indicator (an arrow that morphs into a
+        // filled, tinted-container arc as you pull) — that stock shape doesn't read as part of
+        // this app, and a color tint on it looked wrong against a plain empty background rather
+        // than a filled container.
         indicator = {
-            PullToRefreshDefaults.Indicator(
-                state = pullRefreshState,
-                isRefreshing = viewModel.isPullRefreshing,
-                containerColor = colors.panel,
-                color = colors.glow,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
+            if (pullOffsetFraction > 0f) {
+                // Parked just under HomeBrandHeader's own real measured height, not a flat guess
+                // — that row is the one thing that doesn't shift down with the rest of the
+                // content above, so this is where the gap it reveals actually opens up. The
+                // status bar inset has to be added in separately here: this indicator is a direct
+                // sibling of the content inside PullToRefreshBox's own Box, positioned relative
+                // to that Box's true top edge (the screen's own top), while HomeBrandHeader lives
+                // inside the content Column's statusBarsPadding() further down — without also
+                // accounting for that inset here, the indicator landed a whole status-bar-height
+                // too high, overlapping the header instead of sitting below it.
+                val density = LocalDensity.current
+                val statusBarDp = with(density) { WindowInsets.statusBars.getTop(density).toDp() }
+                val brandHeaderHeightDp = with(density) { brandHeaderHeightPx.toDp() }
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = statusBarDp + brandHeaderHeightDp + 14.dp)
+                        .size(26.dp)
+                        .graphicsLayer { alpha = pullOffsetFraction.coerceIn(0f, 1f) },
+                )
+            }
         },
         modifier = Modifier.fillMaxSize(),
     ) {
@@ -316,97 +392,100 @@ fun HomeScreen(
                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                     .graphicsLayer { alpha = chromeFade },
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp, start = 22.dp, end = 22.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                // Deliberately NOT part of the translationY shift below — this row is the one
+                // thing on the page that stays exactly where normal scrolling has already put it
+                // while pulling to refresh, the same way it stays in place through a normal
+                // scroll too (this Column isn't fixed; scrolling down to Memories carries it away
+                // like everything else, it's specifically the *pull* gesture this is exempt from).
+                HomeBrandHeader(
+                    userName = viewModel.userName,
+                    profilePhotoUrl = viewModel.profilePhotoUrl,
+                    onProfileClick = onProfileClick,
+                    modifier = Modifier.onGloballyPositioned { brandHeaderHeightPx = it.size.height.toFloat() },
+                )
+
+                Column(
+                    // The visible "page moves down with your pull" shift, scoped to everything
+                    // below the brand row above (title, subtitle, and — see the when{} block's
+                    // own wrapper further down — the featured card and everything after it) so
+                    // the reload spinner appears to emerge from underneath a brand row that
+                    // itself stays put, rather than the whole header sliding down together with
+                    // the spinner.
+                    modifier = Modifier.graphicsLayer { translationY = pullOffsetFraction * PULL_REFRESH_CONTENT_OFFSET_DP.dp.toPx() },
                 ) {
+                    // The opening line is a live status, not a greeting — it says something true
+                    // about the app's actual state right now (who's waiting to be seen) instead of
+                    // the generic "Good evening, Name" every dashboard app defaults to. The personal
+                    // touch moves to a small subline instead of carrying the whole header.
+                    //
+                    // Hierarchy, not just placement, is why hasConnectionError takes over this exact
+                    // slot rather than adding a third line below it: "You're all caught up" is a
+                    // freshness claim this app can no longer back up once a sync has actually failed
+                    // — showing it right next to a connection warning read as the app contradicting
+                    // itself in the same breath. Whichever fact is currently true gets the hero
+                    // treatment; the other one doesn't get a smaller, hedged mention alongside it.
+                    val unseenCount = viewModel.feedItems.count { viewModel.hasUnseenPhoto(it) }
+                    val hasConnectionError = viewModel.errorMessage != null
                     Text(
-                        text = "Ember",
-                        fontFamily = CourgetteFontFamily,
-                        fontSize = 34.sp,
-                        letterSpacing = (-0.5).sp,
-                        // Plain neutral cream, not the theme accent — the accent color read as
-                        // distracting here. Size and tighter tracking alone carry the "this is
-                        // the brand mark" distinction instead.
+                        text = buildAnnotatedString {
+                            if (hasConnectionError) {
+                                append("Couldn't connect")
+                            } else if (unseenCount > 0) {
+                                // The count itself is left un-styled (inherits the Text's own
+                                // full-strength cream below) and it's the rest of the sentence that's
+                                // muted instead — in the default Ember theme, colors.glow is the exact
+                                // same hex as colors.cream by design (see Theme.kt), so styling the
+                                // number with glow made it visually identical to plain cream text
+                                // around it; a real color (muted, not just a dimmer cream) for the
+                                // *surrounding* words guarantees a genuine, visible difference in
+                                // every theme instead of relying on two tokens that can coincide.
+                                append("$unseenCount")
+                                withStyle(SpanStyle(color = colors.muted)) {
+                                    append(if (unseenCount == 1) " photo is" else " photos are")
+                                    append(" glowing for you")
+                                }
+                            } else {
+                                append("You're all caught up")
+                            }
+                        },
+                        fontFamily = typography.display,
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.3).sp,
                         color = colors.cream,
+                        modifier = Modifier.padding(top = 14.dp, start = 22.dp, end = 22.dp),
                     )
-                    ProfileChip(
-                        name = viewModel.userName,
-                        photoUrl = viewModel.profilePhotoUrl,
-                        onClick = onProfileClick,
+                    // "Tap to retry" folds into this line rather than the hero line above — the hero
+                    // line already runs long enough on its own ("Couldn't connect") that adding retry
+                    // text there wrapped to two lines on narrower/smaller screens, eating extra header
+                    // height. This line has room for it.
+                    Text(
+                        text = buildAnnotatedString {
+                            append(viewModel.userName?.substringBefore(" ")?.let { "Hey $it · ${viewModel.dateText}" } ?: viewModel.dateText)
+                            if (hasConnectionError) {
+                                append("  ·  ")
+                                withStyle(SpanStyle(color = colors.glow)) { append("Tap to retry") }
+                            }
+                        },
+                        fontFamily = typography.body,
+                        fontSize = 12.5.sp,
+                        color = colors.muted,
+                        modifier = Modifier
+                            .padding(top = 5.dp, start = 22.dp, end = 22.dp)
+                            .let { if (hasConnectionError) it.clickable { viewModel.loadFeed() } else it },
                     )
                 }
-
-                // The opening line is a live status, not a greeting — it says something true
-                // about the app's actual state right now (who's waiting to be seen) instead of
-                // the generic "Good evening, Name" every dashboard app defaults to. The personal
-                // touch moves to a small subline instead of carrying the whole header.
-                //
-                // Hierarchy, not just placement, is why hasConnectionError takes over this exact
-                // slot rather than adding a third line below it: "You're all caught up" is a
-                // freshness claim this app can no longer back up once a sync has actually failed
-                // — showing it right next to a connection warning read as the app contradicting
-                // itself in the same breath. Whichever fact is currently true gets the hero
-                // treatment; the other one doesn't get a smaller, hedged mention alongside it.
-                val unseenCount = viewModel.feedItems.count { viewModel.hasUnseenPhoto(it) }
-                val hasConnectionError = viewModel.errorMessage != null
-                Text(
-                    text = buildAnnotatedString {
-                        if (hasConnectionError) {
-                            append("Couldn't connect")
-                        } else if (unseenCount > 0) {
-                            // The count itself is left un-styled (inherits the Text's own
-                            // full-strength cream below) and it's the rest of the sentence that's
-                            // muted instead — in the default Ember theme, colors.glow is the exact
-                            // same hex as colors.cream by design (see Theme.kt), so styling the
-                            // number with glow made it visually identical to plain cream text
-                            // around it; a real color (muted, not just a dimmer cream) for the
-                            // *surrounding* words guarantees a genuine, visible difference in
-                            // every theme instead of relying on two tokens that can coincide.
-                            append("$unseenCount")
-                            withStyle(SpanStyle(color = colors.muted)) {
-                                append(if (unseenCount == 1) " photo is" else " photos are")
-                                append(" glowing for you")
-                            }
-                        } else {
-                            append("You're all caught up")
-                        }
-                    },
-                    fontFamily = typography.display,
-                    fontSize = 25.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.3).sp,
-                    color = colors.cream,
-                    modifier = Modifier.padding(top = 14.dp, start = 22.dp, end = 22.dp),
-                )
-                // "Tap to retry" folds into this line rather than the hero line above — the hero
-                // line already runs long enough on its own ("Couldn't connect") that adding retry
-                // text there wrapped to two lines on narrower/smaller screens, eating extra header
-                // height. This line has room for it.
-                Text(
-                    text = buildAnnotatedString {
-                        append(viewModel.userName?.substringBefore(" ")?.let { "Hey $it · ${viewModel.dateText}" } ?: viewModel.dateText)
-                        if (hasConnectionError) {
-                            append("  ·  ")
-                            withStyle(SpanStyle(color = colors.glow)) { append("Tap to retry") }
-                        }
-                    },
-                    fontFamily = typography.body,
-                    fontSize = 12.5.sp,
-                    color = colors.muted,
-                    modifier = Modifier
-                        .padding(top = 5.dp, start = 22.dp, end = 22.dp)
-                        .let { if (hasConnectionError) it.clickable { viewModel.loadFeed() } else it },
-                )
             }
             }
 
             // These status branches use fixed vertical padding instead of fillMaxSize because
             // the parent Column is now scrollable (unbounded height), where fillMaxSize
             // collapses to zero.
+            //
+            // Wrapped in the same pull-to-refresh shift as the title/subtitle Column above, so
+            // the featured card and everything below it moves down together with them as one
+            // unit while HomeBrandHeader alone stays put.
+            Column(modifier = Modifier.graphicsLayer { translationY = pullOffsetFraction * PULL_REFRESH_CONTENT_OFFSET_DP.dp.toPx() }) {
             when {
                 // !hasCompletedFirstSync is what keeps this scoped to "we've never gotten a real
                 // answer yet" (first-ever open, nothing cached) — without it, refreshing an
@@ -685,8 +764,17 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 18.dp, start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING)
+                                // weight(fill = false) alone is what makes this genuinely
+                                // responsive to any screen size: Compose measures the avatar row
+                                // below (a non-weighted sibling) at its real natural height first,
+                                // then gives this card exactly whatever's left within
+                                // topFoldMaxHeightDp above — never more, so it can never push the
+                                // avatar row into the nav dock, on any device. A heightIn(min = ...)
+                                // floor used to sit here too, which defeated that guarantee on any
+                                // screen short enough that the real remaining space was less than
+                                // the floor — forcing an overflow instead of a smaller card, which
+                                // is exactly the cramped/broken layout this was reported on.
                                 .weight(1f, fill = false)
-                                .heightIn(min = FEATURED_CARD_MIN_HEIGHT_DP)
                                 .blur(cardBlurWhenMemoriesFocused, BlurredEdgeTreatment.Unbounded)
                                 .graphicsLayer { alpha = cardFadeWhenMemoriesFocused },
                         )
@@ -737,8 +825,9 @@ fun HomeScreen(
                     )
                 }
             }
+            }
         }
-    }
+        }
 
     // Rendered from THIS screen's own outer Box (fillMaxSize of the true measured screen size,
     // via screenSize above) rather than from inside the scrollable Column above — see
@@ -930,6 +1019,41 @@ private fun daypart(): String {
         hour < 12 -> "morning"
         hour < 17 -> "afternoon"
         else -> "evening"
+    }
+}
+
+/** The "Ember" wordmark + [ProfileChip], as their own row — split out from the rest of Home's
+ * header (the greeting/date lines) so it can be positioned and customized independently of them.
+ * At its call site in [HomeScreen] this is deliberately kept outside the scrollable/pull-to-
+ * refresh area, so it behaves like a fixed top bar (Instagram's own top bar is the reference)
+ * rather than scrolling or reacting to a pull gesture the way it used to when it was just the
+ * first row inside that same scrollable content. */
+@Composable
+private fun HomeBrandHeader(
+    userName: String?,
+    profilePhotoUrl: String?,
+    onProfileClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = EmberTheme.colors
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, start = 22.dp, end = 22.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "Ember",
+            fontFamily = CourgetteFontFamily,
+            fontSize = 34.sp,
+            letterSpacing = (-0.5).sp,
+            // Plain neutral cream, not the theme accent — the accent color read as distracting
+            // here. Size and tighter tracking alone carry the "this is the brand mark" distinction
+            // instead.
+            color = colors.cream,
+        )
+        ProfileChip(name = userName, photoUrl = profilePhotoUrl, onClick = onProfileClick)
     }
 }
 
@@ -1502,7 +1626,7 @@ private fun FriendAvatarRow(
             // Same duration/easing as the row's own centering scroll (smoothCenterOn) so the
             // resize and the reposition read as one coordinated move, not two mismatched ones.
             val avatarSize by animateDpAsState(
-                targetValue = if (isActive) 66.dp else 58.dp,
+                targetValue = if (isActive) 78.dp else 70.dp,
                 animationSpec = tween(320, easing = FastOutSlowInEasing),
                 label = "avatarSize",
             )
@@ -1518,9 +1642,9 @@ private fun FriendAvatarRow(
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(72.dp),
+                modifier = Modifier.width(84.dp),
             ) {
-                Box(modifier = Modifier.size(66.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(78.dp), contentAlignment = Alignment.Center) {
                     Box(modifier = Modifier.size(avatarSize)) {
                         // Muted ring — always present as the base, so the glow layer above has
                         // something already-correct underneath to dissolve into/out of.
@@ -1603,13 +1727,13 @@ private fun FriendAvatarRow(
         item(key = "add-friend") {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(72.dp),
+                modifier = Modifier.width(84.dp),
             ) {
                 val dashColor = colors.mutedDim
-                Box(modifier = Modifier.size(66.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(78.dp), contentAlignment = Alignment.Center) {
                     Box(
                         modifier = Modifier
-                            .size(58.dp)
+                            .size(70.dp)
                             .drawBehind {
                                 drawCircle(
                                     color = dashColor,
@@ -1627,7 +1751,7 @@ private fun FriendAvatarRow(
                             Icons.Filled.Add,
                             contentDescription = "Add friend",
                             tint = colors.muted,
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(26.dp),
                         )
                     }
                 }

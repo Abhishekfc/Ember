@@ -7,3 +7,5 @@ AUTH_SCREEN_CONTEXT.md
 test-accounts/
 frontend/Test images/
 frontend/app/google-services.json
+.vscode/
+frontend/images /

@@ -15,11 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ember.app.ui.camera.QuickSelectLink
 import com.ember.app.ui.camera.RecipientRow
+import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
@@ -64,25 +61,9 @@ fun WidgetSettingsScreen(
             .background(colors.background.asBrush(screenSize))
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 26.dp),
+            .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = "Widget", fontFamily = typography.display, fontSize = 22.sp, color = colors.cream)
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(colors.elevatedPanel)
-                    .clickable(onClick = onClose),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.cream, modifier = Modifier.size(16.dp))
-            }
-        }
+        NestedScreenHeader(onBack = onClose, title = "Widget")
         Text(
             text = "Choose whose photos always show on your home-screen widget",
             fontFamily = typography.body,

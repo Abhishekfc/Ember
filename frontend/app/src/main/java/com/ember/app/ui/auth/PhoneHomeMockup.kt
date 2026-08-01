@@ -3,6 +3,7 @@ package com.ember.app.ui.auth
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -29,8 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ember.app.R
 
 private const val GRID_COLUMNS = 4
 private const val GRID_ROWS = 4
@@ -83,9 +87,17 @@ fun PhoneHomeMockup(modifier: Modifier = Modifier) {
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Column(verticalArrangement = Arrangement.spacedBy(GRID_GAP)) {
-                    repeat(GRID_ROWS) {
+                    repeat(GRID_ROWS) { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(GRID_GAP)) {
-                            repeat(GRID_COLUMNS) {
+                            repeat(GRID_COLUMNS) { col ->
+                                // The big card below overlaps rows 1-2, columns 2-3 (its own
+                                // offset/alignment) — skipping those cells here instead of drawing
+                                // them underneath is what stops their sharper (10dp) corners from
+                                // peeking out past the big card's own, more rounded (22dp) ones.
+                                if (row in 1..2 && col in 2..3) {
+                                    Box(modifier = Modifier.size(cellSize))
+                                    return@repeat
+                                }
                                 // No per-cell border — sixteen individually bordered boxes were
                                 // the actual cause of the choppy entrance animation (that many
                                 // separate border draws every frame during the slide/fade-in adds
@@ -104,15 +116,19 @@ fun PhoneHomeMockup(modifier: Modifier = Modifier) {
 
                 // Overlaps the grid rather than occupying its own cell — genuinely bigger than a
                 // regular icon, not just recolored, which is what makes it read as "the one that
-                // matters" instead of one more icon among sixteen.
-                Box(
+                // matters" instead of one more icon among sixteen. A real sample photo now,
+                // not a flat color block — this is meant to read as "a friend's actual photo,
+                // live on your home screen," which a solid color can only gesture at.
+                Image(
+                    painter = painterResource(R.drawable.onboarding_widget_photo),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .offset(y = cellSize + GRID_GAP)
                         .size(bigCardSize)
                         .clip(RoundedCornerShape(22.dp))
-                        .background(colors.accentFill)
-                        .border(4.dp, colors.accentFill, RoundedCornerShape(22.dp)),
+                        .border(1.5.dp, colors.accentFill, RoundedCornerShape(22.dp)),
                 )
             }
 
