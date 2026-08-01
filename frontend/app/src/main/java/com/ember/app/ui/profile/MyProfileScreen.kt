@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
@@ -57,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
+import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -105,23 +105,13 @@ fun MyProfileScreen(
             .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
-        // Flat, icon-only back control — same treatment as the friend profile page, no capsule
-        // behind it competing with the profile itself for attention.
-        Box(
-            modifier = Modifier
-                .padding(top = 32.dp)
-                .size(40.dp)
-                .clickable(onClick = onClose),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBackIos, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(18.dp))
-        }
+        NestedScreenHeader(onBack = onClose)
 
         // Centered avatar + name + username, no "Profile" title above it any more — the avatar
         // and name together already say what this page is, the same way a contact card doesn't
         // need its own label repeating "this is a contact."
         Column(
-            modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(

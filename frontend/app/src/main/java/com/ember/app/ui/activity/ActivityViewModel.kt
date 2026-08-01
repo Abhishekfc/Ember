@@ -81,9 +81,17 @@ class ActivityViewModel(
     /** Called once the Activity tab actually becomes the visible page — see MainActivity's own
      * pager-settle effect. Persists "now" as the new "seen" marker server-side, so the dot
      * doesn't come back for events already on screen by the time this fires, and stays cleared
-     * even across a reinstall. */
+     * even across a reinstall.
+     *
+     * Always runs, regardless of [hasNewActivity]'s current value — that used to guard this with
+     * `if (!hasNewActivity) return`, which raced the very first [loadActivity] call: landing on
+     * this tab before that initial fetch resolves means [hasNewActivity] is still its default
+     * `false`, so the guard skipped marking anything seen; moments later, that fetch's own
+     * [recomputeHasNewActivity] would then turn the badge back on for activity the user was
+     * already looking at, with no way left to clear it short of leaving and returning. Always
+     * marking is a trivial extra request in the common case and the only way to be correct here.
+     */
     fun markSeen() {
-        if (!hasNewActivity) return
         hasNewActivity = false
         viewModelScope.launch {
             repository.markActivitySeen().onSuccess { lastSeenAt = it.lastSeenAt }

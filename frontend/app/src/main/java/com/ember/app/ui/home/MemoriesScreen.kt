@@ -350,7 +350,10 @@ private fun MemoryCell(
     isFocused: Boolean = false,
 ) {
     val colors = EmberTheme.colors
-    val shape = RoundedCornerShape(10.dp)
+    // Softer, more generous rounding across every cell type (was 10dp) — the one deliberate
+    // "redesign" change that applies uniformly, everything else below is either restored to its
+    // original look (the past-day dot) or newly split out (future days).
+    val shape = RoundedCornerShape(14.dp)
 
     when (cell) {
         // Purely a spacer keeping every month's grid the same fixed row count (see GRID_ROWS) —
@@ -364,7 +367,7 @@ private fun MemoryCell(
                     drawRoundRect(
                         color = colors.glow.copy(alpha = 0.55f),
                         style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))),
-                        cornerRadius = CornerRadius(10.dp.toPx()),
+                        cornerRadius = CornerRadius(14.dp.toPx()),
                     )
                 }
                 .clip(shape)
@@ -374,18 +377,29 @@ private fun MemoryCell(
             Icon(Icons.Filled.Add, contentDescription = "Take a photo", tint = colors.glow, modifier = Modifier.size(14.dp))
         }
 
-        // A day with nothing posted reads as a quiet placeholder dot, not an outlined box
-        // pretending to be a photo slot — only today (see MemoryGridCell.AddTile above) is
-        // actually actionable, so every other empty day shouldn't compete visually with it.
-        is MemoryGridCell.EmptyDay -> Box(
-            modifier = modifier.aspectRatio(0.85f),
-            contentAlignment = Alignment.Center,
-        ) {
+        // Split by whether the day has actually happened yet. A past day with nothing shared
+        // keeps exactly its original quiet dot treatment. A future day gets the same outlined
+        // square shape every photo cell uses — so the grid still reads as a uniform calendar,
+        // not literally nothing — but at a fraction of colors.panel's full opacity: at full
+        // strength, a month with only a few real photos is mostly empty future days, and filling
+        // dozens of them with the same solid tone a real photo card uses made the whole grid read
+        // as a heavy wall of grey instead of a quiet placeholder a few real photos stand out from.
+        is MemoryGridCell.EmptyDay -> if (cell.date.isBefore(LocalDate.now())) {
+            Box(modifier = modifier.aspectRatio(0.85f), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(colors.border),
+                )
+            }
+        } else {
             Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(colors.border),
+                modifier = modifier
+                    .aspectRatio(0.85f)
+                    .clip(shape)
+                    .background(colors.panel.copy(alpha = 0.35f))
+                    .border(1.dp, colors.border, shape),
             )
         }
 

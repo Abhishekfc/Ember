@@ -21,7 +21,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -197,7 +197,7 @@ private fun CameraButton(onCameraClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = Icons.Filled.PhotoCamera,
+            imageVector = Icons.Outlined.CameraAlt,
             contentDescription = "Camera",
             tint = colors.accentText,
             modifier = Modifier.size(22.dp),
@@ -289,19 +289,19 @@ private fun NavItem(
             modifier = Modifier.size(23.dp),
         )
         if (showBadge) {
-            // Same small-dot-with-a-ring-cutout language the avatar row's own unseen indicator
-            // already uses elsewhere in the app — a ring in the dock's own background color is
-            // what reads as a cutout rather than the dot just floating on top of the icon. Must
-            // match whatever the dock's own background actually is (see the hazeEffect/
-            // overlayPanel fallback above) or the "cutout" illusion breaks.
+            // Plain flat dot now — no cutout-ring border around it any more.
+            //
+            // Aligned to this Box's own TopEnd, but this Box is the full 44dp touch target, not
+            // the 23dp icon glyph centered inside it — a plain TopEnd (or a small outward offset)
+            // put the dot near the touch target's own corner, visibly far from the icon it's
+            // meant to badge. The offset below instead pulls it in to sit right against the
+            // icon's own top-right corner. Bigger too (12dp, was 9dp) — small enough to still read
+            // as a dot, not so small it looked like a soft glowing pinpoint rather than a solid one.
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = 2.dp, y = 2.dp)
-                    .size(9.dp)
-                    .clip(CircleShape)
-                    .background(colors.overlayPanel)
-                    .padding(2.dp)
+                    .offset(x = (-7).dp, y = 7.dp)
+                    .size(12.dp)
                     .clip(CircleShape)
                     .background(colors.glow),
             )

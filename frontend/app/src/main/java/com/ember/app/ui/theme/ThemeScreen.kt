@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.PublicSansFontFamily
 
@@ -55,6 +56,7 @@ import com.ember.app.ui.theme.PublicSansFontFamily
 @Composable
 fun ThemeScreen(
     viewModel: ThemeViewModel,
+    onBack: () -> Unit,
     onPreview: (ThemeKey?) -> Unit,
     onUpgradeToGold: () -> Unit,
 ) {
@@ -78,13 +80,8 @@ fun ThemeScreen(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        Column(modifier = Modifier.padding(top = 32.dp, start = 20.dp, end = 20.dp)) {
-            Text(
-                text = "Theme",
-                fontFamily = typography.display,
-                fontSize = 22.sp,
-                color = colors.cream,
-            )
+        Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp)) {
+            NestedScreenHeader(onBack = onBack, title = "Theme")
             Text(
                 text = "Applies to the app and your widgets",
                 fontFamily = typography.body,

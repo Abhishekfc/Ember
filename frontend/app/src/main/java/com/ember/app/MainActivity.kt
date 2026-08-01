@@ -673,11 +673,12 @@ class MainActivity : ComponentActivity() {
 
                         nestedScreen == NestedScreen.THEME -> ThemeScreen(
                             viewModel = themeViewModel,
+                            onBack = { nestedScreen = null },
                             onPreview = { previewThemeKey = it },
                             onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                         )
 
-                        nestedScreen == NestedScreen.GOLD -> EmberGoldScreen()
+                        nestedScreen == NestedScreen.GOLD -> EmberGoldScreen(onBack = { nestedScreen = null })
 
                         nestedScreen == NestedScreen.WIDGET_SETTINGS -> {
                             val widgetSettingsViewModel: WidgetSettingsViewModel = viewModel(
@@ -714,6 +715,7 @@ class MainActivity : ComponentActivity() {
                             )
                             FindPeopleScreen(
                                 viewModel = findPeopleViewModel,
+                                onBack = { nestedScreen = null },
                                 onResultClick = { result ->
                                     selectedProfileSubject = ProfileSubject.SearchResult(result)
                                     nestedScreen = NestedScreen.FRIEND_PROFILE

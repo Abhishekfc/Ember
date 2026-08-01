@@ -20,11 +20,13 @@ import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
 import com.ember.app.data.SubscriptionRepository
 import com.ember.app.data.remote.dto.FriendSummaryDto
+import com.ember.app.ui.home.FEATURED_CARD_ASPECT_RATIO
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.roundToInt
 
 /** Where the caption sits vertically, as a fraction of image height — must match where the
  * preview overlay draws it so what you see is what your friend gets. */
@@ -201,7 +203,26 @@ class CameraViewModel(
     /** The real, final photo — either the hardware capture landing (superseding whatever
      * snapshot [onPreviewSnapshotCaptured] showed a moment earlier) or a gallery pick, which has
      * no snapshot stage and is already "real" the instant it's chosen. */
-    fun onPhotoCaptured(file: File) {
+    /** [isFrontCamera] captures get their pixels mirrored to match the mirrored preview the shot
+     * was actually framed against — see takePhoto's own comment in CameraScreen for why this is
+     * done to the pixels here rather than via ImageCapture's EXIF-only isReversedHorizontal flag.
+     * The flip runs off the main thread; until it lands, the instant preview snapshot already on
+     * screen keeps showing (isRealCaptureReady stays false), which is the same handoff a
+     * back-camera capture already goes through, just a beat longer. */
+    fun onPhotoCaptured(file: File, isFrontCamera: Boolean = false) {
+        if (!isFrontCamera) {
+            applyCapturedFile(file)
+            return
+        }
+        viewModelScope.launch {
+            val mirrored = withContext(Dispatchers.IO) {
+                runCatching { mirrorHorizontally(file) }.getOrDefault(file)
+            }
+            applyCapturedFile(mirrored)
+        }
+    }
+
+    private fun applyCapturedFile(file: File) {
         val staleSnapshot = pendingSnapshotFile
         capturedFile = file
         isRealCaptureReady = true
@@ -284,10 +305,43 @@ private fun moveToPendingSendStorage(context: Context, source: File): File {
     return dest
 }
 
+/** Rewrites [file] horizontally mirrored, so a front-camera capture matches the mirrored preview
+ * it was framed against. Any EXIF rotation is baked into the pixels at the same time and the
+ * output carries no orientation metadata of its own — that keeps this from fighting
+ * [bakeCaptionIntoPhoto], which reads EXIF itself and would otherwise re-apply a rotation that's
+ * already been applied here. Returns the original [file] untouched if it can't be decoded. */
+private fun mirrorHorizontally(file: File): File {
+    val decoded = BitmapFactory.decodeFile(file.absolutePath) ?: return file
+    val rotationDegrees = when (
+        ExifInterface(file.absolutePath).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+    ) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+        ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+        ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+        else -> 0f
+    }
+    // One matrix doing both at once — rotating upright first and mirroring second in two separate
+    // createBitmap passes would allocate a second full-resolution intermediate for no benefit.
+    val matrix = Matrix().apply {
+        postRotate(rotationDegrees)
+        postScale(-1f, 1f)
+    }
+    val mirrored = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+    if (mirrored !== decoded) decoded.recycle()
+
+    val output = File(file.parentFile, "mirrored_${file.name}")
+    FileOutputStream(output).use { mirrored.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+    mirrored.recycle()
+    file.delete()
+    return output
+}
+
 /** Draws the caption onto the photo itself so recipients see it everywhere (feed, widget) with
  * no backend support for captions needed. Returns the original file untouched for a blank
- * caption; otherwise decodes (honoring EXIF rotation, which would be lost by re-encoding),
- * paints a Snapchat-style dark bar + centered white text, and writes a new JPEG. */
+ * caption; otherwise decodes (honoring EXIF rotation, which would be lost by re-encoding), crops
+ * to the same [FEATURED_CARD_ASPECT_RATIO] every card displays photos at (see [cropToAspectRatio]
+ * for why that step has to happen before baking, not just at display time), paints a
+ * Snapchat-style dark bar + centered white text, and writes a new JPEG. */
 private fun bakeCaptionIntoPhoto(file: File, caption: String): File {
     if (caption.isBlank()) return file
 
@@ -306,14 +360,26 @@ private fun bakeCaptionIntoPhoto(file: File, caption: String): File {
     } else {
         decoded
     }
-    // A capture is a full-resolution bitmap (tens of MB decoded) — up to three can transiently
-    // exist here (decoded, upright, bitmap) if left to GC alone, and retake/re-caption repeats
-    // this every time in one Camera session. Recycling each intermediate the moment it's
-    // superseded keeps at most two full-resolution bitmaps live at once instead of three.
+    // A capture is a full-resolution bitmap (tens of MB decoded) — up to four can transiently
+    // exist here (decoded, upright, sourceForBake, bitmap) if left to GC alone, and retake/
+    // re-caption repeats this every time in one Camera session. Recycling each intermediate the
+    // moment it's superseded keeps at most two full-resolution bitmaps live at once instead of
+    // four.
     if (upright !== decoded) decoded.recycle()
 
-    val bitmap = if (upright.isMutable) upright else upright.copy(Bitmap.Config.ARGB_8888, true)
-    if (bitmap !== upright) upright.recycle()
+    // The camera's own raw capture is whatever native aspect ratio that device's sensor defaults
+    // to (varies by phone) — never the featured card's 0.8 ratio the live preview constrained
+    // itself to while framing/captioning. Cropping here, before baking, is what makes the
+    // caption's Y-fraction below land in the same relative spot the preview showed *and* the same
+    // spot the featured card will later display — without it, a different crop applied only at
+    // display time shifts where the caption ends up, sometimes into the name/streak bar at the
+    // very bottom of the card, and how far it shifts depends on that device's own native capture
+    // ratio, which is why this only ever showed up on some recipients' devices and not others.
+    val sourceForBake = cropToAspectRatio(upright, FEATURED_CARD_ASPECT_RATIO)
+    if (sourceForBake !== upright) upright.recycle()
+
+    val bitmap = if (sourceForBake.isMutable) sourceForBake else sourceForBake.copy(Bitmap.Config.ARGB_8888, true)
+    if (bitmap !== sourceForBake) sourceForBake.recycle()
     val canvas = Canvas(bitmap)
 
     val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -342,4 +408,23 @@ private fun bakeCaptionIntoPhoto(file: File, caption: String): File {
     val output = File(file.parentFile, "captioned_${file.name}")
     FileOutputStream(output).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
     return output
+}
+
+/** Center-crops [source] down to [targetRatio] (width/height), the same way [ContentScale.Crop]
+ * would at display time — trims the sides if [source] is relatively wider than [targetRatio],
+ * or the top/bottom if it's relatively taller. Returns [source] itself, unmodified, if it's
+ * already at (or extremely close to) that ratio. */
+private fun cropToAspectRatio(source: Bitmap, targetRatio: Float): Bitmap {
+    val sourceRatio = source.width.toFloat() / source.height.toFloat()
+    if (kotlin.math.abs(sourceRatio - targetRatio) < 0.001f) return source
+
+    return if (sourceRatio > targetRatio) {
+        val newWidth = (source.height * targetRatio).roundToInt().coerceIn(1, source.width)
+        val x = (source.width - newWidth) / 2
+        Bitmap.createBitmap(source, x, 0, newWidth, source.height)
+    } else {
+        val newHeight = (source.width / targetRatio).roundToInt().coerceIn(1, source.height)
+        val y = (source.height - newHeight) / 2
+        Bitmap.createBitmap(source, 0, y, source.width, newHeight)
+    }
 }

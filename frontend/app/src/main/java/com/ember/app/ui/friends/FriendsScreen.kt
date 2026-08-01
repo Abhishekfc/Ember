@@ -1,7 +1,6 @@
 package com.ember.app.ui.friends
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,42 +12,29 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -57,11 +43,11 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
+import com.ember.app.ui.components.TabScreenScaffold
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 
 /** Signature device for this screen: a friend's ring literally warms up with their streak,
  * rather than a numeric badge doing all the work — 0 is unlit, low streaks glow one colour,
@@ -75,7 +61,6 @@ private fun streakRingBrush(colors: com.ember.app.ui.theme.EmberColors, streak: 
 }
 
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsScreen(
     viewModel: FriendsViewModel,
@@ -87,59 +72,38 @@ fun FriendsScreen(
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
-    var screenSize by remember { mutableStateOf(Size.Zero) }
     val searchShape = RoundedCornerShape(16.dp)
     val isSearching = viewModel.searchQuery.isNotBlank()
     val pinnedPartner = viewModel.friends.firstOrNull { it.pinnedByMe }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
-            .background(colors.background.asBrush(screenSize)),
-    ) {
-        Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState).statusBarsPadding()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 32.dp, start = 20.dp, end = 20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+    TabScreenScaffold(
+        title = "Friends",
+        hazeState = hazeState,
+        trailing = {
+            // Plain tinted glyph, no background circle — same treatment every other icon in
+            // the app now uses, not a colored bubble competing with the title. Sized generously;
+            // TabScreenHeader clamps this to the title text's own real height on its own, so
+            // this can ask for more room than actually fits without pushing the row taller.
+            Box(
+                modifier = Modifier.size(34.dp).clickable(onClick = onFindPeopleClick),
+                contentAlignment = Alignment.Center,
             ) {
-                Column {
-                    Text(text = "Friends", fontFamily = typography.display, fontSize = 26.sp, color = colors.cream)
-                    Text(
-                        text = if (viewModel.friends.isEmpty()) {
-                            "Nobody yet"
-                        } else if (viewModel.friends.size == 1) {
-                            "1 person glows with you"
-                        } else {
-                            "${viewModel.friends.size} people glow with you"
-                        },
-                        fontFamily = typography.body,
-                        fontSize = 12.5.sp,
-                        color = colors.muted,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-                // Plain panel + neutral icon, not a colored bubble — same quieter chrome as
-                // Settings, which keeps color for things that carry real meaning (a streak, a
-                // toggle) rather than spending it on navigation affordances.
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(colors.elevatedPanel, CircleShape)
-                        .clickable(onClick = onFindPeopleClick),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Find people", tint = colors.cream, modifier = Modifier.size(19.dp))
-                }
+                Icon(Icons.Rounded.PersonAdd, contentDescription = "Find people", tint = colors.cream, modifier = Modifier.size(26.dp))
             }
-
+        },
+        // Only true once there's already content on screen — the cold-start load is covered by
+        // the full-screen spinner instead, so the pull indicator doesn't animate in from the top
+        // on every app launch.
+        isRefreshing = viewModel.isLoading && (viewModel.filteredFriends.isNotEmpty() || viewModel.pendingRequests.isNotEmpty()),
+        onRefresh = { viewModel.loadFriends(isPullRefresh = true) },
+    ) {
+        // The search bar is the scaffold's own first list item, not a fixed sibling above it —
+        // it scrolls away with the rest of the list instead of staying pinned forever.
+        item(key = "search") {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 18.dp, start = 20.dp, end = 20.dp)
+                    .padding(bottom = 14.dp)
                     // A quiet in-between tone, not the same panel every card below uses — an
                     // input sits apart from background without competing with real cards for
                     // the same visual weight.
@@ -162,156 +126,131 @@ fun FriendsScreen(
                     )
                 }
             }
+        }
 
-            val pullRefreshState = rememberPullToRefreshState()
-            PullToRefreshBox(
-                // Only true once there's already content on screen — the cold-start load is
-                // covered by the full-screen spinner instead, so the pull indicator doesn't
-                // animate in from the top on every app launch.
-                isRefreshing = viewModel.isLoading && (viewModel.filteredFriends.isNotEmpty() || viewModel.pendingRequests.isNotEmpty()),
-                onRefresh = { viewModel.loadFriends(isPullRefresh = true) },
-                state = pullRefreshState,
-                // Recolored to the theme's own panel/glow tokens — see HomeScreen's identical
-                // indicator for why (the stock Material scheme doesn't read as part of this app).
-                indicator = {
-                    PullToRefreshDefaults.Indicator(
-                        state = pullRefreshState,
-                        isRefreshing = viewModel.isLoading && (viewModel.filteredFriends.isNotEmpty() || viewModel.pendingRequests.isNotEmpty()),
-                        containerColor = colors.panel,
-                        color = colors.glow,
-                        modifier = Modifier.align(Alignment.TopCenter),
+        when {
+            viewModel.isLoading && viewModel.filteredFriends.isEmpty() -> item(key = "loading") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 64.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = colors.glow)
+                }
+            }
+
+            viewModel.errorMessage != null && viewModel.filteredFriends.isEmpty() -> item(key = "error") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 64.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = viewModel.errorMessage.orEmpty(),
+                        fontFamily = typography.body,
+                        fontSize = 13.sp,
+                        color = colors.muted,
                     )
-                },
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                when {
-                    viewModel.isLoading && viewModel.filteredFriends.isEmpty() -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(color = colors.glow)
-                    }
+                }
+            }
 
-                    viewModel.errorMessage != null && viewModel.filteredFriends.isEmpty() -> Box(
-                        modifier = Modifier.fillMaxSize().padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
+            viewModel.filteredFriends.isEmpty() && viewModel.pendingRequests.isEmpty() -> item(key = "empty") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 64.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = viewModel.errorMessage.orEmpty(),
+                            text = if (isSearching) "No one matches \"${viewModel.searchQuery}\"" else "No friends yet",
                             fontFamily = typography.body,
                             fontSize = 13.sp,
                             color = colors.muted,
                         )
-                    }
-
-                    viewModel.filteredFriends.isEmpty() && viewModel.pendingRequests.isEmpty() -> Box(
-                        modifier = Modifier.fillMaxSize().padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (!isSearching) {
                             Text(
-                                text = if (isSearching) "No one matches \"${viewModel.searchQuery}\"" else "No friends yet",
+                                text = "Tap + to find people to glow with",
                                 fontFamily = typography.body,
-                                fontSize = 13.sp,
-                                color = colors.muted,
+                                fontSize = 12.sp,
+                                color = colors.mutedDim,
+                                modifier = Modifier.padding(top = 4.dp),
                             )
-                            if (!isSearching) {
-                                Text(
-                                    text = "Tap + to find people to glow with",
-                                    fontFamily = typography.body,
-                                    fontSize = 12.sp,
-                                    color = colors.mutedDim,
-                                    modifier = Modifier.padding(top = 4.dp),
+                        }
+                    }
+                }
+            }
+
+            else -> {
+                if (!isSearching && pinnedPartner != null) {
+                    item(key = "hero") {
+                        PinnedPartnerHero(
+                            friend = pinnedPartner,
+                            onClick = { onFriendClick(pinnedPartner) },
+                            modifier = Modifier.padding(bottom = 18.dp),
+                        )
+                    }
+                }
+
+                if (!isSearching && viewModel.pendingRequests.isNotEmpty()) {
+                    item(key = "requests-header") {
+                        SectionLabel(text = "Added you · ${viewModel.pendingRequests.size}")
+                    }
+                    item(key = "requests-row") {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            contentPadding = PaddingValues(bottom = 18.dp),
+                        ) {
+                            items(viewModel.pendingRequests, key = { it.friendshipId }) { request ->
+                                PendingRequestChip(
+                                    request = request,
+                                    onClick = { onPendingRequestClick(request) },
                                 )
                             }
                         }
                     }
+                }
 
-                    else -> LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 110.dp),
-                        // No global gap — the friends list below draws as one seamless panel
-                        // (each row's own corner-rounding does the grouping instead of spacing),
-                        // same as Settings' grouped cards. Sections that do need a gap add their
-                        // own top/bottom padding below.
-                    ) {
-                        if (!isSearching && pinnedPartner != null) {
-                            item(key = "hero") {
-                                PinnedPartnerHero(
-                                    friend = pinnedPartner,
-                                    onClick = { onFriendClick(pinnedPartner) },
-                                    modifier = Modifier.padding(bottom = 18.dp),
-                                )
-                            }
-                        }
+                if (!isSearching && (pinnedPartner != null || viewModel.pendingRequests.isNotEmpty())) {
+                    item(key = "friends-header") {
+                        SectionLabel(text = "My friends")
+                    }
+                }
 
-                        if (!isSearching && viewModel.pendingRequests.isNotEmpty()) {
-                            item(key = "requests-header") {
-                                SectionLabel(text = "Added you · ${viewModel.pendingRequests.size}")
-                            }
-                            item(key = "requests-row") {
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    contentPadding = PaddingValues(bottom = 18.dp),
-                                ) {
-                                    items(viewModel.pendingRequests, key = { it.friendshipId }) { request ->
-                                        PendingRequestChip(
-                                            request = request,
-                                            onClick = { onPendingRequestClick(request) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                // Whoever's pinned already gets their own hero card above (only while not
+                // searching — search results should still include them, since the hero itself
+                // is hidden then) — without this exclusion, they rendered a second time here as
+                // a plain FriendRow right below their own hero.
+                val friendRows = if (!isSearching && pinnedPartner != null) {
+                    viewModel.filteredFriends.filterNot { it.friendshipId == pinnedPartner.friendshipId }
+                } else {
+                    viewModel.filteredFriends
+                }
+                    // More than one friend can be pinned at once (pinning one never unpins
+                    // another) — the hero above only ever features the first of them, so any
+                    // *other* pinned friend still needs to stand out here. Within (and below)
+                    // that, most-recently-shared-a-moment-with-us first — lastActivityAt is an
+                    // ISO-8601 string, so plain lexicographic descending comparison already
+                    // sorts it chronologically; a friend with none yet (null) falls back to "",
+                    // always the "oldest" possible value, so they land at the very end of their
+                    // group instead of before real timestamps.
+                    .sortedWith(
+                        compareByDescending<FriendSummaryDto> { it.pinnedByMe }
+                            .thenByDescending { it.lastActivityAt ?: "" },
+                    )
+                items(friendRows, key = { it.friendshipId }) { friend ->
+                    FriendRow(friend, onClick = { onFriendClick(friend) })
+                }
 
-                        if (!isSearching && (pinnedPartner != null || viewModel.pendingRequests.isNotEmpty())) {
-                            item(key = "friends-header") {
-                                SectionLabel(text = "My friends")
-                            }
-                        }
-
-                        // Whoever's pinned already gets their own hero card above (only while not
-                        // searching — search results should still include them, since the hero
-                        // itself is hidden then) — without this exclusion, they rendered a second
-                        // time here as a plain FriendRow right below their own hero.
-                        val friendRows = if (!isSearching && pinnedPartner != null) {
-                            viewModel.filteredFriends.filterNot { it.friendshipId == pinnedPartner.friendshipId }
-                        } else {
-                            viewModel.filteredFriends
-                        }
-                            // More than one friend can be pinned at once (pinning one never
-                            // unpins another) — the hero above only ever features the first of
-                            // them, so any *other* pinned friend still needs to stand out here.
-                            // Within (and below) that, most-recently-shared-a-moment-with-us
-                            // first — lastActivityAt is an ISO-8601 string, so plain lexicographic
-                            // descending comparison already sorts it chronologically; a friend
-                            // with none yet (null) falls back to "", which is always the "oldest"
-                            // possible value, so they land at the very end of their group instead
-                            // of before real timestamps.
-                            .sortedWith(
-                                compareByDescending<FriendSummaryDto> { it.pinnedByMe }
-                                    .thenByDescending { it.lastActivityAt ?: "" },
-                            )
-                        items(friendRows, key = { it.friendshipId }) { friend ->
-                            FriendRow(friend, onClick = { onFriendClick(friend) })
-                        }
-
-                        // Search operates only over what's already loaded (client-side
-                        // filtering), so there's nothing to page in while searching — the
-                        // sentinel only appears for the plain, unfiltered list. Composed only
-                        // once the user has actually scrolled near the end (LazyColumn doesn't
-                        // compose items far outside the viewport), which is what triggers the
-                        // fetch — not a fixed scroll-position threshold.
-                        if (!isSearching && viewModel.hasMore) {
-                            item(key = "load-more") {
-                                LaunchedEffect(Unit) { viewModel.loadMoreFriends() }
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(color = colors.glow, modifier = Modifier.size(20.dp))
-                                }
-                            }
+                // Search operates only over what's already loaded (client-side filtering), so
+                // there's nothing to page in while searching — the sentinel only appears for the
+                // plain, unfiltered list. Composed only once the user has actually scrolled near
+                // the end (LazyColumn doesn't compose items far outside the viewport), which is
+                // what triggers the fetch — not a fixed scroll-position threshold.
+                if (!isSearching && viewModel.hasMore) {
+                    item(key = "load-more") {
+                        LaunchedEffect(Unit) { viewModel.loadMoreFriends() }
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(color = colors.glow, modifier = Modifier.size(20.dp))
                         }
                     }
                 }

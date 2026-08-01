@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ember.app.data.remote.dto.FriendSearchResultDto
+import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -50,6 +51,7 @@ import com.ember.app.ui.theme.PublicSansFontFamily
 @Composable
 fun FindPeopleScreen(
     viewModel: FindPeopleViewModel,
+    onBack: () -> Unit,
     onResultClick: (FriendSearchResultDto) -> Unit = {},
 ) {
     val colors = EmberTheme.colors
@@ -77,15 +79,9 @@ fun FindPeopleScreen(
             .background(colors.background.asBrush(screenSize))
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 20.dp),
+            .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
     ) {
-        Text(
-            text = "Find people",
-            fontFamily = typography.display,
-            fontSize = 22.sp,
-            color = colors.cream,
-            modifier = Modifier.padding(bottom = 16.dp),
-        )
+        NestedScreenHeader(onBack = onBack, title = "Find people")
 
         Row(
             modifier = Modifier

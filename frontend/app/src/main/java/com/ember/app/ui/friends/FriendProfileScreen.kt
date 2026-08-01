@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Flag
@@ -53,6 +52,8 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.ReportReason
+import com.ember.app.ui.components.HeaderRowHeight
+import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.cssAngleGradient
 import com.ember.app.ui.profile.EditDialogShell
 import com.ember.app.ui.theme.EmberRadii
@@ -109,89 +110,80 @@ fun FriendProfileScreen(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, bottom = 30.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            // Flat, icon-only back control — no capsule behind it. A boxed button here would be
-            // one more panel competing with the profile itself for attention.
-            Box(
-                modifier = Modifier.size(40.dp).clickable(onClick = onBack),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBackIos, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(20.dp))
-            }
-
-            // Same flat, icon-only treatment as the back control on the other side — Block/Report
-            // are safety actions relevant to any subject (friend, pending request, or a stranger
-            // found via search), not gated on relationship state the way Pin/Remove are.
-            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.CenterEnd) {
-                Box(
-                    modifier = Modifier.size(40.dp).clickable { showOverflowMenu = true },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = colors.cream, modifier = Modifier.size(22.dp))
+        NestedScreenHeader(
+            onBack = onBack,
+            trailing = {
+                // Same flat, icon-only treatment as the back control — Block/Report are safety
+                // actions relevant to any subject (friend, pending request, or a stranger found
+                // via search), not gated on relationship state the way Pin/Remove are.
+                Box(modifier = Modifier.size(HeaderRowHeight), contentAlignment = Alignment.CenterEnd) {
+                    Box(
+                        modifier = Modifier.size(HeaderRowHeight).clickable { showOverflowMenu = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = colors.cream, modifier = Modifier.size(22.dp))
+                    }
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false },
+                        // Unstyled, this falls back to Material3's own default light surface — jars
+                        // badly against Ember's dark theme. `panel`, not `overlayPanel` — panel is the
+                        // darker of the two. tonalElevation = 0.dp is the part that actually matters:
+                        // Material3 automatically blends a lightening tint on top of containerColor
+                        // based on elevation (its own dark-theme "closer to light source" convention),
+                        // so leaving this at its default silently washed out `panel` back toward the
+                        // same pale gray as before — setting it to 0 is what makes the color actually
+                        // render as specified instead of tinted lighter. A shadow alone doesn't read
+                        // on a pure black background either (nothing for it to cast onto), so a thin
+                        // border is what actually gives this floating card its edge.
+                        containerColor = colors.panel,
+                        shape = EmberRadii.dialogShape,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 8.dp,
+                        border = BorderStroke(1.dp, colors.border),
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "Block",
+                                    fontFamily = PublicSansFontFamily,
+                                    fontSize = 14.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = DestructiveColor,
+                                )
+                            },
+                            leadingIcon = { Icon(Icons.Rounded.Block, contentDescription = null, tint = DestructiveColor, modifier = Modifier.size(18.dp)) },
+                            onClick = {
+                                showOverflowMenu = false
+                                showBlockConfirm = true
+                            },
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                        HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(horizontal = 12.dp))
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "Report",
+                                    fontFamily = PublicSansFontFamily,
+                                    fontSize = 14.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.cream,
+                                )
+                            },
+                            leadingIcon = { Icon(Icons.Rounded.Flag, contentDescription = null, tint = colors.cream, modifier = Modifier.size(18.dp)) },
+                            onClick = {
+                                showOverflowMenu = false
+                                showReportDialog = true
+                            },
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
                 }
-                DropdownMenu(
-                    expanded = showOverflowMenu,
-                    onDismissRequest = { showOverflowMenu = false },
-                    // Unstyled, this falls back to Material3's own default light surface — jars
-                    // badly against Ember's dark theme. `panel`, not `overlayPanel` — panel is the
-                    // darker of the two. tonalElevation = 0.dp is the part that actually matters:
-                    // Material3 automatically blends a lightening tint on top of containerColor
-                    // based on elevation (its own dark-theme "closer to light source" convention),
-                    // so leaving this at its default silently washed out `panel` back toward the
-                    // same pale gray as before — setting it to 0 is what makes the color actually
-                    // render as specified instead of tinted lighter. A shadow alone doesn't read
-                    // on a pure black background either (nothing for it to cast onto), so a thin
-                    // border is what actually gives this floating card its edge.
-                    containerColor = colors.panel,
-                    shape = EmberRadii.dialogShape,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 8.dp,
-                    border = BorderStroke(1.dp, colors.border),
-                ) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "Block",
-                                fontFamily = PublicSansFontFamily,
-                                fontSize = 14.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = DestructiveColor,
-                            )
-                        },
-                        leadingIcon = { Icon(Icons.Rounded.Block, contentDescription = null, tint = DestructiveColor, modifier = Modifier.size(18.dp)) },
-                        onClick = {
-                            showOverflowMenu = false
-                            showBlockConfirm = true
-                        },
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                    HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(horizontal = 12.dp))
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "Report",
-                                fontFamily = PublicSansFontFamily,
-                                fontSize = 14.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.cream,
-                            )
-                        },
-                        leadingIcon = { Icon(Icons.Rounded.Flag, contentDescription = null, tint = colors.cream, modifier = Modifier.size(18.dp)) },
-                        onClick = {
-                            showOverflowMenu = false
-                            showReportDialog = true
-                        },
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                }
-            }
-        }
+            },
+        )
 
         Box(
-            modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 20.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 20.dp),
             contentAlignment = Alignment.Center,
         ) {
             Box(

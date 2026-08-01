@@ -449,6 +449,11 @@ private object CameraSession {
         private set
     private var boundForLensFacing: Int? = null
 
+    // The live Preview use case, kept so its surface provider can be reattached without a full
+    // rebind — see bindIfNeeded's early-return path for why that's the difference between a
+    // working viewfinder and a black one.
+    private var preview: Preview? = null
+
     // CameraX auto-unbinds bindToLifecycle's registration the moment the bound LifecycleOwner
     // reaches DESTROYED — which happens to the Activity on any config change the manifest
     // doesn't declare (system dark/light toggle, font-scale, foldable resize; only
@@ -463,16 +468,29 @@ private object CameraSession {
         previewView ?: PreviewView(context.applicationContext).also { previewView = it }
 
     fun bindIfNeeded(context: Context, lifecycleOwner: LifecycleOwner) {
-        if (boundForLensFacing == lensFacing && boundLifecycleOwner?.get() === lifecycleOwner) return
         val view = previewView ?: return
+        if (boundForLensFacing == lensFacing && boundLifecycleOwner?.get() === lifecycleOwner) {
+            // Already bound to this exact lens and lifecycle, so no rebind — but the surface still
+            // has to be reattached. Camera is one page of a swipeable pager: this composable is
+            // disposed and recomposed every time it's scrolled away from and back, which detaches
+            // and reattaches the reused PreviewView, and that tears down the underlying surface
+            // the bound Preview use case was rendering into. Returning here without doing anything
+            // (what this used to do) left a perfectly live camera drawing into a surface that no
+            // longer exists — a black viewfinder that only recovered by flipping the lens, since
+            // that forced the full rebind below. Re-setting the provider makes CameraX issue a
+            // fresh surface request against the reattached view, which is all that was missing.
+            preview?.surfaceProvider = view.surfaceProvider
+            return
+        }
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
+            val previewUseCase = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             runCatching {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture)
+                cameraProvider.bindToLifecycle(lifecycleOwner, selector, previewUseCase, imageCapture)
+                preview = previewUseCase
                 boundForLensFacing = lensFacing
                 boundLifecycleOwner = WeakReference(lifecycleOwner)
             }
@@ -972,12 +990,20 @@ private fun capturePhoto(context: Context, viewModel: CameraViewModel) {
 
     val file = File(context.cacheDir, "ember_capture_${System.currentTimeMillis()}.jpg")
     val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
+    // CameraX mirrors the *preview* for the front camera (so it behaves like a mirror, which is
+    // what every selfie viewfinder does) but saves the capture un-mirrored — so the photo you got
+    // back was horizontally flipped compared to the one you just framed. ImageCapture.Metadata's
+    // own isReversedHorizontal only records that as an EXIF flag rather than flipping any pixels,
+    // and this app re-encodes on device whenever a caption is baked in (and the backend compresses
+    // again after that), either of which drops EXIF and would silently lose the mirror — so the
+    // flip is applied to the pixels themselves instead, in the ViewModel. See onPhotoCaptured.
+    val isFrontCamera = CameraSession.lensFacing == CameraSelector.LENS_FACING_FRONT
     CameraSession.imageCapture.takePicture(
         outputOptions,
         ContextCompat.getMainExecutor(context),
         object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                viewModel.onPhotoCaptured(file)
+                viewModel.onPhotoCaptured(file, isFrontCamera = isFrontCamera)
             }
 
             override fun onError(exception: ImageCaptureException) {

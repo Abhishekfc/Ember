@@ -16,12 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,12 +33,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ember.app.data.remote.dto.BlockedUserDto
+import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.friends.StreakAvatar
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
 
-/** Same header shape as WidgetSettingsScreen (title + close circle) — one consistent "this is a
- * settings sub-screen" chrome across every one of them, not a bespoke header per screen. */
 @Composable
 fun BlockedUsersScreen(
     viewModel: BlockedUsersViewModel,
@@ -59,25 +54,9 @@ fun BlockedUsersScreen(
             .background(colors.background.asBrush(screenSize))
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(top = 32.dp, start = 20.dp, end = 20.dp, bottom = 26.dp),
+            .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = "Blocked accounts", fontFamily = typography.display, fontSize = 22.sp, color = colors.cream)
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(colors.elevatedPanel)
-                    .clickable(onClick = onClose),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = colors.cream, modifier = Modifier.size(16.dp))
-            }
-        }
+        NestedScreenHeader(onBack = onClose, title = "Blocked accounts")
         Text(
             text = "They can't find your profile, send you requests, or send you photos",
             fontFamily = typography.body,
