@@ -93,6 +93,9 @@ import kotlin.math.roundToInt
  * rather than a handful of oversized tiles sprawling down the whole screen. */
 private const val GRID_COLUMNS = 7
 
+/** Corner radius of the card wrapping the month header + grid together. */
+private val MEMORIES_CARD_SHAPE = RoundedCornerShape(22.dp)
+
 /** Every month is padded (see [MemoryGridCell.Filler]) to exactly this many rows — the longest
  * possible month (31 days) plus the current month's own "add a photo" tile is 32 cells, which
  * already needs 5 rows, so this comfortably covers every month without ever needing 6. Fixed
@@ -252,15 +255,34 @@ internal fun MemoriesGridContent(
     }
 
     Box(modifier = modifier) {
+        // One opaque card behind the whole section — month header and grid together. Without it
+        // the grid sits directly on the screen background, which for an image-backed theme (see
+        // EmberBackground.ImageBacked) means the artwork runs straight through every empty day
+        // cell and the whole month reads as noise rather than a calendar. Being opaque is the
+        // entire point: it stops the backdrop at its own edge.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 22.dp, end = 22.dp, bottom = 24.dp)
+                .clip(MEMORIES_CARD_SHAPE)
+                // The theme's own backdrop tone, not `surface` — surface is a derived mid-grey
+                // that read as a dull slab sitting on top of the theme rather than part of it.
+                // Using the backdrop's own base color keeps the card feeling native to whichever
+                // theme is active, while still being fully opaque so an image backdrop stops here.
+                .background(colors.background.baseColor())
+                .border(1.dp, colors.border, MEMORIES_CARD_SHAPE)
                 .blur(gridBlur, BlurredEdgeTreatment.Unbounded)
                 .graphicsLayer { alpha = gridFade },
         ) {
+            // Header strip: one step up the tonal ladder from the grid body below it (panel is
+            // lighter than surface), so the month row reads as its own band rather than floating
+            // in the same field as the days — the distinction the reference design draws. Taken
+            // from the ladder rather than a fixed color so it holds up across all eleven themes.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.panel)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -281,7 +303,13 @@ internal fun MemoriesGridContent(
                         text = "${memories.size} photo${if (memories.size == 1) "" else "s"}",
                         fontFamily = typography.body,
                         fontSize = 12.sp,
-                        color = colors.mutedDim,
+                        fontWeight = FontWeight.Medium,
+                        // Full-strength text, not mutedDim — at 12sp on the header band, mutedDim
+                        // was too faint to read. `cream` rather than a literal white: it's the
+                        // theme's own primary text color, which is white/near-white in every dark
+                        // theme and automatically flips dark on the light ones (Polaroid,
+                        // Sunroom), where a hardcoded white would be invisible instead.
+                        color = colors.cream,
                     )
                 }
             }
@@ -294,6 +322,9 @@ internal fun MemoriesGridContent(
                     CircularProgressIndicator(color = colors.glow, modifier = Modifier.size(20.dp))
                 }
             } else {
+                // The grid keeps its own inset from the card's edges; the cells themselves are
+                // untouched (same size, spacing, radius and per-state treatment as before).
+                Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 6.dp)) {
                 cells.chunked(GRID_COLUMNS).forEach { rowCells ->
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -316,6 +347,7 @@ internal fun MemoriesGridContent(
                         }
                         repeat(GRID_COLUMNS - rowCells.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
+                }
                 }
             }
         }
@@ -398,7 +430,7 @@ private fun MemoryCell(
                 modifier = modifier
                     .aspectRatio(0.85f)
                     .clip(shape)
-                    .background(colors.panel.copy(alpha = 0.35f))
+                    .background(colors.panel.copy(alpha = 0.7f))
                     .border(1.dp, colors.border, shape),
             )
         }

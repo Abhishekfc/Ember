@@ -189,6 +189,14 @@ class MainActivity : ComponentActivity() {
         // already-read snapshot as the new HomeViewModel's "instant on reopen" seed, briefly (or,
         // combined with the repositories' own account-unaware TTL caches below, not so briefly)
         // showing the previous account's feed/memories/profile until a later fetch overwrote it.
+        // Read before the first composition, exactly like initialHomeCache below it, so the very
+        // first frame already knows whether to draw Home or Login. This used to happen in a
+        // LaunchedEffect instead, which by definition runs *after* that first frame — so every
+        // cold start rendered one empty placeholder frame first, and only then the real UI. That
+        // gap was invisible while every theme's background was a flat gradient (the placeholder
+        // painted the identical background), but a theme with an image backdrop made it obvious:
+        // the backdrop appeared alone, then everything else arrived a beat later.
+        val hasSavedSession = runBlocking { networkModule.tokenStore.currentToken() != null }
         var initialHomeCache = runBlocking {
             InitialHomeCache(
                 feedItems = localListCache.read<FeedItem>(LocalListCache.KEY_FEED) ?: emptyList(),
@@ -230,11 +238,10 @@ class MainActivity : ComponentActivity() {
                         initializer { LoginViewModel(authRepository) }
                     },
                 )
-                var authenticated by remember { mutableStateOf(false) }
-                // Distinct from `authenticated`: this only tracks whether we've finished reading
-                // the saved token yet, so a returning user with a valid session doesn't flash
-                // the login screen for a frame while that DataStore read is in flight.
-                var sessionChecked by remember { mutableStateOf(false) }
+                // Seeded from the synchronous read in onCreate, so there's no "we don't know yet"
+                // state to render a placeholder for — a returning user gets Home on frame one and
+                // a signed-out user gets Login on frame one.
+                var authenticated by remember { mutableStateOf(hasSavedSession) }
                 var nestedScreen by remember { mutableStateOf<NestedScreen?>(null) }
                 var selectedProfileSubject by remember { mutableStateOf<ProfileSubject?>(null) }
                 val appContext = LocalContext.current
@@ -271,11 +278,6 @@ class MainActivity : ComponentActivity() {
                 // itself, so it won't eliminate the flash entirely, only shorten it.
                 LaunchedEffect(Unit) { ProcessCameraProvider.getInstance(appContext) }
                 val coroutineScope = rememberCoroutineScope()
-
-                LaunchedEffect(Unit) {
-                    authenticated = networkModule.tokenStore.currentToken() != null
-                    sessionChecked = true
-                }
 
                 // Shared by the manual "Sign out" button in Settings and by the automatic
                 // handler below for an expired/invalid token (a 401 on an authenticated
@@ -380,9 +382,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                if (!sessionChecked) {
-                    Box(modifier = Modifier.fillMaxSize().background(EmberTheme.colors.background.asBrush(Size.Zero)))
-                } else if (!authenticated) {
+                if (!authenticated) {
                     LoginScreen(
                         viewModel = loginViewModel,
                         onAuthenticated = {
