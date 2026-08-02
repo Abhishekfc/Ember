@@ -189,27 +189,23 @@ fun CameraScreen(
             .background(colors.background.asBrush(screenSize)),
     ) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(
+            Box(
                 modifier = Modifier
                     // Must come before fillMaxWidth()/padding() below, not after — see this
-                    // screen's own Spacer further down for why: reporting this Row's *total*
+                    // screen's own Spacer further down for why: reporting this Box's *total*
                     // height (26dp top padding included) is what lets that spacer be computed
                     // instead of guessed.
                     .onGloballyPositioned { headerRowHeightPx = it.size.height.toFloat() }
                     .fillMaxWidth()
                     .padding(top = 26.dp, start = 22.dp, end = 22.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                // Sending/Sent status (below) is a sibling of the recipient chip in this same
-                // row, not its own row underneath — sharing the row's already-fixed height (set
-                // by the chip, which is always present) means it appearing/disappearing never
-                // shifts the card or controls below. SpaceBetween pins the chip left and the
-                // status right, with nothing in between when there's no status to show.
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 // Real faces, not a text label — who this is going to should be something you
                 // can recognize at a glance, not something you have to read and parse. This is
-                // the *only* recipient control on screen (live and post-capture both), so it's
-                // sized to be genuinely noticeable rather than a small afterthought chip.
+                // the *only* recipient control on screen (live and post-capture both). Centered
+                // (a Box, not a SpaceBetween Row pinning it to the left edge) and deliberately
+                // compact rather than stretched wide, leaving both corners genuinely free for
+                // whatever else eventually lands there — the send-status pill on the right today,
+                // more later.
                 //
                 // No close button any more — Camera is a page of the main pager (swipe to Home
                 // like any other tab), not a modal screen that needs its own explicit exit, and
@@ -218,50 +214,42 @@ fun CameraScreen(
                 // be tapped for it to happen.
                 Row(
                     modifier = Modifier
+                        .align(Alignment.Center)
                         .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(percent = 50))
                         .clickable(onClick = onOpenRecipientPicker)
-                        .padding(start = 7.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                        .padding(start = 5.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    RecipientAvatarStack(friends = viewModel.selectedFriends, size = 34.dp, ringColor = colors.panel)
+                    RecipientAvatarStack(friends = viewModel.selectedFriends, size = 26.dp, ringColor = colors.panel)
                     if (viewModel.hasPinnedSelected) {
                         Icon(
                             Icons.Rounded.PushPin,
                             contentDescription = null,
                             tint = colors.glow,
-                            modifier = Modifier.padding(start = 9.dp).size(12.dp),
+                            modifier = Modifier.padding(start = 7.dp).size(11.dp),
                         )
                     }
                     Text(
                         text = viewModel.recipientLabel,
                         fontFamily = PublicSansFontFamily,
-                        fontSize = 13.5.sp,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        modifier = Modifier.padding(start = 9.dp),
+                        modifier = Modifier.padding(start = 7.dp),
                     )
                     Icon(
                         Icons.Rounded.ChevronRight,
                         contentDescription = null,
                         tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.padding(start = 2.dp).size(14.dp),
                     )
                 }
 
-                AnimatedVisibility(
-                    visible = pendingSendCount > 0 || showSentBadge,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(200)),
-                ) {
-                    if (pendingSendCount > 0) {
-                        SendStatusPill(
-                            text = if (pendingSendCount == 1) "Sending" else "Sending $pendingSendCount",
-                            showSpinner = true,
-                        )
-                    } else {
-                        SendStatusPill(text = "Sent", showSpinner = false)
-                    }
-                }
+                SendStatusIndicator(
+                    pendingSendCount = pendingSendCount,
+                    showSentBadge = showSentBadge,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                )
             }
 
             // Home's card sits below three stacked header lines (wordmark, greeting, date);
@@ -340,6 +328,32 @@ fun CameraScreen(
                     onUpgradeToGold()
                 },
             )
+        }
+    }
+}
+
+/** Wraps the AnimatedVisibility around SendStatusPill in its own composable, rather than inline
+ * at the call site — Kotlin's implicit-receiver resolution otherwise reaches past the immediate
+ * Box scope there and out to the enclosing Column further up this screen, resolving the bare
+ * AnimatedVisibility(...) call to the ColumnScope-specific overload (which adds Column's own size
+ * animation) instead of the plain one, and failing to compile since there's no real ColumnScope
+ * receiver actually available at that call site. A dedicated function's body has no such
+ * ambient receiver leaking in, so the plain overload resolves cleanly. */
+@Composable
+private fun SendStatusIndicator(pendingSendCount: Int, showSentBadge: Boolean, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible = pendingSendCount > 0 || showSentBadge,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(200)),
+        modifier = modifier,
+    ) {
+        if (pendingSendCount > 0) {
+            SendStatusPill(
+                text = if (pendingSendCount == 1) "Sending" else "Sending $pendingSendCount",
+                showSpinner = true,
+            )
+        } else {
+            SendStatusPill(text = "Sent", showSpinner = false)
         }
     }
 }

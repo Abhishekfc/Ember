@@ -17,8 +17,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -206,10 +206,11 @@ private fun CameraButton(onCameraClick: () -> Unit) {
 }
 
 /** The Home slot specifically: Memories lives inline inside Home's own scrollable content now
- * (see HomeScreen), so this icon morphs between a house and an image glyph as [progress] moves
+ * (see HomeScreen), so this icon morphs between a house and a calendar glyph as [progress] moves
  * from 0 (top of Home) to 1 (scrolled into Memories) — two crossfaded icons rather than a hard
  * swap, so the icon tracks the live scroll the same way the content itself does, not a snap once
- * it settles. */
+ * it settles. Calendar, not a generic image/gallery icon, since Memories itself is a month grid
+ * of days, not a plain photo library. */
 @Composable
 private fun HomeMemoriesNavItem(
     active: NavDestination,
@@ -239,7 +240,7 @@ private fun HomeMemoriesNavItem(
             modifier = Modifier.size(23.dp).graphicsLayer { alpha = 1f - progress() },
         )
         Icon(
-            imageVector = Icons.Filled.Image,
+            imageVector = Icons.Filled.CalendarMonth,
             contentDescription = "Memories",
             tint = tint,
             modifier = Modifier.size(23.dp).graphicsLayer { alpha = progress() },

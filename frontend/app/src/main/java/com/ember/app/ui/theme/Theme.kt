@@ -2,6 +2,9 @@
 
 package com.ember.app.ui.theme
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ProvidableCompositionLocal
@@ -10,10 +13,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import coil3.compose.AsyncImage
 import com.ember.app.R
 
 /**
@@ -51,6 +58,20 @@ sealed interface EmberBackground {
     data class Linear(val colors: List<Color>) : EmberBackground
     data class Radial(val colors: List<Color>, val centerXFraction: Float, val centerYFraction: Float) : EmberBackground
 
+    /**
+     * A real image as the screen backdrop rather than a gradient. Drawn once at the app root by
+     * [EmberAppTheme] — not per screen — so it stays fixed behind everything and never scrolls or
+     * shifts with content, and so a single decode is shared by the whole app instead of every
+     * screen loading its own copy.
+     *
+     * [asBrush] deliberately resolves to transparent for this variant: every screen paints
+     * `colors.background.asBrush(...)` across itself, and any opaque color there would cover the
+     * image the root just drew. [base] is what the root fills behind the image, so any area the
+     * image doesn't cover (a different aspect ratio than the device) still matches the theme
+     * rather than showing through to the bare window.
+     */
+    data class ImageBacked(val drawableResId: Int, val base: Color) : EmberBackground
+
     fun asBrush(size: Size): Brush = when (this) {
         is Linear -> Brush.verticalGradient(colors)
         is Radial -> Brush.radialGradient(
@@ -58,6 +79,21 @@ sealed interface EmberBackground {
             center = Offset(size.width * centerXFraction, size.height * centerYFraction),
             radius = maxOf(size.width, size.height).coerceAtLeast(1f),
         )
+        is ImageBacked -> SolidColor(Color.Transparent)
+    }
+
+    /**
+     * The single flat color this backdrop is built around — a gradient's own first stop, or an
+     * image-backed theme's [ImageBacked.base]. For anything that needs an *opaque* surface in the
+     * theme's own backdrop tone: [asBrush] can't serve that, since it's a gradient for some themes
+     * and deliberately transparent for image-backed ones. Used by surfaces that have to block the
+     * backdrop behind them (see Memories' own card) while still looking native to the theme rather
+     * than like a grey panel dropped on top of it.
+     */
+    fun baseColor(): Color = when (this) {
+        is Linear -> colors.first()
+        is Radial -> colors.first()
+        is ImageBacked -> base
     }
 }
 
@@ -186,9 +222,12 @@ private val emberNewDefinition = EmberThemeDefinition(
         background = EmberBackground.Radial(listOf(emberBackgroundBase, emberBackgroundBase), 0.20f, 0.0f),
         surface = emberLadder.surface,
         panel = emberPanel,
-        // The one background users asked to actually change here ("camera background... make it
-        // white") — everything else stays EMBER's own dark tone.
-        elevatedPanel = Color(0xFFF6F3E9),
+        // Dark, same as EMBER's own — this was a near-white (0xFFF6F3E9) for a while, set to make
+        // one specific surface white, but elevatedPanel isn't a one-surface token: it's what every
+        // avatar placeholder circle and every secondary button (Pin as partner, Decline, Cancel
+        // request) is filled with. At near-white those all turned white, and since `cream` is pure
+        // white in this theme, their labels became white-on-white and vanished entirely.
+        elevatedPanel = emberLadder.elevatedPanel,
         overlayPanel = emberLadder.overlayPanel,
         // Pure white, not EMBER's own warm-cream — this is the one other spot asked to move
         // away from cream specifically.
@@ -275,7 +314,8 @@ private val auroraLadder = deriveSurfaceLadder(auroraBackgroundBase, auroraPanel
 private val auroraDefinition = EmberThemeDefinition(
     key = ThemeKey.AURORA,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(auroraBackgroundBase, Color(0xFF0B1110)), 0.25f, 0.0f),
+        // Image backdrop rather than a gradient, same as Cyber — see EmberBackground.ImageBacked.
+        background = EmberBackground.ImageBacked(R.drawable.aurora_theme_background, auroraBackgroundBase),
         surface = auroraLadder.surface,
         panel = auroraPanel,
         elevatedPanel = auroraLadder.elevatedPanel,
@@ -361,7 +401,9 @@ private val cyberLadder = deriveSurfaceLadder(cyberBackgroundBase, cyberPanel, a
 private val cyberDefinition = EmberThemeDefinition(
     key = ThemeKey.CYBER,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(cyberBackgroundBase, Color(0xFF0C0913)), 0.25f, 0.0f),
+        // The one theme with a real image backdrop rather than a gradient — see
+        // EmberBackground.ImageBacked for how it's drawn (once, at the app root, fixed).
+        background = EmberBackground.ImageBacked(R.drawable.cyber_theme_background, cyberBackgroundBase),
         surface = cyberLadder.surface,
         panel = cyberPanel,
         elevatedPanel = cyberLadder.elevatedPanel,
@@ -386,7 +428,8 @@ private val botanicaLadder = deriveSurfaceLadder(botanicaBackgroundBase, botanic
 private val botanicaDefinition = EmberThemeDefinition(
     key = ThemeKey.BOTANICA,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(botanicaBackgroundBase, Color(0xFF0C100D)), 0.20f, 0.0f),
+        // Image backdrop rather than a gradient, same as Cyber/Aurora — see EmberBackground.ImageBacked.
+        background = EmberBackground.ImageBacked(R.drawable.botanica_theme_background, botanicaBackgroundBase),
         surface = botanicaLadder.surface,
         panel = botanicaPanel,
         elevatedPanel = botanicaLadder.elevatedPanel,
@@ -443,7 +486,8 @@ private val frostLadder = deriveSurfaceLadder(frostBackgroundBase, frostPanel, a
 private val frostDefinition = EmberThemeDefinition(
     key = ThemeKey.FROST,
     colors = EmberColors(
-        background = EmberBackground.Radial(listOf(frostBackgroundBase, Color(0xFF070D15)), 0.20f, 0.0f),
+        // Image backdrop rather than a gradient, same as Cyber/Aurora — see EmberBackground.ImageBacked.
+        background = EmberBackground.ImageBacked(R.drawable.frost_theme_background, frostBackgroundBase),
         surface = frostLadder.surface,
         panel = frostPanel,
         elevatedPanel = frostLadder.elevatedPanel,
@@ -492,7 +536,38 @@ object EmberTheme {
 
 @Composable
 fun EmberAppTheme(themeKey: ThemeKey, content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalEmberThemeDefinition provides emberThemeDefinition(themeKey)) {
-        content()
+    val definition = emberThemeDefinition(themeKey)
+    CompositionLocalProvider(LocalEmberThemeDefinition provides definition) {
+        val background = definition.colors.background
+        // The Box is unconditional, and content() always sits in this one spot inside it, even
+        // for themes with no image at all. Wrapping only the image-backed case was tried and
+        // broke theme switching outright: selecting a theme with a different background *kind*
+        // changed the shape of the composition around content(), so the entire app subtree was
+        // torn down and rebuilt — throwing away every remembered state inside it, including which
+        // screen was open and the picker's own staged selection. Keeping the structure identical
+        // for every theme means switching only ever changes colors, never the tree.
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (background is EmberBackground.ImageBacked) {
+                // Behind every screen, at the root — so it can't scroll, shift, or be re-drawn per
+                // screen. ContentScale.Crop fills the device regardless of the image's own aspect
+                // ratio, with [base] underneath covering anything Crop still leaves uncovered.
+                Box(modifier = Modifier.fillMaxSize().background(background.base)) {
+                    // AsyncImage, not painterResource: painterResource decodes the bitmap
+                    // synchronously on the main thread *during composition*, so the whole app's
+                    // first frames were blocked behind that decode — the background painted, then
+                    // everything else appeared a beat later, which only happened on image-backed
+                    // themes. Coil decodes off the main thread and caches the result, so content
+                    // composes and renders at its normal speed and the image simply arrives when
+                    // it's ready, over [base] which is already covering the screen in the meantime.
+                    AsyncImage(
+                        model = background.drawableResId,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            content()
+        }
     }
 }

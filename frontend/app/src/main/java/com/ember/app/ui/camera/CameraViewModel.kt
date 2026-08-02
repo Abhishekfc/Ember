@@ -130,7 +130,7 @@ class CameraViewModel(
             return when {
                 selected.isEmpty() -> "Choose recipients"
                 selected.size == 1 -> selected.first().displayName
-                else -> "${selected.size} people"
+                else -> "${selected.size} friends"
             }
         }
 

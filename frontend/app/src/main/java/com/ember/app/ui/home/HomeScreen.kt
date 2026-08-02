@@ -56,7 +56,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.CircularProgressIndicator
@@ -97,6 +96,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
@@ -116,6 +116,7 @@ import com.ember.app.ui.components.LocalNavDockHeight
 import com.ember.app.ui.components.PULL_REFRESH_CONTENT_OFFSET_DP
 import com.ember.app.ui.theme.CourgetteFontFamily
 import com.ember.app.ui.theme.EmberTheme
+import com.ember.app.ui.theme.PublicSansFontFamily
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import java.time.Instant
@@ -123,6 +124,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -130,6 +132,13 @@ import kotlinx.coroutines.launch
  * Memories one. Lives here (`internal`, not `private`) rather than in MainActivity, since it's
  * really describing this screen's own Memories section, not the dock itself. */
 internal const val MEMORIES_REVEAL_SCROLL_DP = 220
+
+/** How far into the top-fold/Memories dead zone (as a fraction of its own total size) a scroll
+ * has to land before it commits forward to Memories, rather than snapping back to the top — see
+ * the LaunchedEffect using this in HomeScreen for the full dead-zone explanation. Small on
+ * purpose: a light scroll should be enough to reveal Memories, not a scroll that covers most of
+ * the gap. Raise this (toward 1f) to require a more deliberate scroll instead. */
+private const val MEMORIES_SNAP_TRIGGER_FRACTION = 0.15f
 
 /** How long the very last photo in the whole carousel dwells before it's marked seen on its
  * own — see the LaunchedEffect using this in HomeScreen's carousel branch for why this one
@@ -188,6 +197,15 @@ fun HomeScreen(
     // already makes.
     var headerHeightPx by remember { mutableStateOf(0f) }
 
+    // Real window-space Y positions of the scrollable column itself and of wherever the Memories
+    // section currently starts — used only to compute memoriesTopOffsetPx below (see the
+    // LaunchedEffect that reads it, further down), which is how far the page needs to scroll for
+    // Memories to sit flush with the top of the screen. Both live in window space (not "position
+    // within the column") specifically so the math stays correct without depending on exactly how
+    // Modifier.verticalScroll positions its content internally.
+    var scrollColumnWindowY by remember { mutableStateOf(0f) }
+    var memoriesTopWindowY by remember { mutableStateOf(0f) }
+
     // HomeBrandHeader's own real height — just that row, not the combined block headerHeightPx
     // above tracks — used only to park the pull-to-refresh spinner directly beneath it (see the
     // indicator's own modifier further down).
@@ -222,6 +240,48 @@ fun HomeScreen(
     // either direction), so whatever reads it only recomposes on those two occasions instead of
     // every scrolled pixel. Same reasoning as memoriesRevealProgress being a lambda above.
     val isHomeAtDefaultScrollPosition by remember { derivedStateOf { scrollState.value == 0 } }
+
+    // Where the current drag/fling started — captured fresh every time one begins (the
+    // isScrollInProgress == true branch below), so the correction after it ends can judge "how
+    // far did this specific gesture actually move" rather than "how far is the final position
+    // from zero." That distinction is what a fixed distance-from-zero threshold got backwards:
+    // scrolling up just a little from deep inside Memories still leaves the *position* well past
+    // a from-zero threshold, so it kept reading as "commit forward" and pulling back into
+    // Memories — the "have to scroll up a lot" this fixes. Measuring from the drag's own start
+    // makes a small movement in *either* direction equally easy to commit, symmetrically.
+    var memoriesDragStartPx by remember { mutableStateOf(0f) }
+    LaunchedEffect(scrollState.isScrollInProgress) {
+        if (scrollState.isScrollInProgress) {
+            memoriesDragStartPx = scrollState.value.toFloat()
+            return@LaunchedEffect
+        }
+        val memoriesTopOffsetPx = scrollState.value + (memoriesTopWindowY - scrollColumnWindowY)
+        val current = scrollState.value.toFloat()
+        // maxValue itself, not just "less than memoriesTopOffsetPx" — resting anywhere at or past
+        // the true bottom of the page must never be touched by this, full stop, regardless of
+        // what memoriesTopOffsetPx happens to compute to. That's the one guarantee this needs;
+        // the dead-zone correction below only matters well before the bottom is ever reached.
+        val atOrPastBottom = current >= scrollState.maxValue.toFloat()
+        if (!atOrPastBottom && current > 0f && current < memoriesTopOffsetPx && memoriesTopOffsetPx > 0f) {
+            val movedFraction = (current - memoriesDragStartPx) / memoriesTopOffsetPx
+            val target = when {
+                movedFraction > MEMORIES_SNAP_TRIGGER_FRACTION -> memoriesTopOffsetPx
+                movedFraction < -MEMORIES_SNAP_TRIGGER_FRACTION -> 0f
+                // Didn't move enough either way to count as deliberate — settle back to whichever
+                // side this specific drag actually started from, not just "the nearer one," so a
+                // gesture that barely moves reads as "nothing happened" rather than a random pick.
+                else -> if (memoriesDragStartPx > memoriesTopOffsetPx / 2f) memoriesTopOffsetPx else 0f
+            }
+            // A plain ease-out tween, not the default spring animateScrollTo otherwise uses — a
+            // spring's overshoot/settle reads as bouncy for a correction like this; easing
+            // straight into rest (fast at first, slowing as it arrives) is what actually looks
+            // like a smooth flick rather than a snap.
+            scrollState.animateScrollTo(
+                target.roundToInt().coerceIn(0, scrollState.maxValue),
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+            )
+        }
+    }
 
     // True while Memories' own day-photo viewer (DayFeaturedOverlay, rendered below at this
     // screen's own top-level Box) is open — wired via onFocusChanged below so it can blur this
@@ -369,6 +429,7 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .onGloballyPositioned { scrollColumnWindowY = it.positionInWindow().y }
                 .hazeSource(hazeState)
                 .statusBarsPadding()
                 // Disabled while either kind of focus is active — background content the user
@@ -424,36 +485,62 @@ fun HomeScreen(
                     // — showing it right next to a connection warning read as the app contradicting
                     // itself in the same breath. Whichever fact is currently true gets the hero
                     // treatment; the other one doesn't get a smaller, hedged mention alongside it.
+                    //
+                    // "You're all caught up" is de-emphasized by fading it to partial opacity —
+                    // deliberately the *only* thing that differs from the other two states (same
+                    // font, size, weight, color, tracking). Font size, weight and color were all
+                    // tried here first and each changed this Text's own measured height or made it
+                    // read as a mismatched element; opacity is a paint-time effect that can't touch
+                    // layout at all, so the featured card below never shifts position when this
+                    // line's content changes — which a 19sp/25sp size swap previously caused,
+                    // reading as a laggy jump the instant the last unseen photo got viewed.
+                    // animateFloatAsState is what makes that fade itself smooth rather than an
+                    // instant snap between the two opacities.
                     val unseenCount = viewModel.feedItems.count { viewModel.hasUnseenPhoto(it) }
                     val hasConnectionError = viewModel.errorMessage != null
+                    val isCaughtUp = !hasConnectionError && unseenCount == 0
+                    val headlineAlpha by animateFloatAsState(
+                        targetValue = if (isCaughtUp) 0.6f else 1f,
+                        animationSpec = tween(320, easing = FastOutSlowInEasing),
+                        label = "headlineAlpha",
+                    )
                     Text(
                         text = buildAnnotatedString {
                             if (hasConnectionError) {
                                 append("Couldn't connect")
                             } else if (unseenCount > 0) {
-                                // The count itself is left un-styled (inherits the Text's own
-                                // full-strength cream below) and it's the rest of the sentence that's
-                                // muted instead — in the default Ember theme, colors.glow is the exact
-                                // same hex as colors.cream by design (see Theme.kt), so styling the
-                                // number with glow made it visually identical to plain cream text
-                                // around it; a real color (muted, not just a dimmer cream) for the
-                                // *surrounding* words guarantees a genuine, visible difference in
-                                // every theme instead of relying on two tokens that can coincide.
-                                append("$unseenCount")
-                                withStyle(SpanStyle(color = colors.muted)) {
-                                    append(if (unseenCount == 1) " photo is" else " photos are")
-                                    append(" glowing for you")
-                                }
+                                // The count is highlighted with the theme's own glow accent; the
+                                // rest of the sentence stays plain, full-strength cream — not
+                                // muted/dimmed. Muting "photo is glowing for you" was tried first
+                                // and made the actual exciting part of the message read as dull
+                                // grey text; a real, warm accent on the number itself is what a
+                                // count actually deserves anyway. In the default Ember theme glow
+                                // happens to equal cream, so the number just reads as plain
+                                // cream there too — never worse than before, and a real highlight
+                                // in every theme where the two tokens differ (Ember New, etc.).
+                                withStyle(SpanStyle(color = colors.glow)) { append("$unseenCount") }
+                                append(if (unseenCount == 1) " photo is" else " photos are")
+                                append(" glowing for you")
                             } else {
                                 append("You're all caught up")
                             }
                         },
-                        fontFamily = typography.display,
+                        // Plain UI font, not typography.display — same reasoning as the Memories
+                        // label: this is a live status line, not a hero/name moment, and a simple
+                        // sans reads cleaner and stays consistent across every theme instead of
+                        // switching character (serif/script) depending which one's active. Only
+                        // the font itself changes here — size, weight and tracking are untouched,
+                        // after an earlier attempt that changed several of this line's properties
+                        // at once ended up reading as a different, mismatched element rather than
+                        // a deliberate restyle.
+                        fontFamily = PublicSansFontFamily,
                         fontSize = 25.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.3).sp,
                         color = colors.cream,
-                        modifier = Modifier.padding(top = 14.dp, start = 22.dp, end = 22.dp),
+                        modifier = Modifier
+                            .padding(top = 14.dp, start = 22.dp, end = 22.dp)
+                            .graphicsLayer { alpha = headlineAlpha },
                     )
                     // "Tap to retry" folds into this line rather than the hero line above — the hero
                     // line already runs long enough on its own ("Couldn't connect") that adding retry
@@ -568,7 +655,9 @@ fun HomeScreen(
                         chromeFade = chromeFade,
                         revealProgress = { 1f },
                         onMemoriesFocusChanged = { isMemoriesFocused = it },
-                        modifier = Modifier.padding(top = 6.dp),
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .onGloballyPositioned { memoriesTopWindowY = it.positionInWindow().y },
                     )
                 }
 
@@ -821,7 +910,9 @@ fun HomeScreen(
                         chromeFade = chromeFade,
                         revealProgress = memoriesRevealProgress,
                         onMemoriesFocusChanged = { isMemoriesFocused = it },
-                        modifier = Modifier.padding(top = 8.dp),
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .onGloballyPositioned { memoriesTopWindowY = it.positionInWindow().y },
                     )
                 }
             }
@@ -867,7 +958,7 @@ private fun HomeMemoriesSection(
     Column(modifier = modifier) {
         MemoriesSectionLabel(
             modifier = Modifier
-                .padding(start = 22.dp, end = 22.dp, bottom = 14.dp)
+                .padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 16.dp)
                 .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                 .graphicsLayer { alpha = revealProgress() * chromeFade },
         )
@@ -891,43 +982,27 @@ private fun HomeMemoriesSection(
     }
 }
 
-/** "Memories" label with a small, slowly bobbing chevron beside it — the discoverability cue
- * that there's a scrollable section below, sitting in the normal content flow (not a floating
- * overlay) so it reads as part of the page rather than a separate control. The bob is the one
- * deliberately animated detail here; everything else about this label is static. */
+/** "Memories" section label — centered, plain UI font, no discoverability affordance beside it
+ * (a bobbing chevron used to sit here; removed since the label itself, centered like every other
+ * section title in the app, already reads as a heading rather than something that needs a hint
+ * to be noticed). */
 @Composable
 private fun MemoriesSectionLabel(modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
-    val typography = EmberTheme.typography
 
-    val infiniteTransition = rememberInfiniteTransition(label = "memoriesChevronBob")
-    val bobFraction by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "memoriesChevronBobFraction",
-    )
-
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        // Plain UI font, not typography.display — that face is a decorative, per-theme character
+        // face (serif/script depending on theme) meant for the odd hero moment (the "Ember"
+        // wordmark, a name on a profile), not a section label. A section label reads as cleaner
+        // and more legible in the same simple sans every messaging/social app (WhatsApp,
+        // Instagram, Snapchat) uses for its own UI chrome, same as the rest of this app's own
+        // body/button text already does via PublicSansFontFamily.
         Text(
             text = "Memories",
-            fontFamily = typography.display,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.2).sp,
+            fontFamily = PublicSansFontFamily,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
             color = colors.cream,
-        )
-        Icon(
-            imageVector = Icons.Filled.KeyboardArrowDown,
-            contentDescription = null,
-            tint = colors.muted,
-            modifier = Modifier
-                .padding(start = 2.dp)
-                .size(20.dp)
-                .graphicsLayer { translationY = bobFraction * 4.dp.toPx() },
         )
     }
 }
@@ -1115,8 +1190,24 @@ internal fun ProfileChip(name: String?, photoUrl: String?, onClick: () -> Unit) 
 // Must match FriendAvatarRow's actual avatar Column width and horizontalArrangement spacing —
 // there's no way to derive these from the LazyRow itself without them already being visible,
 // which is exactly the problem with the built-in animateScrollToItem this replaces.
-private const val AVATAR_ITEM_WIDTH_DP = 72
-private const val AVATAR_SPACING_DP = 18
+/** The slot each avatar occupies. The avatar itself still grows/shrinks within it to mark the
+ * active friend (see avatarSize below) — this is just the fixed box that keeps the row's own
+ * layout steady while that animates. */
+private const val AVATAR_DIAMETER_DP = 82
+
+/** The non-active avatars' diameter — they animate down to this, and back up to
+ * [AVATAR_DIAMETER_DP] when they become the active one. */
+private const val AVATAR_INACTIVE_DIAMETER_DP = 78
+
+/** The ring band and the gap between it and the photo. Equal by design — see their use site. */
+private const val AVATAR_RING_WIDTH_DP = 3.0f
+private const val AVATAR_RING_GAP_DP = 3.0f
+
+/** Must match the real width of each avatar column below — smoothCenterOn derives its scroll
+ * target from this, so a value that disagrees with the actual layout centers every avatar
+ * slightly off (this was 72 while the column has always measured 84). */
+private const val AVATAR_ITEM_WIDTH_DP = 88
+private const val AVATAR_SPACING_DP = 4
 
 /** A fully custom smooth-scroll to center [targetIndex], replacing `LazyListState
  * .animateScrollToItem` — that built-in animates with an opaque, un-tunable spring, and for
@@ -1412,7 +1503,17 @@ private fun FeaturedPhotoCard(
                     horizontalArrangement = Arrangement.spacedBy(FEATURED_CARD_DOT_SPACING),
                 ) {
                     repeat(dotCount) { index ->
-                        val isUnseen = friendEntries.getOrNull(index)?.photo?.seen == false
+                        // A photo you've already swiped past is seen, full stop, the instant you
+                        // land on the next one — it doesn't wait for photo.seen, which only flips
+                        // once the actual markPhotoSeen mutation completes (deliberately lagged by
+                        // one step, see the LaunchedEffect above). Without this position-based
+                        // override, the dot for whatever you just swiped away from kept showing
+                        // its old unseen color for however long that mutation took to land — a
+                        // visible flash of staleness for a bar the pager has already moved past.
+                        // Only dots at or ahead of where you actually are still defer to the real
+                        // seen flag, since those genuinely might or might not have been viewed yet.
+                        val isUnseen = index >= current.indexWithinFriend &&
+                            friendEntries.getOrNull(index)?.photo?.seen == false
                         val targetDotColor = when {
                             index == current.indexWithinFriend -> Color.White
                             isUnseen -> colors.glow
@@ -1617,23 +1718,23 @@ private fun FriendAvatarRow(
         state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 22.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(AVATAR_SPACING_DP.dp),
         verticalAlignment = Alignment.Top,
     ) {
         items(viewModel.feedItems, key = { it.friendId }) { item ->
             val isActive = item.friendId == activeFriendId
             val hasUnseen = viewModel.hasUnseenPhoto(item)
-            // Same duration/easing as the row's own centering scroll (smoothCenterOn) so the
-            // resize and the reposition read as one coordinated move, not two mismatched ones.
-            val avatarSize by animateDpAsState(
-                targetValue = if (isActive) 78.dp else 70.dp,
-                animationSpec = tween(320, easing = FastOutSlowInEasing),
-                label = "avatarSize",
-            )
             // Drives a crossfade between the ring's two looks (see the layered Boxes below)
             // rather than a hard cut — `.background(brush)` has no built-in way to animate
             // between two different Brushes, so the glow sweep-gradient is its own layer on top
             // of an always-present muted base, faded in/out by this instead.
+            // Same duration/easing as the row's own centering scroll (smoothCenterOn) so the
+            // resize and the reposition read as one coordinated move, not two mismatched ones.
+            val avatarSize by animateDpAsState(
+                targetValue = if (isActive) AVATAR_DIAMETER_DP.dp else AVATAR_INACTIVE_DIAMETER_DP.dp,
+                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                label = "avatarSize",
+            )
             val unseenAlpha by animateFloatAsState(
                 targetValue = if (hasUnseen) 1f else 0f,
                 animationSpec = tween(100, easing = FastOutSlowInEasing),
@@ -1642,9 +1743,9 @@ private fun FriendAvatarRow(
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(84.dp),
+                modifier = Modifier.width(AVATAR_ITEM_WIDTH_DP.dp),
             ) {
-                Box(modifier = Modifier.size(78.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(AVATAR_DIAMETER_DP.dp), contentAlignment = Alignment.Center) {
                     Box(modifier = Modifier.size(avatarSize)) {
                         // Muted ring — always present as the base, so the glow layer above has
                         // something already-correct underneath to dissolve into/out of.
@@ -1666,17 +1767,16 @@ private fun FriendAvatarRow(
                         Box(
                             modifier = Modifier
                                 .matchParentSize()
-                                // 3.5dp, not the original 2.5dp — bolder, but the previous 4.5dp
-                                // attempt (plus only a 2dp gap before the photo) left the ring and
-                                // photo reading as one thick solid disc with barely any visible
-                                // separation, not an actual ring. The 3dp gap below (up from 2dp)
-                                // is just as important as this width — it's the gap that makes the
-                                // colored band read as a ring wrapping the photo, not a border
-                                // fused to it.
-                                .padding(3.5.dp)
+                                // Thin hairline ring plus an equally thin gap, matching the
+                                // story-ring proportion this row is modelled on: the photo should
+                                // occupy the large majority of the circle, with the ring reading
+                                // as a delicate band around it rather than a heavy border. Both
+                                // values are deliberately equal — an uneven pair reads as a
+                                // mistake at this size.
+                                .padding(AVATAR_RING_WIDTH_DP.dp)
                                 .clip(CircleShape)
                                 .background(colors.panel)
-                                .padding(3.dp)
+                                .padding(AVATAR_RING_GAP_DP.dp)
                                 .clip(CircleShape)
                                 .clickable { onAvatarClick(item.friendId) },
                         ) {
@@ -1727,13 +1827,13 @@ private fun FriendAvatarRow(
         item(key = "add-friend") {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(84.dp),
+                modifier = Modifier.width(AVATAR_ITEM_WIDTH_DP.dp),
             ) {
                 val dashColor = colors.mutedDim
-                Box(modifier = Modifier.size(78.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(AVATAR_DIAMETER_DP.dp), contentAlignment = Alignment.Center) {
                     Box(
                         modifier = Modifier
-                            .size(70.dp)
+                            .size(AVATAR_INACTIVE_DIAMETER_DP.dp)
                             .drawBehind {
                                 drawCircle(
                                     color = dashColor,
