@@ -1,6 +1,7 @@
 package com.ember.backend.controller
 
 import com.ember.backend.dto.AuthResponse
+import com.ember.backend.dto.EmailAvailability
 import com.ember.backend.dto.LoginRequest
 import com.ember.backend.dto.RegisterRequest
 import com.ember.backend.dto.UsernameAvailability
@@ -51,5 +52,14 @@ class AuthController(
     fun checkUsernameAvailability(@RequestParam username: String, httpRequest: HttpServletRequest): UsernameAvailability {
         rateLimiterService.checkLimit("username-availability:${httpRequest.remoteAddr}", maxAttempts = 60, window = Duration.ofMinutes(10))
         return userService.checkUsernameAvailabilityPublic(username)
+    }
+
+    // Checked once per email step (on continue), not per keystroke, so a much tighter limit than
+    // the username check above is enough. Rate limited at all because this can otherwise be used
+    // to test whether a given address has an Ember account.
+    @GetMapping("/email-availability")
+    fun checkEmailAvailability(@RequestParam email: String, httpRequest: HttpServletRequest): EmailAvailability {
+        rateLimiterService.checkLimit("email-availability:${httpRequest.remoteAddr}", maxAttempts = 20, window = Duration.ofMinutes(10))
+        return userService.checkEmailAvailabilityPublic(email)
     }
 }

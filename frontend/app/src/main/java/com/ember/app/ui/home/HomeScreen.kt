@@ -911,7 +911,7 @@ fun HomeScreen(
                         revealProgress = memoriesRevealProgress,
                         onMemoriesFocusChanged = { isMemoriesFocused = it },
                         modifier = Modifier
-                            .padding(top = 8.dp)
+                            .padding(top = 2.dp)
                             .onGloballyPositioned { memoriesTopWindowY = it.positionInWindow().y },
                     )
                 }
@@ -958,7 +958,7 @@ private fun HomeMemoriesSection(
     Column(modifier = modifier) {
         MemoriesSectionLabel(
             modifier = Modifier
-                .padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 16.dp)
+                .padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 16.dp)
                 .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                 .graphicsLayer { alpha = revealProgress() * chromeFade },
         )

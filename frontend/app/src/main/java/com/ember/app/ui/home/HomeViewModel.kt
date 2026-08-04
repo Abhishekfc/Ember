@@ -21,12 +21,37 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /** How far back "previous month" navigation is allowed to go — a plain sanity backstop (not a
  * data-aware limit; see [HomeViewModel.canGoToPreviousMonth]) so an account with zero photos
  * ever can't be clicked back through decades of guaranteed-empty months. */
 private const val MEMORIES_HISTORY_LIMIT_YEARS = 5L
+
+// Must match PhotoService.FEED_WINDOW_HOURS on the backend — see [dropExpiredPhotos] for why the
+// client re-applies this same cutoff to data it already has, instead of only ever trusting
+// whatever the server excluded at the moment of the last successful fetch.
+private const val FEED_FRESHNESS_HOURS = 24L
+
+/** The backend already excludes anything older than [FEED_FRESHNESS_HOURS] from every real
+ * getFeed() response — but that filtering only happens *at fetch time*. A phone that goes
+ * offline (or simply never gets a chance to sync again — no data connection, backgrounded with
+ * no push, etc.) keeps showing whatever was cached from its last successful fetch, verbatim,
+ * with nothing to notice that real time has since carried those same photos past the same
+ * 24-hour cutoff the server would now enforce. This re-runs that cutoff against the device's own
+ * clock on data already in memory/on disk, so a photo ages off Home even when no new network
+ * call ever happens — dropping a friend's card entirely once none of their photos are left. */
+private fun dropExpiredPhotos(items: List<FeedItem>): List<FeedItem> {
+    val cutoff = Instant.now().minus(FEED_FRESHNESS_HOURS, ChronoUnit.HOURS)
+    return items.mapNotNull { item ->
+        val freshPhotos = item.photos.filter { photo ->
+            val createdAt = runCatching { Instant.parse(photo.createdAt) }.getOrNull()
+            createdAt == null || createdAt.isAfter(cutoff)
+        }
+        if (freshPhotos.isEmpty()) null else item.copy(photos = freshPhotos)
+    }
+}
 
 /** Read synchronously (see MainActivity.onCreate) and handed straight to HomeViewModel's
  * constructor, rather than read asynchronously inside its own init — a coroutine launched
@@ -59,9 +84,9 @@ class HomeViewModel(
     // someone mid-swipe, since feed entries are sorted by most-recently-active friend and a
     // single new photo re-sorts the whole list. See promoteSyncedFeed for the only paths allowed
     // to copy synced into the visible session.
-    var feedItems by mutableStateOf(initialCache.feedItems)
+    var feedItems by mutableStateOf(dropExpiredPhotos(initialCache.feedItems))
         private set
-    var syncedFeedItems by mutableStateOf(initialCache.feedItems)
+    var syncedFeedItems by mutableStateOf(dropExpiredPhotos(initialCache.feedItems))
         private set
 
     // Set once the very first real fetch (not the synchronous cache hydration at construction)
@@ -294,6 +319,12 @@ class HomeViewModel(
      * content is allowed to become visible, the other being an explicit pull-to-refresh (handled
      * directly in loadFeed). A no-op whenever nothing has actually diverged. */
     fun onHomeSessionStart() {
+        // Re-validates against the device's own clock every time Home becomes active again —
+        // see [dropExpiredPhotos] — so a photo that's simply aged past the freshness window
+        // while the app sat elsewhere (or offline) disappears the moment you come back to look
+        // at it, not only once some future network fetch happens to succeed.
+        feedItems = dropExpiredPhotos(feedItems)
+        syncedFeedItems = dropExpiredPhotos(syncedFeedItems)
         if (hasNewFeedAvailable) promoteSyncedFeed()
     }
 
@@ -358,7 +389,11 @@ class HomeViewModel(
             errorMessage = null
             repository.getFeed(forceRefresh = isPullRefresh).fold(
                 onSuccess = { items ->
-                    syncedFeedItems = items
+                    // The server already excludes anything stale as of the moment this request
+                    // was answered — filtered again here (cheap, and normally a no-op) purely so
+                    // this assignment can never be the one place that skips the same rule
+                    // [dropExpiredPhotos] enforces everywhere else this list gets set.
+                    syncedFeedItems = dropExpiredPhotos(items)
                     // The very first real fetch always promotes immediately — there's no
                     // established browsing session yet to protect, this is just the initial
                     // cache (or empty state) settling to ground truth. Every fetch after that

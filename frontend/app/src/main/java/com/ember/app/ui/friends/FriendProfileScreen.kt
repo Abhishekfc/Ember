@@ -54,7 +54,7 @@ import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.ReportReason
 import com.ember.app.ui.components.HeaderRowHeight
 import com.ember.app.ui.components.NestedScreenHeader
-import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.profile.EditDialogShell
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
@@ -490,7 +490,7 @@ private fun FriendActions(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 22.dp)
-            .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), pillShape)
+            .background(emberButtonBrush(EmberTheme.key, colors, buttonSizePx), pillShape)
             .clickable(onClick = onSendPhotoClick)
             .padding(vertical = 15.dp),
         horizontalArrangement = Arrangement.Center,
@@ -566,7 +566,7 @@ private fun PendingRequestActions(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 22.dp)
-            .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), pillShape)
+            .background(emberButtonBrush(EmberTheme.key, colors, buttonSizePx), pillShape)
             .clickable(enabled = !busy) { viewModel.acceptRequest(onAccepted) }
             .padding(vertical = 15.dp),
         horizontalArrangement = Arrangement.Center,
@@ -652,7 +652,7 @@ private fun AddActions(viewModel: FriendProfileViewModel, pillShape: RoundedCorn
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 22.dp)
-            .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), pillShape)
+            .background(emberButtonBrush(EmberTheme.key, colors, buttonSizePx), pillShape)
             .clickable(enabled = !viewModel.isSendingRequest, onClick = viewModel::sendRequest)
             .padding(vertical = 15.dp),
         horizontalArrangement = Arrangement.Center,

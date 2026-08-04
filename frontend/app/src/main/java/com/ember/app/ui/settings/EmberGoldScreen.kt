@@ -34,7 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ember.app.ui.components.NestedScreenHeader
-import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -70,7 +70,7 @@ fun EmberGoldScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .padding(top = 12.dp)
                 .size(72.dp)
-                .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), badgeSizePx), CircleShape),
+                .background(emberButtonBrush(EmberTheme.key, colors, badgeSizePx), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(32.dp))

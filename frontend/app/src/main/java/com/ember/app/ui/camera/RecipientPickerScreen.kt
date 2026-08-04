@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.ui.components.NestedScreenHeader
-import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -122,7 +122,7 @@ fun RecipientPickerScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), EmberRadii.buttonShape)
+                .background(emberButtonBrush(EmberTheme.key, colors, buttonSizePx), EmberRadii.buttonShape)
                 .clickable(enabled = recipientCount > 0) { onConfirm(viewModel.selectedFriendIds) }
                 .padding(vertical = 15.dp),
             horizontalArrangement = Arrangement.Center,

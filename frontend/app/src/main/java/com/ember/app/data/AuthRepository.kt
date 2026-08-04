@@ -7,6 +7,7 @@ import com.ember.app.data.remote.dto.DeviceTokenRequestDto
 import com.ember.app.data.remote.dto.ErrorResponse
 import com.ember.app.data.remote.dto.LoginRequest
 import com.ember.app.data.remote.dto.RegisterRequest
+import com.ember.app.data.remote.dto.EmailAvailabilityDto
 import com.ember.app.data.remote.dto.UsernameAvailabilityDto
 import kotlinx.serialization.json.Json
 import retrofit2.Response
@@ -34,6 +35,17 @@ class AuthRepository(
             Result.success(body)
         } else {
             Result.failure(Exception("Couldn't check that username"))
+        }
+    }
+
+    /** Public, pre-auth email check used by the registration email step. */
+    suspend fun checkEmailAvailability(email: String): Result<EmailAvailabilityDto> = safeCall {
+        val response = api.checkEmailAvailabilityPublic(email)
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            Result.success(body)
+        } else {
+            Result.failure(Exception("Couldn't check that email"))
         }
     }
 

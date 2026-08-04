@@ -30,3 +30,9 @@ data class UsernameAvailability(
     val available: Boolean,
     val suggestions: List<String> = emptyList(),
 )
+
+/** No suggestions counterpart to [UsernameAvailability] — an email address isn't something the
+ * server can offer alternatives for the way it can for a taken username. */
+data class EmailAvailability(
+    val available: Boolean,
+)

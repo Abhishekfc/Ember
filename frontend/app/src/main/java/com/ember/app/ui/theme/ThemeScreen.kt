@@ -42,7 +42,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ember.app.ui.components.NestedScreenHeader
-import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.theme.PublicSansFontFamily
 
 /**
@@ -125,7 +125,7 @@ fun ThemeScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 16.dp)
                 .background(
-                    if (canApply || needsUpgrade) cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx) else SolidColor(colors.elevatedPanel),
+                    if (canApply || needsUpgrade) emberButtonBrush(EmberTheme.key, colors, buttonSizePx) else SolidColor(colors.elevatedPanel),
                     EmberRadii.buttonShape,
                 )
                 .clickable(enabled = canApply || needsUpgrade) {

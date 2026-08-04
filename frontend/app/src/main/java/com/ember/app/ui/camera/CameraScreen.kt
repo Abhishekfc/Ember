@@ -103,7 +103,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.ember.app.data.remote.dto.FriendSummaryDto
-import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -687,7 +687,7 @@ private fun CaptureControls(
                     .size(62.dp)
                     .graphicsLayer { scaleX = shutterScale; scaleY = shutterScale }
                     .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(colors.glow, colors.glow2)))
+                    .background(emberButtonBrush(EmberTheme.key, colors))
                     .clickable(
                         interactionSource = shutterInteractionSource,
                         // The scale animation above already IS this button's press feedback —
@@ -863,7 +863,7 @@ private fun PreviewControls(
                     .size(62.dp)
                     .clip(CircleShape)
                     .background(
-                        if (canSend) Brush.linearGradient(listOf(colors.glow, colors.glow2)) else Brush.linearGradient(listOf(colors.border, colors.border)),
+                        if (canSend) emberButtonBrush(EmberTheme.key, colors) else Brush.linearGradient(listOf(colors.border, colors.border)),
                     )
                     .clickable(enabled = !viewModel.isQueuingSend && canSend) {
                         viewModel.sendCaptured(context.applicationContext, onSent)
@@ -932,7 +932,7 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), badgeSizePx), CircleShape),
+                    .background(emberButtonBrush(EmberTheme.key, colors, badgeSizePx), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Rounded.WorkspacePremium, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(26.dp))
@@ -957,7 +957,7 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), RoundedCornerShape(14.dp))
+                    .background(emberButtonBrush(EmberTheme.key, colors, buttonSizePx), RoundedCornerShape(14.dp))
                     .clickable(onClick = onUpgrade)
                     .padding(vertical = 13.dp),
                 horizontalArrangement = Arrangement.Center,

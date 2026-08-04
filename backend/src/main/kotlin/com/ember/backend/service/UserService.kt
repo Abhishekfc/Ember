@@ -1,5 +1,6 @@
 package com.ember.backend.service
 
+import com.ember.backend.dto.EmailAvailability
 import com.ember.backend.dto.UpdateProfileRequest
 import com.ember.backend.dto.UsernameAvailability
 import com.ember.backend.dto.UserProfile
@@ -123,6 +124,16 @@ class UserService(
         }
 
         return UsernameAvailability(available = false, suggestions = generateUsernameSuggestions(normalized))
+    }
+
+    /** Whether an email can still be registered. Mirrors [checkUsernameAvailabilityPublic] and is
+     * deliberately the same normalization AuthService.register applies (trim + lowercase), so the
+     * answer this gives during sign-up matches what registration will actually decide — otherwise
+     * someone could be told an address is free and still be rejected at the final step. */
+    fun checkEmailAvailabilityPublic(candidate: String): EmailAvailability {
+        val normalized = candidate.trim().lowercase()
+        if (normalized.isEmpty()) return EmailAvailability(available = false)
+        return EmailAvailability(available = !userRepository.existsByEmail(normalized))
     }
 
     private fun generateUsernameSuggestions(base: String): List<String> {

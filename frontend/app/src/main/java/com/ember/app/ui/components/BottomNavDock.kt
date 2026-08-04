@@ -192,7 +192,7 @@ private fun CameraButton(onCameraClick: () -> Unit) {
             .size(54.dp)
             .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.35f))
             .clip(CircleShape)
-            .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx))
+            .background(emberButtonBrush(EmberTheme.key, colors, buttonSizePx))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onCameraClick),
         contentAlignment = Alignment.Center,
     ) {

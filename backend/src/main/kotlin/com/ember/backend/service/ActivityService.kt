@@ -152,16 +152,20 @@ class ActivityService(
             emptyMap()
         } else {
             photoRecipientRepository.findExchangeTimestampsBatch(userId, acceptedFriendIds)
-                .groupBy({ it.otherPartyId }, { it.createdAt })
+                .groupBy({ it.otherPartyId }, { StreakExchange(it.createdAt, it.sentByMe) })
         }
 
         accepted.forEach { friendship ->
             val friend = if (friendship.requester.id == userId) friendship.addressee else friendship.requester
-            val timestamps = timestampsByFriend[friend.id] ?: emptyList()
-            if (timestamps.isEmpty()) return@forEach
+            val exchanges = timestampsByFriend[friend.id] ?: emptyList()
+            if (exchanges.isEmpty()) return@forEach
 
-            val streak = StreakCalculator.compute(timestamps)
-            val mostRecentDay = timestamps.maxOf { it.atZone(ZoneOffset.UTC).toLocalDate() }
+            val streak = StreakCalculator.compute(exchanges)
+            // The most recent day BOTH sides sent a photo — not just either direction — since
+            // that's the same rule the streak count itself now uses. One person sending today
+            // without a reply yet must not push this forward, or the "expiring" warning below
+            // would never fire on the very day it's actually needed.
+            val mostRecentDay = StreakCalculator.mostRecentMutualDay(exchanges)
             val today = LocalDate.now(ZoneOffset.UTC)
 
             // Streak is only "at risk" once today hasn't been exchanged yet but yesterday was —

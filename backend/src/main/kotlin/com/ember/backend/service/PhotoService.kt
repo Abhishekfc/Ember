@@ -182,7 +182,7 @@ class PhotoService(
             emptyMap()
         } else {
             photoRecipientRepository.findExchangeTimestampsBatch(userId, rowsBySender.keys)
-                .groupBy({ it.otherPartyId }, { it.createdAt })
+                .groupBy({ it.otherPartyId }, { StreakExchange(it.createdAt, it.sentByMe) })
         }
         // Reaction feature disabled — this batched "my reaction per photo" lookup (see
         // PhotoReactionService's own comment) is commented out alongside it.
