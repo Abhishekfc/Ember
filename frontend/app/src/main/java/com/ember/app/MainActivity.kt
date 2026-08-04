@@ -483,6 +483,16 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(Unit) {
                         emberApplication.newPhotoPushEvents.collect { homeViewModel.loadFeed() }
                     }
+                    // FriendsViewModel otherwise only ever refetches at app start or an explicit
+                    // pull-to-refresh — nothing was re-syncing it when a friend's photo actually
+                    // arrived, so "Last sent"/streak on the Friends tab could sit stale for as
+                    // long as someone simply never happened to pull-to-refresh that screen,
+                    // even with the app fully online the whole time. A received photo is exactly
+                    // the event that changes those two fields, so it gets the same treatment as
+                    // Home's own feed above.
+                    LaunchedEffect(Unit) {
+                        emberApplication.newPhotoPushEvents.collect { friendsViewModel.refreshSilently() }
+                    }
                     // Same bridge, the other direction: a queued send (see PendingSendWorker)
                     // finishing is *my own* new photo, so both Feed and Memories need refreshing
                     // — unlike the push case above, which only ever needs Feed.
@@ -490,6 +500,9 @@ class MainActivity : ComponentActivity() {
                         emberApplication.photoSendCompletedEvents.collect {
                             homeViewModel.loadFeed()
                             homeViewModel.loadMemories()
+                            // My own send is just as much a streak/last-activity change for
+                            // whoever I sent it to as receiving one from them is above.
+                            friendsViewModel.refreshSilently()
                         }
                     }
                     // Also hoisted, for the same reason: created here means its fetch starts as

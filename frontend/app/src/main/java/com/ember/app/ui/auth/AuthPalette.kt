@@ -1,5 +1,6 @@
 package com.ember.app.ui.auth
 
+import androidx.compose.ui.graphics.Color
 import com.ember.app.ui.theme.EmberColors
 import com.ember.app.ui.theme.EmberTypography
 import com.ember.app.ui.theme.ThemeKey
@@ -28,16 +29,24 @@ object AuthPalette {
     val cream get() = colors.cream
     val muted get() = colors.muted
     val mutedDim get() = colors.mutedDim
-    val glow get() = colors.glow
-    val glow2 get() = colors.glow2
-    val accentText get() = colors.accentText
+    // Deliberately NOT colors.glow/colors.glow2 — those are Ember New's own purple→blue accent
+    // trio, still used exactly as before by every signed-in screen with that theme selected.
+    // Onboarding needed its own yellow (matching the app's own launcher icon) without recoloring
+    // Ember New itself for existing users, so these are fixed constants rather than passthroughs.
+    // Both the same single yellow — one consistent accent throughout onboarding, not two
+    // different shades — matching the launcher icon's own color as closely as possible.
+    val glow = Color(0xFFFFFB0A)
+    val glow2 = Color(0xFFFFFB0A)
+    // Also overridden, not forwarded: Ember New's own accentText is white, meant to sit on that
+    // theme's purple/blue buttons — white text on this bright a yellow reads as washed-out, low
+    // contrast, and the app's own icon already establishes black-on-yellow as this brand's
+    // pairing for exactly this color, not white-on-yellow.
+    val accentText = Color(0xFF1A1A1A)
     val border get() = colors.border
 
-    // Was a hardcoded light cream, paired with a dark accentText — now the theme's own purple
-    // accent, derived (not hand-copied) so it can never drift out of sync with [glow]/[glow2]
-    // again the way the old hardcoded hex could have. Paired with white accentText, which is
-    // exactly why this couldn't just stay a light color once accentText itself became white.
-    val accentFill get() = colors.glow
+    // Was a hardcoded light cream, then the theme's own purple accent — now this screen's own
+    // yellow (see [glow] above), still paired with white accentText.
+    val accentFill = glow
 
     val display get() = typography.display
     val body get() = typography.body

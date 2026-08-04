@@ -8,6 +8,21 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Android 11+ hides other installed packages from an app by default. Without declaring
+         them here, the invite step can neither read their real launcher icons nor resolve a
+         share intent aimed at one specifically — resolveActivity just returns null, so every
+         "open WhatsApp" style tap would silently fall back to the generic chooser instead. -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.instagram.android" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.snapchat.android" />
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
     <application
         android:name=".EmberApplication"
         android:allowBackup="true"

@@ -138,10 +138,3 @@ private fun GlowPhotoTilePreview() {
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFFF2E9D8)
-@Composable
-private fun GlowPhotoTilePolaroidPreview() {
-    EmberAppTheme(themeKey = ThemeKey.POLAROID) {
-        GlowPhotoTile(size = 150.dp, seed = 1, name = "Rohan", time = "38m ago")
-    }
-}

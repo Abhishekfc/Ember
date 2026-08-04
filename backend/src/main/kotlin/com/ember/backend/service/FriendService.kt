@@ -77,12 +77,12 @@ class FriendService(
         // used to be the single biggest N+1 in the app, since it ran on every cache-miss load of
         // the Friends tab for every friend the user has.
         val timestampsByFriend = photoRecipientRepository.findExchangeTimestampsBatch(userId, friendIds)
-            .groupBy({ it.otherPartyId }, { it.createdAt })
+            .groupBy({ it.otherPartyId }, { StreakExchange(it.createdAt, it.sentByMe) })
 
         return friendships.map { friendship ->
             val isRequester = friendship.requester.id == userId
             val friend = if (isRequester) friendship.addressee else friendship.requester
-            val exchangeTimestamps = timestampsByFriend[friend.id] ?: emptyList()
+            val exchanges = timestampsByFriend[friend.id] ?: emptyList()
 
             FriendSummary(
                 friendshipId = friendship.id,
@@ -93,8 +93,10 @@ class FriendService(
                 profilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
                 pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
                 pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
-                lastActivityAt = exchangeTimestamps.maxOrNull(),
-                streak = StreakCalculator.compute(exchangeTimestamps),
+                // "Last sent" stays about either direction — it's just informational, not the
+                // streak's own mutual-day rule.
+                lastActivityAt = exchanges.maxOfOrNull { it.timestamp },
+                streak = StreakCalculator.compute(exchanges),
             )
         }
     }

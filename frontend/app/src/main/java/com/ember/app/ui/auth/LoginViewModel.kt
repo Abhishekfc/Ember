@@ -122,8 +122,34 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
 
     fun onContinueWithEmailClicked() = goTo(AuthStep.REGISTER_EMAIL)
     fun onSignInClicked() = goTo(AuthStep.LOGIN)
+    /** Verifies the address isn't already registered before moving on, rather than only checking
+     * that it looks like an email. Registration itself rejects duplicates (AuthService.register,
+     * plus a unique constraint on the column), but that only fires at the very end — so without
+     * this, someone would enter a password, a display name and a username, and only then be told
+     * the email was taken all along, with no obvious way back to change it. */
     fun onEmailStepContinue() {
-        if (isEmailValid) goTo(AuthStep.REGISTER_PASSWORD)
+        if (!isEmailValid || isLoading) return
+        errorMessage = null
+        viewModelScope.launch {
+            isLoading = true
+            repository.checkEmailAvailability(email.trim()).fold(
+                onSuccess = { result ->
+                    isLoading = false
+                    if (result.available) {
+                        goTo(AuthStep.REGISTER_PASSWORD)
+                    } else {
+                        errorMessage = "That email already has an Ember account."
+                    }
+                },
+                // A check that couldn't reach the server must not become a wall in front of
+                // sign-up: registration still enforces uniqueness for real, so letting the step
+                // proceed offline is safe, just later-failing.
+                onFailure = {
+                    isLoading = false
+                    goTo(AuthStep.REGISTER_PASSWORD)
+                },
+            )
+        }
     }
 
     /** Real Google sign-in has nothing to verify against yet — the backend only issues/checks

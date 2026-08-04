@@ -22,6 +22,10 @@ interface FeedRow {
 interface ExchangeTimestampRow {
     val otherPartyId: UUID
     val createdAt: Instant
+    // Whether the querying user (the `:userId` param this row came from) was the sender of this
+    // particular photo — needed now that a streak day requires activity in both directions (see
+    // StreakCalculator), not just any exchange.
+    val sentByMe: Boolean
 }
 
 interface PhotoRecipientRepository : JpaRepository<PhotoRecipient, UUID> {
@@ -101,7 +105,8 @@ interface PhotoRecipientRepository : JpaRepository<PhotoRecipient, UUID> {
         value = """
             select
                 case when p.sender_id = :userId then pr.recipient_id else p.sender_id end as otherPartyId,
-                p.created_at as createdAt
+                p.created_at as createdAt,
+                (p.sender_id = :userId) as sentByMe
             from photo_recipients pr
             join photos p on p.id = pr.photo_id
             where (p.sender_id = :userId and pr.recipient_id in :otherIds)

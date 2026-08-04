@@ -19,6 +19,7 @@ import com.ember.app.data.remote.dto.RegisterRequest
 import com.ember.app.data.remote.dto.ReportUserRequestDto
 import com.ember.app.data.remote.dto.SubscriptionStatusDto
 import com.ember.app.data.remote.dto.UpdateProfileRequestDto
+import com.ember.app.data.remote.dto.EmailAvailabilityDto
 import com.ember.app.data.remote.dto.UsernameAvailabilityDto
 import com.ember.app.data.remote.dto.UserProfileDto
 import okhttp3.MultipartBody
@@ -45,6 +46,12 @@ interface EmberApi {
      * `/users/me/...` route the way an existing user editing their own username does. */
     @GET("auth/username-availability")
     suspend fun checkUsernameAvailabilityPublic(@Query("username") username: String): Response<UsernameAvailabilityDto>
+
+    /** Same public, pre-auth role as [checkUsernameAvailabilityPublic], for the email step — so a
+     * taken address is caught while it's still being entered, rather than at the final register
+     * call once a password, name and username have all already been filled in. */
+    @GET("auth/email-availability")
+    suspend fun checkEmailAvailabilityPublic(@Query("email") email: String): Response<EmailAvailabilityDto>
 
     @GET("photos/feed")
     suspend fun getFeed(@Query("refresh") refresh: Boolean = false): Response<List<FeedItem>>

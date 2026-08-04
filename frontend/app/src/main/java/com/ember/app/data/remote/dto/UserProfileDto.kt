@@ -27,3 +27,8 @@ data class UsernameAvailabilityDto(
     val available: Boolean,
     val suggestions: List<String> = emptyList(),
 )
+
+@Serializable
+data class EmailAvailabilityDto(
+    val available: Boolean,
+)

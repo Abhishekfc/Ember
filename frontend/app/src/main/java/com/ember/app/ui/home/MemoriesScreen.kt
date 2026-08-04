@@ -96,15 +96,15 @@ private const val GRID_COLUMNS = 7
 /** Corner radius of the card wrapping the month header + grid together. */
 private val MEMORIES_CARD_SHAPE = RoundedCornerShape(22.dp)
 
-/** Every month is padded (see [MemoryGridCell.Filler]) to exactly this many rows — the longest
- * possible month (31 days) plus the current month's own "add a photo" tile is 32 cells, which
- * already needs 5 rows, so this comfortably covers every month without ever needing 6. Fixed
- * across every month deliberately: without this, a 28-day month rendered 4 rows tall and a
- * 31-day one 5 rows tall, so switching between them resized the grid and shifted Home's own
- * scroll content around it — the whole point of padding to a constant row count is that
- * switching months never changes this composable's total height, so Home's scroll position
- * never moves out from under whoever's looking at it. */
-private const val GRID_ROWS = 5
+/** Every month is padded (see [MemoryGridCell.Filler]) to exactly this many rows — since day 1 now
+ * lands in its own real weekday column (leading blanks before it, see [buildDayCells]) rather than
+ * always starting at column 0, the worst case is a 31-day month whose 1st falls on a Saturday: 6
+ * leading blanks + 31 days = 37 cells, which needs 6 rows. Fixed across every month deliberately:
+ * without this, a short month rendered fewer rows tall than a long one, so switching between them
+ * resized the grid and shifted Home's own scroll content around it — the whole point of padding
+ * to a constant row count is that switching months never changes this composable's total height,
+ * so Home's scroll position never moves out from under whoever's looking at it. */
+private const val GRID_ROWS = 6
 
 internal sealed interface MemoryGridCell {
     object AddTile : MemoryGridCell
@@ -238,6 +238,12 @@ internal fun MemoriesGridContent(
 
     val cells: List<MemoryGridCell> = remember(byDay, selectedMonth) {
         val today = LocalDate.now()
+        // Blank cells before day 1 so it lands in its own real weekday column — Sunday first,
+        // matching a real wall calendar — rather than always starting at the grid's leftmost
+        // column regardless of what day the month actually begins on. DayOfWeek.value runs
+        // Monday=1..Sunday=7; `% 7` turns that into Sunday=0..Saturday=6, which is exactly how
+        // many empty columns should precede day 1 for each possible starting weekday.
+        val leadingBlanks = selectedMonth.atDay(1).dayOfWeek.value % 7
         val dayCells = (1..selectedMonth.lengthOfMonth()).map { day ->
             val date = selectedMonth.atDay(day)
             val photosForDay = byDay[date]
@@ -250,8 +256,9 @@ internal fun MemoriesGridContent(
                 else -> MemoryGridCell.EmptyDay(date)
             }
         }
+        val allCells = List(leadingBlanks) { MemoryGridCell.Filler } + dayCells
         val targetCount = GRID_ROWS * GRID_COLUMNS
-        dayCells + List((targetCount - dayCells.size).coerceAtLeast(0)) { MemoryGridCell.Filler }
+        allCells + List((targetCount - allCells.size).coerceAtLeast(0)) { MemoryGridCell.Filler }
     }
 
     Box(modifier = modifier) {
@@ -307,8 +314,8 @@ internal fun MemoriesGridContent(
                         // Full-strength text, not mutedDim — at 12sp on the header band, mutedDim
                         // was too faint to read. `cream` rather than a literal white: it's the
                         // theme's own primary text color, which is white/near-white in every dark
-                        // theme and automatically flips dark on the light ones (Polaroid,
-                        // Sunroom), where a hardcoded white would be invisible instead.
+                        // theme and automatically flips dark on any light theme, where a
+                        // hardcoded white would be invisible instead.
                         color = colors.cream,
                     )
                 }

@@ -103,6 +103,31 @@ class FriendsViewModel(
         }
     }
 
+    /** Same fetch as the first page of [loadFriends], for the moments a photo (received, or just
+     * sent) means some friend's streak/last-activity could have changed — but deliberately never
+     * touches [isLoading], which drives the pull-to-refresh spinner (see FriendsScreen). Without
+     * this split, refreshing on every incoming/outgoing photo would flash that spinner in at the
+     * top of the screen whenever one happened to land while this tab was open, for a refresh
+     * nobody asked for — the same "silent unless promoted" reasoning HomeViewModel already
+     * applies to its own feed, adapted to a screen that has no separate synced-vs-visible split
+     * of its own to promote into. Silent on failure, same as [loadMoreFriends]: a background
+     * refresh nobody asked for shouldn't surface an error either if it doesn't work. */
+    fun refreshSilently() {
+        if (isFetchingFriends) return
+        viewModelScope.launch {
+            isFetchingFriends = true
+            repository.getFriends(limit = PAGE_SIZE).fold(
+                onSuccess = { page ->
+                    friends = page.items
+                    hasMore = page.hasMore
+                    localCache.write(LocalListCache.KEY_FRIENDS, page.items)
+                },
+                onFailure = {},
+            )
+            isFetchingFriends = false
+        }
+    }
+
     /** Fetches the next page and appends it — called as the list scrolls near its end. A no-op
      * if there's nothing more, or a fetch (first-load or another loadMore) is already in
      * flight, so a fast scroll can't fire overlapping requests for the same page. */

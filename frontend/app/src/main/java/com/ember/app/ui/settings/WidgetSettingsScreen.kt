@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.ember.app.ui.camera.QuickSelectLink
 import com.ember.app.ui.camera.RecipientRow
 import com.ember.app.ui.components.NestedScreenHeader
-import com.ember.app.ui.components.cssAngleGradient
+import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -115,7 +115,7 @@ fun WidgetSettingsScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(cssAngleGradient(160f, listOf(colors.glow, colors.glow2), buttonSizePx), EmberRadii.buttonShape)
+                .background(emberButtonBrush(EmberTheme.key, colors, buttonSizePx), EmberRadii.buttonShape)
                 .clickable {
                     if (needsUpgrade) {
                         onUpgradeToGold()

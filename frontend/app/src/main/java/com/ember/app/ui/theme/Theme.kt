@@ -40,8 +40,6 @@ enum class ThemeKey(val displayName: String, val locked: Boolean) {
     BLAZE("Blaze", locked = false),
     NOIR("Noir", locked = false),
     AURORA("Aurora", locked = true),
-    POLAROID("Polaroid", locked = true),
-    SUNROOM("Sunroom", locked = true),
     CYBER("Cyber", locked = true),
     BOTANICA("Botanica", locked = true),
     CITRUS("Citrus", locked = true),
@@ -315,7 +313,7 @@ private val auroraDefinition = EmberThemeDefinition(
     key = ThemeKey.AURORA,
     colors = EmberColors(
         // Image backdrop rather than a gradient, same as Cyber — see EmberBackground.ImageBacked.
-        background = EmberBackground.ImageBacked(R.drawable.aurora_theme_background, auroraBackgroundBase),
+        background = EmberBackground.ImageBacked(R.drawable.aurora2_theme_background, auroraBackgroundBase),
         surface = auroraLadder.surface,
         panel = auroraPanel,
         elevatedPanel = auroraLadder.elevatedPanel,
@@ -333,67 +331,6 @@ private val auroraDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = SpaceGroteskFontFamily, body = InterFontFamily),
 )
 
-// Background dropped ~2.5% lightness from its original #F2E9D8/#E8DBC0 (still unmistakably warm
-// cream, not a visible change on its own) purely to buy back headroom: a light theme's panel
-// already sits within a few percent of pure white, leaving almost no room above it for
-// elevatedPanel/overlayPanel to separate from panel without this.
-private val polaroidBackgroundBase = Color(0xFFEFE4CE)
-private val polaroidPanel = Color(0xFFFCF6E8)
-private val polaroidLadder = deriveSurfaceLadder(polaroidBackgroundBase, polaroidPanel, accent = Color(0xFFC1502E))
-private val polaroidDefinition = EmberThemeDefinition(
-    key = ThemeKey.POLAROID,
-    colors = EmberColors(
-        background = EmberBackground.Linear(listOf(polaroidBackgroundBase, Color(0xFFE5D6B7))),
-        surface = polaroidLadder.surface,
-        panel = polaroidPanel,
-        elevatedPanel = polaroidLadder.elevatedPanel,
-        overlayPanel = polaroidLadder.overlayPanel,
-        cream = Color(0xFF2E2418),
-        muted = Color(0xFF8A7A5E),
-        mutedDim = Color(0xFFA99871),
-        glow = Color(0xFFC1502E),
-        glow2 = Color(0xFFD97F3E),
-        violet = Color(0xFFD97F3E),
-        accentText = Color(0xFFFBF4E4),
-        border = blackBorder(0.08f),
-        isLight = true,
-    ),
-    typography = EmberTypography(display = DmSerifDisplayFontFamily, body = InterFontFamily),
-)
-
-// Redesigned per user feedback ("too bright", palette "not good") — the original was a near-white
-// pale-pink background with two near-identical pale peach accents (glow2 and violet were
-// literally the same color, so the streak ring's ember-to-violet "blaze" never actually showed a
-// violet). Deeper, warmer cream reads as sunlit wood/linen rather than a glary near-white; a
-// richer terracotta + gold pair gives real contrast against that cream instead of pale-on-pale;
-// a genuine dusty plum gives the high-streak blaze an actual third hue to sweep through.
-// Same headroom reasoning as Polaroid above — background nudged ~2.5% darker from its original
-// #F7E9D7/#F0D9BE so the near-white panel has room above it to separate into elevatedPanel/
-// overlayPanel instead of all three clipping to the same white.
-private val sunroomBackgroundBase = Color(0xFFF5E3CC)
-private val sunroomPanel = Color(0xFFFFF9E8)
-private val sunroomLadder = deriveSurfaceLadder(sunroomBackgroundBase, sunroomPanel, accent = Color(0xFFD46A3D))
-private val sunroomDefinition = EmberThemeDefinition(
-    key = ThemeKey.SUNROOM,
-    colors = EmberColors(
-        background = EmberBackground.Linear(listOf(sunroomBackgroundBase, Color(0xFFEED3B4))),
-        surface = sunroomLadder.surface,
-        panel = sunroomPanel,
-        elevatedPanel = sunroomLadder.elevatedPanel,
-        overlayPanel = sunroomLadder.overlayPanel,
-        cream = Color(0xFF3A281F),
-        muted = Color(0xFFA0806C),
-        mutedDim = Color(0xFFC2A084),
-        glow = Color(0xFFD46A3D),
-        glow2 = Color(0xFFE8A94F),
-        violet = Color(0xFF9B6B8C),
-        accentText = Color(0xFFFFF8F0),
-        border = blackBorder(0.09f),
-        isLight = true,
-    ),
-    typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
-)
-
 // Kept at its original depth — see blazeDefinition's identical comment.
 private val cyberBackgroundBase = Color(0xFF0E0B14)
 private val cyberPanel = Color(0xFF342D3A)
@@ -403,7 +340,7 @@ private val cyberDefinition = EmberThemeDefinition(
     colors = EmberColors(
         // The one theme with a real image backdrop rather than a gradient — see
         // EmberBackground.ImageBacked for how it's drawn (once, at the app root, fixed).
-        background = EmberBackground.ImageBacked(R.drawable.cyber_theme_background, cyberBackgroundBase),
+        background = EmberBackground.ImageBacked(R.drawable.cyber2_theme_background, cyberBackgroundBase),
         surface = cyberLadder.surface,
         panel = cyberPanel,
         elevatedPanel = cyberLadder.elevatedPanel,
@@ -511,8 +448,6 @@ fun emberThemeDefinition(key: ThemeKey): EmberThemeDefinition = when (key) {
     ThemeKey.BLAZE -> blazeDefinition
     ThemeKey.NOIR -> noirDefinition
     ThemeKey.AURORA -> auroraDefinition
-    ThemeKey.POLAROID -> polaroidDefinition
-    ThemeKey.SUNROOM -> sunroomDefinition
     ThemeKey.CYBER -> cyberDefinition
     ThemeKey.BOTANICA -> botanicaDefinition
     ThemeKey.CITRUS -> citrusDefinition

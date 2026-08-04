@@ -482,9 +482,17 @@ private fun FriendRow(friend: FriendSummaryDto, onClick: () -> Unit) {
     val typography = EmberTheme.typography
     // The same "streak = warmth" signature every avatar ring on this screen already carries
     // (see streakRingBrush) — extended to the status line itself, so a glowing friendship reads
-    // as glowing everywhere in its row, not just in the ring. A cold friendship (no streak yet)
-    // stays plain and quiet.
-    val statusColor = if (friend.streak > 0) colors.glow else colors.mutedDim
+    // as glowing everywhere in its row, not just in the ring. Three states, not two: a live
+    // streak glows; a broken one (they've shared before, just not recently enough to keep it)
+    // reads as a normal, legible status rather than glowing — but it shouldn't fade all the way
+    // to the same near-invisible tone a friend with no history at all gets, since "we used to
+    // have a streak" is a real, readable fact and not a placeholder.
+    val hasHistory = friend.lastActivityAt != null
+    val statusColor = when {
+        friend.streak > 0 -> colors.glow
+        hasHistory -> colors.muted
+        else -> colors.mutedDim
+    }
 
     Row(
         modifier = Modifier
@@ -516,7 +524,7 @@ private fun FriendRow(friend: FriendSummaryDto, onClick: () -> Unit) {
                 text = friend.lastActivityAt?.let { "Last sent ${formatRelativeTime(it)}" } ?: "No photos yet",
                 fontFamily = typography.body,
                 fontSize = 12.5.sp,
-                fontWeight = if (friend.streak > 0) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = FontWeight.Normal,
                 color = statusColor,
                 modifier = Modifier.padding(top = 3.dp),
             )
