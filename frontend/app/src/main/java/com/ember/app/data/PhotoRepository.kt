@@ -1,10 +1,12 @@
 package com.ember.app.data
 
 import com.ember.app.data.remote.EmberApi
+import com.ember.app.data.remote.dto.AddPhotoRecipientsBody
 import com.ember.app.data.remote.dto.ErrorResponse
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.MemoryPhotoDto
 import com.ember.app.data.remote.dto.PhotoUploadResponseDto
+import com.ember.app.data.remote.dto.SentPhotoDto
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -96,15 +98,19 @@ class PhotoRepository(private val api: EmberApi) {
         }
     }
 
-    suspend fun uploadPhoto(file: File, recipientIds: List<String>): Result<PhotoUploadResponseDto> = safeCall {
+    // recipientIds can legitimately be empty now — a save-only upload from the camera's bookmark
+    // button, no one selected to send to. save defaults to false so every existing send-only call
+    // site doesn't need to change.
+    suspend fun uploadPhoto(file: File, recipientIds: List<String>, save: Boolean = false): Result<PhotoUploadResponseDto> = safeCall {
         val filePart = MultipartBody.Part.createFormData(
             "file",
             file.name,
             file.asRequestBody("image/jpeg".toMediaType()),
         )
         val recipientParts = recipientIds.map { MultipartBody.Part.createFormData("recipientIds", it) }
+        val savePart = MultipartBody.Part.createFormData("save", save.toString())
 
-        val response = api.uploadPhoto(filePart, recipientParts)
+        val response = api.uploadPhoto(filePart, recipientParts, savePart)
         val body = response.body()
         if (response.isSuccessful && body != null) {
             Result.success(body)
@@ -117,6 +123,73 @@ class PhotoRepository(private val api: EmberApi) {
             val message = response.errorBody()?.string()?.let {
                 runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
             } ?: "Couldn't send your photo (${response.code()})"
+            Result.failure(Exception(message))
+        }
+    }
+
+    suspend fun deletePhoto(photoId: String): Result<Unit> = safeCall {
+        val response = api.deletePhoto(photoId)
+        if (response.isSuccessful) {
+            Result.success(Unit)
+        } else {
+            val message = response.errorBody()?.string()?.let {
+                runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+            } ?: "Couldn't delete that photo (${response.code()})"
+            Result.failure(Exception(message))
+        }
+    }
+
+    /** This account's own outbox — recent, unsaved sends still within their unsend window. Not
+     * cached: only fetched when the outbox screen is actually opened, and it's always meant to
+     * reflect the current, real state (a photo aging out of its window, or being unsent from
+     * another device, shouldn't keep showing from a stale snapshot). */
+    suspend fun getSentPhotos(): Result<List<SentPhotoDto>> = safeCall {
+        val response = api.getSentPhotos()
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            Result.success(body)
+        } else {
+            val message = response.errorBody()?.string()?.let {
+                runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+            } ?: "Couldn't load your sent photos (${response.code()})"
+            Result.failure(Exception(message))
+        }
+    }
+
+    /** Unsends a photo — the outbox's own delete, reusing the same endpoint Memories' delete
+     * does (see PhotoService.delete on the backend for the 24h gate this is subject to that
+     * Memories' own delete isn't). A photo past its unsend window fails here with a clear
+     * server-provided message ("This photo can no longer be unsent") rather than a generic one,
+     * same [ErrorResponse] parsing every other call in this class already does. */
+    suspend fun unsendPhoto(photoId: String): Result<Unit> = deletePhoto(photoId)
+
+    /** Reuses an already-uploaded photo instead of uploading the same file a second time — see
+     * PendingSendWorker.AttachPhotoWorker, the only caller. Same 401 handling as [uploadPhoto]:
+     * this can also run long after the app that queued it is gone. */
+    suspend fun markPhotoSaved(photoId: String): Result<Unit> = safeCall {
+        val response = api.markPhotoSaved(photoId)
+        if (response.isSuccessful) {
+            Result.success(Unit)
+        } else if (response.code() == 401) {
+            Result.failure(UnauthorizedException())
+        } else {
+            val message = response.errorBody()?.string()?.let {
+                runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+            } ?: "Couldn't save that photo (${response.code()})"
+            Result.failure(Exception(message))
+        }
+    }
+
+    suspend fun addPhotoRecipients(photoId: String, recipientIds: List<String>): Result<Unit> = safeCall {
+        val response = api.addPhotoRecipients(photoId, AddPhotoRecipientsBody(recipientIds))
+        if (response.isSuccessful) {
+            Result.success(Unit)
+        } else if (response.code() == 401) {
+            Result.failure(UnauthorizedException())
+        } else {
+            val message = response.errorBody()?.string()?.let {
+                runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+            } ?: "Couldn't send that photo (${response.code()})"
             Result.failure(Exception(message))
         }
     }

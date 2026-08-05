@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -51,6 +53,14 @@ internal const val PULL_REFRESH_CONTENT_OFFSET_DP = 56
  *
  * Pull-to-refresh is opt-in: pass [isRefreshing] and [onRefresh] together for a screen that has
  * something to refresh, or leave both at their defaults for one that doesn't (Settings today).
+ *
+ * [listState] defaults to a plain [rememberLazyListState] scoped to this composition — fine for
+ * a screen that's never disposed while the user is elsewhere. A screen that can be navigated away
+ * from and back to via a nested screen (Friends, whenever a friend's profile is open) needs its
+ * caller to hoist that state instead and pass it in here, the same way MainActivity already
+ * hoists Home's own scroll position — otherwise this scaffold's default `remember` is recreated
+ * from scratch on every return, silently resetting scroll to the top even though nothing the
+ * user did asked for that.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +72,7 @@ fun TabScreenScaffold(
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     contentPadding: PaddingValues = PaddingValues(start = 20.dp, end = 20.dp, bottom = 110.dp),
+    listState: LazyListState = rememberLazyListState(),
     content: LazyListScope.() -> Unit,
 ) {
     val colors = EmberTheme.colors
@@ -119,6 +130,7 @@ fun TabScreenScaffold(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { translationY = pullOffsetFraction * PULL_REFRESH_CONTENT_OFFSET_DP.dp.toPx() },
@@ -127,7 +139,7 @@ fun TabScreenScaffold(
                     )
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = contentPadding, content = content)
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = contentPadding, content = content)
             }
         }
     }

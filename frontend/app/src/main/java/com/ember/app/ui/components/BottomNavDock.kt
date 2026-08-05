@@ -1,13 +1,17 @@
 package com.ember.app.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -24,6 +28,7 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -38,11 +43,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ember.app.ui.theme.EmberAppTheme
 import com.ember.app.ui.theme.EmberTheme
+import com.ember.app.ui.theme.PublicSansFontFamily
 import com.ember.app.ui.theme.ThemeKey
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
@@ -103,11 +111,12 @@ fun BottomNavDock(
     // second during every scroll. Reading it lazily inside HomeMemoriesNavItem's graphicsLayer
     // (a draw-phase callback) keeps that to a cheap per-frame redraw of two small icons instead.
     homeIconProgress: () -> Float = { 0f },
-    // Small dot badges — Friends for a pending incoming friend request, Activity for activity
-    // that's happened since the tab was last actually viewed (see MainActivity's own doc comments
-    // on where each of these is computed; this composable just renders whatever it's handed).
-    showFriendsBadge: Boolean = false,
-    showActivityBadge: Boolean = false,
+    // Numbered badge for both — how many pending incoming friend requests, and how many activity
+    // events have happened since that tab was last actually viewed — see MainActivity's own doc
+    // comments on where each of these is computed; this composable just renders whatever it's
+    // handed.
+    friendsBadgeCount: Int = 0,
+    activityBadgeCount: Int = 0,
     // Reports this Box's own real laid-out height — after navigationBarsPadding() and this
     // Box's own bottom inset are both applied — so callers can feed it into LocalNavDockHeight
     // instead of a guessed dp constant. Fires once per real layout pass, essentially only once
@@ -169,9 +178,9 @@ fun BottomNavDock(
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             HomeMemoriesNavItem(active, homeIconProgress, onNavigate)
-            NavItem(NavDestination.FRIENDS, Icons.Filled.People, active, onNavigate, showBadge = showFriendsBadge)
+            NavItem(NavDestination.FRIENDS, Icons.Filled.People, active, onNavigate, badgeCount = friendsBadgeCount)
             CameraButton(onCameraClick)
-            NavItem(NavDestination.ACTIVITY, Icons.Filled.Notifications, active, onNavigate, showBadge = showActivityBadge)
+            NavItem(NavDestination.ACTIVITY, Icons.Filled.Notifications, active, onNavigate, badgeCount = activityBadgeCount)
             NavItem(NavDestination.SETTINGS, Icons.Filled.Settings, active, onNavigate)
         }
     }
@@ -259,7 +268,7 @@ private fun NavItem(
     icon: ImageVector,
     active: NavDestination,
     onNavigate: (NavDestination) -> Unit,
-    showBadge: Boolean = false,
+    badgeCount: Int = 0,
 ) {
     val colors = EmberTheme.colors
     val isActive = destination == active
@@ -289,23 +298,43 @@ private fun NavItem(
             tint = tint,
             modifier = Modifier.size(23.dp),
         )
-        if (showBadge) {
-            // Plain flat dot now — no cutout-ring border around it any more.
-            //
+        // Fades in/out rather than just popping into existence — this badge's count is only ever
+        // known after a cache read or network fetch resolves (see FriendsViewModel/
+        // ActivityViewModel), so it can genuinely appear a beat after the icon itself is already
+        // on screen; a plain `if` there made that look like a layout glitch rather than data
+        // arriving, which fading now reads as instead.
+        AnimatedVisibility(
+            visible = badgeCount > 0,
             // Aligned to this Box's own TopEnd, but this Box is the full 44dp touch target, not
-            // the 23dp icon glyph centered inside it — a plain TopEnd (or a small outward offset)
-            // put the dot near the touch target's own corner, visibly far from the icon it's
-            // meant to badge. The offset below instead pulls it in to sit right against the
-            // icon's own top-right corner. Bigger too (12dp, was 9dp) — small enough to still read
-            // as a dot, not so small it looked like a soft glowing pinpoint rather than a solid one.
+            // the 23dp icon glyph centered inside it — a plain TopEnd put the badge near the
+            // touch target's own corner, visibly far from the icon it's meant to badge. This
+            // offset pulls it in to sit right against the icon's own top-right corner instead.
+            modifier = Modifier.align(Alignment.TopEnd).offset(x = (-6).dp, y = 5.dp),
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(150)),
+        ) {
+            // A numbered pill instead of a plain dot — sized to fit 1-3 characters. Caps at
+            // "99+" rather than ever growing wider than that.
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = (-7).dp, y = 7.dp)
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(colors.glow),
-            )
+                    .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.glow)
+                    .padding(horizontal = 3.5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (badgeCount > 99) "99+" else badgeCount.toString(),
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    // Each theme already defines accentText as whichever of black/white actually
+                    // reads against its own glow color (see Theme.kt) — the same pairing every
+                    // glow-filled button in the app uses. A hardcoded white here is what made this
+                    // unreadable on Citrus, whose glow is a bright yellow.
+                    color = colors.accentText,
+                )
+            }
         }
     }
 }

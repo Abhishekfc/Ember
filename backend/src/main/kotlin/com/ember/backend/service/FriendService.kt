@@ -83,6 +83,7 @@ class FriendService(
             val isRequester = friendship.requester.id == userId
             val friend = if (isRequester) friendship.addressee else friendship.requester
             val exchanges = timestampsByFriend[friend.id] ?: emptyList()
+            val lastExchange = exchanges.maxByOrNull { it.timestamp }
 
             FriendSummary(
                 friendshipId = friendship.id,
@@ -95,7 +96,11 @@ class FriendService(
                 pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
                 // "Last sent" stays about either direction — it's just informational, not the
                 // streak's own mutual-day rule.
-                lastActivityAt = exchanges.maxOfOrNull { it.timestamp },
+                lastActivityAt = lastExchange?.timestamp,
+                // Who that most recent exchange was actually from — lets the client say "You
+                // sent" vs "Sent to you" instead of a direction-blind "Last sent", without
+                // needing its own copy of the exchange list just to work that out.
+                lastActivityBySelf = lastExchange?.sentByMe,
                 streak = StreakCalculator.compute(exchanges),
             )
         }
@@ -227,6 +232,7 @@ class FriendService(
             pinnedByMe = friendship.addresseePinned,
             pinnedByThem = friendship.requesterPinned,
             lastActivityAt = null,
+            lastActivityBySelf = null,
             streak = 0,
         )
     }
@@ -260,6 +266,7 @@ class FriendService(
             pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
             pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
             lastActivityAt = null,
+            lastActivityBySelf = null,
             streak = 0,
         )
     }

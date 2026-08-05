@@ -6,6 +6,10 @@
     <!-- Android 13+ requires this even for a notification the OS shows on FCM's own behalf, let
          alone one EmberFirebaseMessagingService posts itself for a data-only NEW_PHOTO push. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Only needed to save a Memories photo to the gallery on Android 9 and below — scoped
+         storage on Android 10+ (API 29+) lets MediaStore.insert write there with no permission
+         at all, which is why this is capped at maxSdkVersion 28 rather than requested everywhere. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Android 11+ hides other installed packages from an app by default. Without declaring

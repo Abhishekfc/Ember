@@ -8,22 +8,26 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +53,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Image
@@ -64,8 +69,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
@@ -73,9 +78,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -83,9 +94,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -97,17 +112,19 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.ember.app.R
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.ui.components.emberButtonBrush
+import com.ember.app.ui.home.FEATURED_CARD_ASPECT_RATIO
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.lang.ref.WeakReference
@@ -117,6 +134,7 @@ fun CameraScreen(
     viewModel: CameraViewModel,
     onOpenRecipientPicker: () -> Unit,
     onUpgradeToGold: () -> Unit,
+    onOpenSentPhotos: () -> Unit,
     onSent: () -> Unit,
     // Home's own real, measured header height (see HomeScreen's onHeaderHeightChanged) — used
     // below to size this screen's own header spacer so the camera card lands at exactly the same
@@ -133,41 +151,6 @@ fun CameraScreen(
 
     // This screen's own header row real height — measured the same way, not guessed either.
     var headerRowHeightPx by remember { mutableStateOf(0f) }
-
-    // Reflects WorkManager's own real, persisted state for every queued send — not a second,
-    // hand-maintained counter that could drift from it — so this stays correct even across a
-    // process restart while photos are still waiting on connectivity. null (not emptyList()) for
-    // the one frame before the Flow's first real emission lands — collectAsState's own
-    // `initial = emptyList()` would otherwise look identical to "confirmed, there are zero
-    // pending/succeeded sends," and the *real* first emission arriving a moment later (which,
-    // once WorkManager has any send history at all, reports a nonzero succeeded count already)
-    // then looked exactly like a brand new completion — this was showing "Sent" every single
-    // time Camera opened, not only right after an actual send.
-    val workManager = remember { WorkManager.getInstance(context.applicationContext) }
-    val pendingSendInfos by produceState<List<WorkInfo>?>(initialValue = null, workManager) {
-        workManager.getWorkInfosByTagFlow(PendingSendWorker.TAG_PENDING_SEND).collect { value = it }
-    }
-    val pendingSendCount = pendingSendInfos.orEmpty().count { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
-    val succeededSendCount = pendingSendInfos?.count { it.state == WorkInfo.State.SUCCEEDED }
-
-    // A brief "Sent" flash the moment a queued send actually finishes — placeholder wording/
-    // timing for now (a fancier version is a follow-up idea), just needs to visibly distinguish
-    // "still sending" from "actually landed" rather than only ever saying "Sending…". Only ever
-    // compares against a REAL previous snapshot (never null) so the first real emission this
-    // screen ever sees just establishes the baseline silently, instead of being mistaken for a
-    // fresh completion.
-    var lastKnownSucceededCount by remember { mutableStateOf<Int?>(null) }
-    var showSentBadge by remember { mutableStateOf(false) }
-    LaunchedEffect(succeededSendCount) {
-        val current = succeededSendCount ?: return@LaunchedEffect
-        val previous = lastKnownSucceededCount
-        if (previous != null && current > previous) {
-            showSentBadge = true
-            delay(2500)
-            showSentBadge = false
-        }
-        lastKnownSucceededCount = current
-    }
 
     // Reviewing a shot? Back retakes instead of leaving the camera.
     BackHandler(enabled = captured != null) { viewModel.discardCapture() }
@@ -217,39 +200,50 @@ fun CameraScreen(
                         .align(Alignment.Center)
                         .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(percent = 50))
                         .clickable(onClick = onOpenRecipientPicker)
-                        .padding(start = 5.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                        .padding(start = 12.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    RecipientAvatarStack(friends = viewModel.selectedFriends, size = 26.dp, ringColor = colors.panel)
+                    RecipientAvatarStack(friends = viewModel.selectedFriends, size = 34.dp, ringColor = colors.panel)
                     if (viewModel.hasPinnedSelected) {
                         Icon(
                             Icons.Rounded.PushPin,
                             contentDescription = null,
                             tint = colors.glow,
-                            modifier = Modifier.padding(start = 7.dp).size(11.dp),
+                            modifier = Modifier.padding(start = 9.dp).size(14.dp),
                         )
                     }
                     Text(
                         text = viewModel.recipientLabel,
                         fontFamily = PublicSansFontFamily,
-                        fontSize = 12.5.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        modifier = Modifier.padding(start = 7.dp),
+                        modifier = Modifier.padding(start = 9.dp),
                     )
                     Icon(
                         Icons.Rounded.ChevronRight,
                         contentDescription = null,
                         tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(start = 2.dp).size(14.dp),
+                        modifier = Modifier.padding(start = 3.dp).size(18.dp),
                     )
                 }
 
-                SendStatusIndicator(
-                    pendingSendCount = pendingSendCount,
-                    showSentBadge = showSentBadge,
-                    modifier = Modifier.align(Alignment.CenterEnd),
+                // Always present (unlike the bookmark button, which only appears once reviewing
+                // a capture) — this opens a screen of *past* sends, independent of whatever's
+                // currently being framed or reviewed.
+                OutboxButton(
+                    sendAnimState = viewModel.sendAnimState,
+                    lastSentPhotoUrl = viewModel.lastSentPhotoUrl,
+                    onClick = onOpenSentPhotos,
+                    modifier = Modifier.align(Alignment.CenterStart),
                 )
+
+                if (captured != null) {
+                    SaveToMemoriesButton(
+                        viewModel = viewModel,
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
+                }
             }
 
             // Home's card sits below three stacked header lines (wordmark, greeting, date);
@@ -332,58 +326,146 @@ fun CameraScreen(
     }
 }
 
-/** Wraps the AnimatedVisibility around SendStatusPill in its own composable, rather than inline
- * at the call site — Kotlin's implicit-receiver resolution otherwise reaches past the immediate
- * Box scope there and out to the enclosing Column further up this screen, resolving the bare
- * AnimatedVisibility(...) call to the ColumnScope-specific overload (which adds Column's own size
- * animation) instead of the plain one, and failing to compile since there's no real ColumnScope
- * receiver actually available at that call site. A dedicated function's body has no such
- * ambient receiver leaking in, so the plain overload resolves cleanly. */
+/** Shares the header row with the recipient chip, in the exact spot the old send status pill
+ * used to sit — saving is now this screen's own independent action (see
+ * CameraViewModel.saveToMemories), not something reported after the fact, so this reads as a
+ * real control (bookmark, tap to save) rather than a passive status readout. Outline while
+ * unsaved, filled with a brief spinner overlay while the save is queuing, filled and solid once
+ * saved — a plain glyph with no background circle, same language every other bare icon button on
+ * this screen already uses. */
 @Composable
-private fun SendStatusIndicator(pendingSendCount: Int, showSentBadge: Boolean, modifier: Modifier = Modifier) {
-    AnimatedVisibility(
-        visible = pendingSendCount > 0 || showSentBadge,
-        enter = fadeIn(tween(200)),
-        exit = fadeOut(tween(200)),
-        modifier = modifier,
+private fun SaveToMemoriesButton(viewModel: CameraViewModel, modifier: Modifier = Modifier) {
+    val colors = EmberTheme.colors
+    val context = LocalContext.current
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .clickable(
+                enabled = !viewModel.isSaved && !viewModel.isSavingToMemories,
+                onClick = { viewModel.saveToMemories(context.applicationContext) },
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        if (pendingSendCount > 0) {
-            SendStatusPill(
-                text = if (pendingSendCount == 1) "Sending" else "Sending $pendingSendCount",
-                showSpinner = true,
-            )
-        } else {
-            SendStatusPill(text = "Sent", showSpinner = false)
+        Icon(
+            painter = painterResource(if (viewModel.isSaved) R.drawable.ic_bookmark_filled else R.drawable.ic_bookmark_outline),
+            contentDescription = if (viewModel.isSaved) "Saved to Memories" else "Save to Memories",
+            tint = Color.White,
+            modifier = Modifier.size(28.dp),
+        )
+        if (viewModel.isSavingToMemories) {
+            CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
         }
     }
 }
 
-/** Small, quiet status chip sharing the header row with the recipient chip — deliberately just
- * text (plus a spinner while actually sending), not a second card competing for attention. Wording
- * is a placeholder for now (there's a fancier version planned later); this only needs to tell
- * "still sending" apart from "actually landed." */
+/** Camera's own outbox — opens a screen of this account's recent sends, mainly so one of them can
+ * be unsent (see SentPhotosScreen). Shows [lastSentPhotoUrl] (the single most recent unsaved
+ * send, refreshed by [CameraViewModel.refreshLastSentPhoto]) cropped into the same proportions
+ * every photo card in the app uses ([FEATURED_CARD_ASPECT_RATIO]) — a real thumbnail, not a
+ * generic glyph, so this reads as "here's what you just sent" rather than an abstract control.
+ * Falls back to a small bold empty outline (no photo sent recently, or the fetch hasn't landed
+ * yet) — a thicker border than a typical hairline (2.2dp) is what keeps that fallback state from
+ * visually disappearing at this small a size.
+ *
+ * Its animation mirrors [CameraViewModel.sendAnimState]: idle thumbnail -> a short bright segment
+ * tracing around the shape's own border, corners included, while the real (background, possibly
+ * slow-if-offline) upload is in flight -> filled solid with a checkmark the instant it lands ->
+ * back to the (now updated) thumbnail a moment later. The traveling segment is a [PathMeasure]
+ * walk along the *exact same* rounded-rect outline the border draws, parameterized by distance
+ * along the path rather than angle — a rotating [Brush.sweepGradient] was tried first and looked
+ * like a separate, distorted shape spinning behind the icon (angle-vs-arc-length isn't constant on
+ * a non-square rounded rect, especially through the corners); walking the real path is what
+ * actually reads as one continuous line tracing this shape's own edge. */
 @Composable
-private fun SendStatusPill(text: String, showSpinner: Boolean) {
+private fun OutboxButton(sendAnimState: SendAnimState, lastSentPhotoUrl: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(percent = 50))
-            .background(colors.panel)
-            .border(1.dp, colors.border, RoundedCornerShape(percent = 50))
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (showSpinner) {
-            CircularProgressIndicator(color = colors.glow, strokeWidth = 2.dp, modifier = Modifier.size(12.dp))
+    val density = LocalDensity.current
+    val shape = RoundedCornerShape(4.dp)
+    val cardWidth = 20.dp
+    val cardHeight = cardWidth / FEATURED_CARD_ASPECT_RATIO
+    val borderWidth = 2.2.dp
+
+    // Built once (not re-derived every animation frame) from this shape's own fixed size — the
+    // traveling segment below walks this exact path, so it can never drift from the border drawn
+    // right behind it (whichever of the two border treatments below is currently showing).
+    val cardOutline = remember(cardWidth, cardHeight, density) {
+        with(density) {
+            Path().apply { addRoundRect(RoundRect(0f, 0f, cardWidth.toPx(), cardHeight.toPx(), CornerRadius(4.dp.toPx()))) }
         }
-        Text(
-            text = text,
-            fontFamily = PublicSansFontFamily,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.cream,
-            modifier = Modifier.padding(start = if (showSpinner) 8.dp else 0.dp),
-        )
+    }
+    val pathMeasure = remember(cardOutline) { PathMeasure().apply { setPath(cardOutline, true) } }
+    val segmentPath = remember { Path() }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "outboxSending")
+    val travelProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(1400, easing = LinearEasing)),
+        label = "outboxTravelProgress",
+    )
+    val fillAlpha by animateFloatAsState(
+        targetValue = if (sendAnimState == SendAnimState.COMPLETE) 1f else 0f,
+        animationSpec = tween(220),
+        label = "outboxFillAlpha",
+    )
+
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .semantics { contentDescription = "Sent photos" }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(modifier = Modifier.size(width = cardWidth, height = cardHeight)) {
+            if (lastSentPhotoUrl != null) {
+                AsyncImage(
+                    model = lastSentPhotoUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(shape)
+                        .border(borderWidth, Color.White.copy(alpha = if (sendAnimState == SendAnimState.SENDING) 0.35f else 0.9f), shape),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(borderWidth, Color.White.copy(alpha = if (sendAnimState == SendAnimState.SENDING) 0.35f else 0.9f), shape),
+                )
+            }
+
+            if (sendAnimState == SendAnimState.SENDING) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val length = pathMeasure.length
+                    val segmentLength = length * 0.24f
+                    val start = travelProgress * length
+                    val end = start + segmentLength
+                    segmentPath.reset()
+                    if (end <= length) {
+                        pathMeasure.getSegment(start, end, segmentPath, true)
+                    } else {
+                        // Wraps back to the path's own start — two pieces stitched into one draw
+                        // so the line never visibly breaks as it crosses the seam.
+                        pathMeasure.getSegment(start, length, segmentPath, true)
+                        pathMeasure.getSegment(0f, end - length, segmentPath, true)
+                    }
+                    drawPath(path = segmentPath, color = colors.glow, style = Stroke(width = borderWidth.toPx(), cap = StrokeCap.Round))
+                }
+            }
+
+            if (fillAlpha > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = fillAlpha }
+                        .background(colors.glow, shape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.Check, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(14.dp))
+                }
+            }
+        }
     }
 }
 
@@ -416,11 +498,61 @@ private fun LiveCameraStage() {
         LaunchedEffect(CameraSession.lensFacing) {
             CameraSession.bindIfNeeded(context, lifecycleOwner)
         }
-        AndroidView(modifier = Modifier.fillMaxSize(), factory = { previewView })
+
+        // Transient "1.8x" readout — shown the instant a pinch changes the zoom, hidden again
+        // shortly after the fingers stop moving, the same fade-after-a-beat behavior every real
+        // camera app's zoom readout has, rather than a permanent on-screen number nobody needs
+        // to see outside the moment they're actively pinching.
+        var displayedZoomRatio by remember { mutableStateOf<Float?>(null) }
+        var hideZoomIndicatorJob by remember { mutableStateOf<Job?>(null) }
+        val coroutineScope = rememberCoroutineScope()
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxSize()
+                    // detectTransformGestures' onGesture already fires continuously for the whole
+                    // pinch (not just once at the end), so reading cameraInfo.zoomState.value fresh
+                    // on every call — rather than tracking a separate locally-cached ratio — keeps
+                    // this in sync with whatever CameraX actually applied, including its own
+                    // clamping, instead of this drifting from the real hardware state over time.
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, _, gestureZoom, _ ->
+                            val camera = CameraSession.camera ?: return@detectTransformGestures
+                            val zoomState = camera.cameraInfo.zoomState.value ?: return@detectTransformGestures
+                            val newRatio = (zoomState.zoomRatio * gestureZoom)
+                                .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                            camera.cameraControl.setZoomRatio(newRatio)
+                            displayedZoomRatio = newRatio
+                            hideZoomIndicatorJob?.cancel()
+                            hideZoomIndicatorJob = coroutineScope.launch {
+                                delay(900)
+                                displayedZoomRatio = null
+                            }
+                        }
+                    },
+                factory = { previewView },
+            )
+
+            displayedZoomRatio?.let { ratio ->
+                Text(
+                    text = "${"%.1f".format(ratio)}×",
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clip(RoundedCornerShape(percent = 50))
+                        .background(Color.Black.copy(alpha = 0.35f))
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                )
+            }
+        }
     } else {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Text(
-                text = "Ember needs camera access to take photos.",
+                text = "Emigo needs camera access to take photos.",
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 color = Color.White.copy(alpha = 0.8f),
@@ -463,6 +595,14 @@ private object CameraSession {
         private set
     private var boundForLensFacing: Int? = null
 
+    // The bound Camera handle — bindToLifecycle's return value — is where CameraX actually
+    // exposes zoom control (cameraControl.setZoomRatio) and the current zoom bounds/ratio
+    // (cameraInfo.zoomState). Nulled out on every rebind below and re-set once the new bind
+    // completes, so a pinch gesture that lands mid-rebind (e.g. right after flipping lenses)
+    // sees a consistent camera rather than a stale one from the lens that's being replaced.
+    var camera: Camera? = null
+        private set
+
     // The live Preview use case, kept so its surface provider can be reattached without a full
     // rebind — see bindIfNeeded's early-return path for why that's the difference between a
     // working viewfinder and a black one.
@@ -503,7 +643,7 @@ private object CameraSession {
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             runCatching {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(lifecycleOwner, selector, previewUseCase, imageCapture)
+                camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, previewUseCase, imageCapture)
                 preview = previewUseCase
                 boundForLensFacing = lensFacing
                 boundLifecycleOwner = WeakReference(lifecycleOwner)
@@ -542,10 +682,11 @@ private fun RoundIconButton(
 /** A small overlapping stack of real recipient avatars — up to [maxShown], then a "+N" circle —
  * used both in the header (pre-capture) and the send confirmation row (post-capture) so "who
  * this is going to" is the same recognizable faces in both places, not a label you have to read.
- * An empty selection gets its own dashed "add" circle rather than silently rendering nothing,
- * so a forgotten recipient choice is visually obvious instead of invisible. [ringColor] separates
- * overlapping avatars from each other and needs to be solid, since this sits over unpredictable
- * live-camera or photo content behind it. */
+ * An empty selection gets its own plain "add" glyph rather than silently rendering nothing,
+ * so a forgotten recipient choice is visually obvious instead of invisible. [ringColor] is the
+ * solid backdrop behind each circle (needed since this sits over unpredictable live-camera or
+ * photo content behind it); the white stroke on top of that is the actual visible separator
+ * between overlapping avatars. */
 @Composable
 private fun RecipientAvatarStack(
     friends: List<FriendSummaryDto>,
@@ -553,28 +694,32 @@ private fun RecipientAvatarStack(
     ringColor: Color,
 ) {
     if (friends.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .size(size)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.16f)),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(modifier = Modifier.size(size), contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.PersonAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.5f))
         }
         return
     }
 
-    val maxShown = 3
-    Row {
+    val maxShown = 2
+    // A Box, not a Row — Row reserves each child's full, non-overlapping width even though the
+    // offsets below make them overlap visually, which left a wide dead gap of *reserved but
+    // invisible* space between the stack and whatever sits after it (the label text). A Box's
+    // children don't push each other's layout position at all; every circle is placed from the
+    // same (0,0) origin and only the explicit x-offset below moves it, so this container's own
+    // width can be set to exactly the visible footprint instead of the sum of every circle's
+    // full width.
+    val overlapFraction = 0.65f
+    val circleCount = minOf(friends.size, maxShown) + if (friends.size > maxShown) 1 else 0
+    val stackWidth = size * (1f + (circleCount - 1) * overlapFraction)
+    Box(modifier = Modifier.width(stackWidth).height(size)) {
         friends.take(maxShown).forEachIndexed { index, friend ->
             Box(
                 modifier = Modifier
-                    .offset(x = size * -0.35f * index)
+                    .offset(x = size * overlapFraction * index)
                     .size(size)
                     .clip(CircleShape)
-                    .border(1.5.dp, ringColor, CircleShape)
-                    .background(ringColor),
+                    .background(ringColor)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.85f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 if (friend.profilePhotoUrl != null) {
@@ -598,11 +743,11 @@ private fun RecipientAvatarStack(
         if (friends.size > maxShown) {
             Box(
                 modifier = Modifier
-                    .offset(x = size * -0.35f * maxShown)
+                    .offset(x = size * overlapFraction * maxShown)
                     .size(size)
                     .clip(CircleShape)
-                    .border(1.5.dp, ringColor, CircleShape)
-                    .background(ringColor),
+                    .background(ringColor)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.85f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -664,7 +809,7 @@ private fun CaptureControls(
                             .border(2.dp, Color(0xFF0E0B16), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Filled.Lock, contentDescription = "Ember Gold", tint = colors.accentText, modifier = Modifier.size(10.dp))
+                        Icon(Icons.Filled.Lock, contentDescription = "Emigo Gold", tint = colors.accentText, modifier = Modifier.size(10.dp))
                     }
                 }
             } else null,
@@ -677,14 +822,14 @@ private fun CaptureControls(
         // getting smaller rather than being pressed.
         Box(
             modifier = Modifier
-                .size(76.dp)
+                .size(84.dp)
                 .clip(CircleShape)
                 .border(4.dp, colors.cream, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
-                    .size(62.dp)
+                    .size(70.dp)
                     .graphicsLayer { scaleX = shutterScale; scaleY = shutterScale }
                     .clip(CircleShape)
                     .background(emberButtonBrush(EmberTheme.key, colors))
@@ -817,7 +962,7 @@ private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
  * two separate recipient pickers on the same screen, not one clearer one. Send just stays
  * disabled if nothing's selected, so the header chip is still the one place that matters.
  *
- * Send deliberately reuses the shutter's own exact circle (76dp ring, 62dp gradient fill, same
+ * Send deliberately reuses the shutter's own exact circle (84dp ring, 70dp gradient fill, same
  * position in the row) rather than a differently-shaped pill — the point is that the button you
  * just pressed to take the photo is the same one that now sends it, just carrying a different
  * icon, not a new control appearing out of nowhere. The gallery/flip-camera slots are gone, but a
@@ -844,7 +989,7 @@ private fun PreviewControls(
 
         Box(
             modifier = Modifier
-                .size(76.dp)
+                .size(84.dp)
                 .clip(CircleShape)
                 .border(4.dp, colors.cream, CircleShape),
             contentAlignment = Alignment.Center,
@@ -860,7 +1005,7 @@ private fun PreviewControls(
             val canSend = hasRecipients
             Box(
                 modifier = Modifier
-                    .size(62.dp)
+                    .size(70.dp)
                     .clip(CircleShape)
                     .background(
                         if (canSend) emberButtonBrush(EmberTheme.key, colors) else Brush.linearGradient(listOf(colors.border, colors.border)),
@@ -938,14 +1083,14 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
                 Icon(Icons.Rounded.WorkspacePremium, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(26.dp))
             }
             Text(
-                text = "Ember Gold",
+                text = "Emigo Gold",
                 fontFamily = typography.display,
                 fontSize = 19.sp,
                 color = colors.cream,
                 modifier = Modifier.padding(top = 16.dp),
             )
             Text(
-                text = "Sending photos from your gallery is an Ember Gold perk",
+                text = "Sending photos from your gallery is an Emigo Gold perk",
                 fontFamily = PublicSansFontFamily,
                 fontSize = 12.5.sp,
                 color = colors.muted,
@@ -963,7 +1108,7 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
                 horizontalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = "Get Ember Gold",
+                    text = "Get Emigo Gold",
                     fontFamily = PublicSansFontFamily,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,

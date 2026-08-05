@@ -128,7 +128,7 @@ fun WidgetSettingsScreen(
             horizontalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = if (needsUpgrade) "Get Ember Gold" else "Save",
+                text = if (needsUpgrade) "Get Emigo Gold" else "Save",
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,

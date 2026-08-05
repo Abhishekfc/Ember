@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -56,6 +57,8 @@ import com.ember.app.ui.camera.CameraScreen
 import com.ember.app.ui.camera.CameraViewModel
 import com.ember.app.ui.camera.RecipientPickerScreen
 import com.ember.app.ui.camera.RecipientPickerViewModel
+import com.ember.app.ui.camera.SentPhotosScreen
+import com.ember.app.ui.camera.SentPhotosViewModel
 import com.ember.app.ui.components.BottomNavDock
 import com.ember.app.ui.components.FALLBACK_NAV_DOCK_HEIGHT_DP
 import com.ember.app.ui.components.LocalNavDockHeight
@@ -76,6 +79,7 @@ import com.ember.app.ui.profile.MyProfileViewModel
 import com.ember.app.ui.settings.BlockedUsersScreen
 import com.ember.app.ui.settings.BlockedUsersViewModel
 import com.ember.app.ui.settings.EmberGoldScreen
+import com.ember.app.ui.settings.OtherSettingsScreen
 import com.ember.app.ui.settings.SettingsScreen
 import com.ember.app.ui.settings.WidgetSettingsScreen
 import com.ember.app.ui.settings.WidgetSettingsViewModel
@@ -103,7 +107,7 @@ import kotlinx.coroutines.tasks.await
  * so back navigation can pop just the nested screen without losing which page you were on.
  * Camera is NOT one of these any more — it's a swipeable page of the main pager, same as Home
  * or Friends, not a modal reached from a button. */
-private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS, BLOCKED_USERS }
+private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS, BLOCKED_USERS, OTHER_SETTINGS, SENT_PHOTOS }
 
 /** The unified pager's page order — left to right, matching the bottom nav's own visual layout
  * (Home, Friends, [Camera in the center], Activity, Settings). Memories is no longer a page of
@@ -427,6 +431,25 @@ class MainActivity : ComponentActivity() {
                     // other page — can read Home's live scroll position for the icon-morph below,
                     // the same way it used to read the outer pager's swipe position.
                     val homeScrollState = rememberScrollState()
+                    // Hoisted for a different reason than Home's above: FriendsScreen itself is
+                    // fully disposed while a friend's profile is open (the nestedScreen `when`
+                    // block below only ever composes one branch at a time), so a scroll position
+                    // FriendsScreen owned itself would silently reset to the top on every return
+                    // from a profile — remembering it here, outside that `when`, is what lets it
+                    // survive that round trip instead.
+                    val friendsListState = rememberLazyListState()
+                    // Same reasoning as friendsListState just above, for a much more visible bug:
+                    // this used to be remembered inside the `else` branch below, alongside the
+                    // HorizontalPager itself — which meant every return from *any* nested screen
+                    // (not just a friend's profile) reset it to FALLBACK_NAV_DOCK_HEIGHT_DP for
+                    // one frame before BottomNavDock's own onSizeChanged corrected it back to the
+                    // real measured value. Every screen reserves bottom space equal to this value
+                    // (see LocalNavDockHeight), so that one-frame guess-then-correct made the
+                    // whole page's content visibly shift as the reserved space changed size —
+                    // reported as "the complete page does like a vibrate... moves a little from
+                    // bottom to top." Hoisting it here means it's set once, correctly, and never
+                    // guessed again for the rest of the session.
+                    var navDockHeight by remember { mutableStateOf(FALLBACK_NAV_DOCK_HEIGHT_DP) }
                     // Same distance HomeScreen's own Memories-grid fade-in uses (see
                     // MEMORIES_REVEAL_SCROLL_DP there) — shared so the icon finishes morphing
                     // in lockstep with the grid finishing its fade-in, not two independently
@@ -521,7 +544,7 @@ class MainActivity : ComponentActivity() {
                     // — see userScrollEnabled below) exists regardless of which page is current.
                     val cameraViewModel: CameraViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { CameraViewModel(friendRepository, photoRepository, subscriptionRepository) }
+                            initializer { CameraViewModel(friendRepository, photoRepository, subscriptionRepository, localListCache) }
                         },
                     )
 
@@ -532,6 +555,15 @@ class MainActivity : ComponentActivity() {
                     // ViewModel its own copy had gone stale.
                     LaunchedEffect(Unit) {
                         emberApplication.friendsChangedEvents.collect { cameraViewModel.loadFriends() }
+                    }
+                    // Flips the outbox button's animation from SENDING to its filled checkmark —
+                    // see CameraViewModel.markSendComplete's own doc comment for why this coarse,
+                    // not-photo-specific signal (shared with the Feed/Memories/Friends refresh
+                    // above) is good enough here. A separate collector, not folded into that one,
+                    // purely because cameraViewModel isn't declared yet at that earlier point in
+                    // this function.
+                    LaunchedEffect(Unit) {
+                        emberApplication.photoSendCompletedEvents.collect { cameraViewModel.markSendComplete() }
                     }
 
                     // Home, Friends, Camera, Activity and Settings are all pages of one
@@ -720,6 +752,29 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        nestedScreen == NestedScreen.SENT_PHOTOS -> {
+                            val sentPhotosViewModel: SentPhotosViewModel = viewModel(
+                                factory = viewModelFactory {
+                                    initializer { SentPhotosViewModel(photoRepository) }
+                                },
+                            )
+                            SentPhotosScreen(
+                                viewModel = sentPhotosViewModel,
+                                onBack = { nestedScreen = null },
+                            )
+                        }
+
+                        nestedScreen == NestedScreen.OTHER_SETTINGS -> {
+                            OtherSettingsScreen(
+                                onClose = { nestedScreen = null },
+                                onDeleteAccount = { userRepository.deleteAccount() },
+                                // Same local cleanup + return-to-login as a manual sign-out —
+                                // there's no account left for any of that cached state to belong
+                                // to either.
+                                onAccountDeleted = onSignOut,
+                            )
+                        }
+
                         nestedScreen == NestedScreen.FIND_PEOPLE -> {
                             val findPeopleViewModel: FindPeopleViewModel = viewModel(
                                 factory = viewModelFactory {
@@ -829,7 +884,7 @@ class MainActivity : ComponentActivity() {
                             val recipientPickerViewModel: RecipientPickerViewModel = viewModel(
                                 factory = viewModelFactory {
                                     initializer {
-                                        RecipientPickerViewModel(friendRepository, cameraViewModel.selectedRecipientIds)
+                                        RecipientPickerViewModel(friendRepository, localListCache, cameraViewModel.selectedRecipientIds)
                                     }
                                 },
                             )
@@ -853,14 +908,11 @@ class MainActivity : ComponentActivity() {
 
                         else -> {
                             Box(modifier = Modifier.fillMaxSize()) {
-                                // The dock's own real measured height (footprint + true system
-                                // nav-bar inset on this device) — starts at a generous guess for
-                                // the single frame before BottomNavDock's own onSizeChanged below
-                                // first fires, then is never guessed again. Screens read this via
+                                // navDockHeight itself is hoisted above this whole `when` now —
+                                // see its own doc comment there for why. Screens read it via
                                 // LocalNavDockHeight instead of a fixed dp constant, which is what
-                                // still left the Settings screen's Log out button partly covered
-                                // by the dock on at least one real device.
-                                var navDockHeight by remember { mutableStateOf(FALLBACK_NAV_DOCK_HEIGHT_DP) }
+                                // originally left the Settings screen's Log out button partly
+                                // covered by the dock on at least one real device.
                                 CompositionLocalProvider(LocalNavDockHeight provides navDockHeight) {
                                 HorizontalPager(
                                     state = pagerState,
@@ -908,12 +960,14 @@ class MainActivity : ComponentActivity() {
                                                 nestedScreen = NestedScreen.FRIEND_PROFILE
                                             },
                                             hazeState = hazeState,
+                                            listState = friendsListState,
                                         )
 
                                         PAGE_CAMERA -> CameraScreen(
                                             viewModel = cameraViewModel,
                                             onOpenRecipientPicker = { showRecipientPicker = true },
                                             onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
+                                            onOpenSentPhotos = { nestedScreen = NestedScreen.SENT_PHOTOS },
                                             onSent = {
                                                 // Fires the instant the photo is queued, not once
                                                 // it's actually uploaded — PendingSendWorker now
@@ -963,6 +1017,7 @@ class MainActivity : ComponentActivity() {
                                                 onGoldClick = { nestedScreen = NestedScreen.GOLD },
                                                 onWidgetClick = { nestedScreen = NestedScreen.WIDGET_SETTINGS },
                                                 onBlockedUsersClick = { nestedScreen = NestedScreen.BLOCKED_USERS },
+                                                onOtherClick = { nestedScreen = NestedScreen.OTHER_SETTINGS },
                                                 onSignOut = onSignOut,
                                                 hazeState = hazeState,
                                             )
@@ -974,8 +1029,8 @@ class MainActivity : ComponentActivity() {
                                     active = destinationForPage(pagerState.currentPage),
                                     onNavigate = onNavigate,
                                     onCameraClick = onCameraClick,
-                                    showFriendsBadge = friendsViewModel.pendingRequests.isNotEmpty(),
-                                    showActivityBadge = activityViewModel.hasNewActivity,
+                                    friendsBadgeCount = friendsViewModel.pendingRequests.size,
+                                    activityBadgeCount = activityViewModel.newActivityCount,
                                     // 0 = fully on Home (top of the scroll), 1 = fully on
                                     // Memories — driven by how far Home has been scrolled now,
                                     // not swipe position between two pages. Reads pagerState and

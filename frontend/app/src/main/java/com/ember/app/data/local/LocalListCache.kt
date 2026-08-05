@@ -45,6 +45,10 @@ class LocalListCache(@PublishedApi internal val context: Context) {
             it.remove(stringPreferencesKey(KEY_ACTIVITY))
             it.remove(stringPreferencesKey(KEY_MEMORIES))
             it.remove(stringPreferencesKey(KEY_PROFILE))
+            it.remove(stringPreferencesKey(KEY_LAST_RECIPIENT_IDS))
+            it.remove(stringPreferencesKey(KEY_RECIPIENT_LISTS))
+            it.remove(stringPreferencesKey(KEY_PENDING_FRIEND_REQUESTS))
+            it.remove(stringPreferencesKey(KEY_ACTIVITY_LAST_SEEN))
         }
     }
 
@@ -54,5 +58,31 @@ class LocalListCache(@PublishedApi internal val context: Context) {
         const val KEY_ACTIVITY = "cache_activity"
         const val KEY_MEMORIES = "cache_memories"
         const val KEY_PROFILE = "cache_profile"
+
+        // A cached copy of the same real, per-account "seen" marker ActivityViewModel already
+        // fetches from the backend (ActivityLastSeenDto) — purely an optimistic fast first paint
+        // for the nav-dock badge on cold start; the backend fetch that follows right after this
+        // still always wins if it disagrees, which is what keeps a reinstall or a second device
+        // from ever using a stale local copy to show already-seen activity as new again.
+        const val KEY_ACTIVITY_LAST_SEEN = "cache_activity_last_seen"
+
+        // Pending incoming friend requests — read on init the same way KEY_FRIENDS is, so the
+        // Friends nav-dock badge shows the right count the instant the app opens rather than
+        // waiting on the network fetch that used to be its only source (see FriendsViewModel).
+        const val KEY_PENDING_FRIEND_REQUESTS = "cache_pending_friend_requests"
+
+        // Who Camera's recipient picker defaulted to last time a send actually went out — read
+        // back on the next cold start so "who I sent to last" survives an app restart instead of
+        // resetting to nobody every time. Deliberately only written on a real send (see
+        // CameraViewModel.sendCaptured), not on every selection change in the picker, since a
+        // selection someone made and then backed out of was never actually confirmed.
+        const val KEY_LAST_RECIPIENT_IDS = "cache_last_recipient_ids"
+
+        // A cached copy of the same backend-saved recipient-list shortcuts RecipientPickerViewModel
+        // fetches from RecipientListService — purely an optimistic fast first paint; the network
+        // fetch that follows right after always wins, which is what lets a list created on a
+        // *different* device actually show up here too instead of only ever reflecting whatever
+        // this one phone last saw.
+        const val KEY_RECIPIENT_LISTS = "cache_recipient_lists"
     }
 }

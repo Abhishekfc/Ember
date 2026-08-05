@@ -34,30 +34,49 @@ interface PhotoRecipientRepository : JpaRepository<PhotoRecipient, UUID> {
     // commented out) — disabled alongside it rather than deleted.
     // fun existsByPhoto_IdAndRecipient_Id(photoId: UUID, recipientId: UUID): Boolean
 
-    /** Every photo received in the last [since] window, across all senders — used for the
-     * Snapchat-style Home feed where a friend can have several photos to page through rather
-     * than just their single latest one. */
+    /** Who a photo has already been sent to — used by PhotoService.addRecipients to dedupe
+     * against, so attaching recipients to an already-uploaded photo can never create a second
+     * row (and a second push notification) for someone already on it. */
+    fun findAllByPhoto_Id(photoId: UUID): List<PhotoRecipient>
+
+    /** Every photo currently visible on the Home feed, across all senders: each sender's single
+     * most recent photo (no age limit — it never expires on its own, see [graceSince]) plus any
+     * of their earlier photos that haven't finished their 24-hour grace period yet.
+     *
+     * A sender's photo stops being "the latest" the moment they send a newer one — that's when
+     * its own 24-hour countdown starts, not from when it was originally sent. `lead(created_at)`
+     * gets each row its own immediate successor's timestamp within that sender's photos; a row
+     * with no successor (`next_created_at is null`) is that sender's current latest and always
+     * shows, and a row whose successor arrived within the last 24 hours (`next_created_at >=
+     * :graceSince`) is still finishing its grace period. Once a photo's successor is more than
+     * 24 hours old, that photo drops out. */
     @Query(
         value = """
-            select
-                p.id                              as photoId,
-                p.sender_id                       as senderId,
-                u.display_name                    as senderDisplayName,
-                u.profile_photo_storage_key        as senderProfilePhotoStorageKey,
-                p.storage_key                      as storageKey,
-                p.content_type                     as contentType,
-                p.created_at                       as createdAt,
-                pr.viewed_at                       as viewedAt
-            from photo_recipients pr
-            join photos p on p.id = pr.photo_id
-            join users u on u.id = p.sender_id
-            where pr.recipient_id = :recipientId
-            and p.created_at >= :since
-            order by p.sender_id, p.created_at asc
+            select photo_id as photoId, sender_id as senderId, sender_display_name as senderDisplayName,
+                   sender_profile_photo_storage_key as senderProfilePhotoStorageKey, storage_key as storageKey,
+                   content_type as contentType, created_at as createdAt, viewed_at as viewedAt
+            from (
+                select
+                    p.id                                as photo_id,
+                    p.sender_id                          as sender_id,
+                    u.display_name                       as sender_display_name,
+                    u.profile_photo_storage_key          as sender_profile_photo_storage_key,
+                    p.storage_key                        as storage_key,
+                    p.content_type                       as content_type,
+                    p.created_at                         as created_at,
+                    pr.viewed_at                          as viewed_at,
+                    lead(p.created_at) over (partition by p.sender_id order by p.created_at asc) as next_created_at
+                from photo_recipients pr
+                join photos p on p.id = pr.photo_id
+                join users u on u.id = p.sender_id
+                where pr.recipient_id = :recipientId
+            ) ranked
+            where next_created_at is null or next_created_at >= :graceSince
+            order by sender_id, created_at asc
         """,
         nativeQuery = true,
     )
-    fun findRecentPhotos(@Param("recipientId") recipientId: UUID, @Param("since") since: Instant): List<FeedRow>
+    fun findVisibleFeedPhotos(@Param("recipientId") recipientId: UUID, @Param("graceSince") graceSince: Instant): List<FeedRow>
 
     @Query(
         value = """

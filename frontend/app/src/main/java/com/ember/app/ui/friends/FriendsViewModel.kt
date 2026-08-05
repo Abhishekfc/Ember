@@ -33,6 +33,16 @@ class FriendsViewModel(
     var isLoading by mutableStateOf(true)
         private set
 
+    /** True only while a manual pull-to-refresh gesture is driving the reload — kept separate
+     * from [isLoading] so automatic reloads don't pop the pull-refresh spinner at the top when
+     * the user never actually pulled down. Same split (and same reasoning) HomeViewModel already
+     * makes for its own feed: [isLoading] covers *any* load, including the one this ViewModel
+     * fires from init on every app start, which — since a cache hit means there's already content
+     * on screen by then — otherwise read as "refreshing" the moment the Friends tab was opened
+     * after a restart. */
+    var isPullRefreshing by mutableStateOf(false)
+        private set
+
     // Separate from isLoading (which starts `true` purely to show a spinner before the very
     // first fetch runs) — using isLoading itself as loadFriends' re-entrancy guard meant the
     // very first call from init saw it already `true` and returned immediately, before ever
@@ -69,15 +79,28 @@ class FriendsViewModel(
     init {
         // Instagram/Snapchat-style instant-on-reopen — see HomeViewModel's init for the fuller
         // explanation. Read must complete first (not just be launched first) so there's no race
-        // between it and the fresh fetch for who sets `friends` first.
+        // between it and the fresh fetch for who sets `friends`/`pendingRequests` first. Pending
+        // requests specifically used to have no cache backing at all — only ever set once
+        // loadFriends' own network call landed — which is what made the Friends nav-dock badge
+        // visibly pop in about a second after the app opened instead of being there immediately.
         viewModelScope.launch {
             localCache.read<FriendSummaryDto>(LocalListCache.KEY_FRIENDS)?.let { friends = it }
+            localCache.read<PendingFriendRequestDto>(LocalListCache.KEY_PENDING_FRIEND_REQUESTS)?.let { pendingRequests = it }
             loadFriends()
         }
     }
 
     fun onSearchQueryChange(value: String) {
         searchQuery = value
+    }
+
+    /** The one place [pendingRequests] is ever written — every call site below funnels through
+     * this instead of assigning the property directly, so the on-disk cache can never drift out
+     * of sync with what's actually showing (which a direct assignment at each of the half-dozen
+     * mutation sites below would risk one of them quietly forgetting to do). */
+    private fun updatePendingRequests(updated: List<PendingFriendRequestDto>) {
+        pendingRequests = updated
+        viewModelScope.launch { localCache.write(LocalListCache.KEY_PENDING_FRIEND_REQUESTS, updated) }
     }
 
     fun loadFriends(isPullRefresh: Boolean = false) {
@@ -87,6 +110,7 @@ class FriendsViewModel(
         viewModelScope.launch {
             isFetchingFriends = true
             isLoading = true
+            if (isPullRefresh) isPullRefreshing = true
             errorMessage = null
             repository.getFriends(forceRefresh = isPullRefresh, limit = PAGE_SIZE).fold(
                 onSuccess = { page ->
@@ -97,8 +121,9 @@ class FriendsViewModel(
                 onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
             )
             // Requests load is best-effort: a failure here shouldn't blank the friends list.
-            repository.getPendingRequests().onSuccess { pendingRequests = it }
+            repository.getPendingRequests().onSuccess { updatePendingRequests(it) }
             isLoading = false
+            isPullRefreshing = false
             isFetchingFriends = false
         }
     }
@@ -161,7 +186,7 @@ class FriendsViewModel(
     }
 
     fun removePendingRequestLocally(friendshipId: String) {
-        pendingRequests = pendingRequests.filterNot { it.friendshipId == friendshipId }
+        updatePendingRequests(pendingRequests.filterNot { it.friendshipId == friendshipId })
     }
 
     /** Companion to [removePendingRequestLocally] for the other half of accepting a request —
@@ -171,7 +196,7 @@ class FriendsViewModel(
         if (friends.none { it.friendshipId == newFriend.friendshipId }) {
             friends = friends + newFriend
         }
-        pendingRequests = pendingRequests.filterNot { it.friendshipId == newFriend.friendshipId }
+        updatePendingRequests(pendingRequests.filterNot { it.friendshipId == newFriend.friendshipId })
     }
 
     fun acceptRequest(request: PendingFriendRequestDto) {
@@ -180,7 +205,7 @@ class FriendsViewModel(
             acceptingRequestIds = acceptingRequestIds + request.friendshipId
             repository.acceptFriendRequest(request.friendshipId).fold(
                 onSuccess = { newFriend ->
-                    pendingRequests = pendingRequests.filterNot { it.friendshipId == request.friendshipId }
+                    updatePendingRequests(pendingRequests.filterNot { it.friendshipId == request.friendshipId })
                     friends = friends + newFriend
                     onFriendsChanged()
                 },
@@ -201,7 +226,7 @@ class FriendsViewModel(
         viewModelScope.launch {
             acceptingRequestIds = acceptingRequestIds + request.friendshipId
             repository.removeFriend(request.friendshipId).fold(
-                onSuccess = { pendingRequests = pendingRequests.filterNot { it.friendshipId == request.friendshipId } },
+                onSuccess = { updatePendingRequests(pendingRequests.filterNot { it.friendshipId == request.friendshipId }) },
                 onFailure = { errorMessage = it.message ?: "Couldn't decline request" },
             )
             acceptingRequestIds = acceptingRequestIds - request.friendshipId

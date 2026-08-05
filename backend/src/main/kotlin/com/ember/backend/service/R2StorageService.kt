@@ -11,6 +11,7 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.S3Configuration
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import java.net.URI
 
@@ -53,4 +54,19 @@ class R2StorageService(private val r2Properties: R2Properties) {
     }
 
     fun publicUrl(key: String): String = "${r2Properties.publicBaseUrl.trimEnd('/')}/$key"
+
+    /** Best-effort, not required to succeed: used by account deletion to clean up storage
+     * alongside the DB rows, but a storage-side failure (or R2 simply not being configured on
+     * this server) shouldn't be the thing that blocks someone from actually deleting their
+     * account — that's a real DB row disappearing regardless, and a leftover unreachable R2
+     * object with no account left to point to it is a much smaller problem than a delete that
+     * doesn't work. */
+    fun delete(key: String) {
+        val client = s3Client ?: return
+        runCatching {
+            client.deleteObject(DeleteObjectRequest.builder().bucket(r2Properties.bucket).key(key).build())
+        }.onFailure {
+            logger.warn("Failed to delete R2 object during cleanup: key={}", key, it)
+        }
+    }
 }

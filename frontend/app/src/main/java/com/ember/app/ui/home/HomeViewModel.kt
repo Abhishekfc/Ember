@@ -29,25 +29,32 @@ import java.util.Locale
  * ever can't be clicked back through decades of guaranteed-empty months. */
 private const val MEMORIES_HISTORY_LIMIT_YEARS = 5L
 
-// Must match PhotoService.FEED_WINDOW_HOURS on the backend — see [dropExpiredPhotos] for why the
-// client re-applies this same cutoff to data it already has, instead of only ever trusting
-// whatever the server excluded at the moment of the last successful fetch.
-private const val FEED_FRESHNESS_HOURS = 24L
+// Must match PhotoService.PHOTO_GRACE_PERIOD_HOURS on the backend — see [dropExpiredPhotos] for
+// why the client re-applies this same rule to data it already has, instead of only ever trusting
+// whatever the server decided at the moment of the last successful fetch.
+private const val PHOTO_GRACE_PERIOD_HOURS = 24L
 
-/** The backend already excludes anything older than [FEED_FRESHNESS_HOURS] from every real
- * getFeed() response — but that filtering only happens *at fetch time*. A phone that goes
+/** The backend already applies this exact rule — see
+ * PhotoRecipientRepository.findVisibleFeedPhotos — but only *at fetch time*. A phone that goes
  * offline (or simply never gets a chance to sync again — no data connection, backgrounded with
- * no push, etc.) keeps showing whatever was cached from its last successful fetch, verbatim,
- * with nothing to notice that real time has since carried those same photos past the same
- * 24-hour cutoff the server would now enforce. This re-runs that cutoff against the device's own
- * clock on data already in memory/on disk, so a photo ages off Home even when no new network
- * call ever happens — dropping a friend's card entirely once none of their photos are left. */
+ * no push, etc.) keeps showing whatever was cached from its last successful fetch, verbatim, with
+ * nothing to notice that real time has since moved a photo past its own grace period. This
+ * re-runs that same rule against the device's own clock on data already in memory/on disk, using
+ * exactly the logic the backend uses: each friend's own most recent photo (the last entry in
+ * their already-sorted-ascending [FeedItem.photos]) never expires on its own; any of their
+ * earlier photos expires once its *successor* — not itself — is more than [PHOTO_GRACE_PERIOD_HOURS]
+ * old, i.e. once 24 hours have passed since it was superseded by a newer one. */
 private fun dropExpiredPhotos(items: List<FeedItem>): List<FeedItem> {
-    val cutoff = Instant.now().minus(FEED_FRESHNESS_HOURS, ChronoUnit.HOURS)
+    val cutoff = Instant.now().minus(PHOTO_GRACE_PERIOD_HOURS, ChronoUnit.HOURS)
     return items.mapNotNull { item ->
-        val freshPhotos = item.photos.filter { photo ->
-            val createdAt = runCatching { Instant.parse(photo.createdAt) }.getOrNull()
-            createdAt == null || createdAt.isAfter(cutoff)
+        val photos = item.photos
+        val freshPhotos = photos.filterIndexed { index, _ ->
+            if (index == photos.lastIndex) {
+                true
+            } else {
+                val supersededAt = runCatching { Instant.parse(photos[index + 1].createdAt) }.getOrNull()
+                supersededAt == null || supersededAt.isAfter(cutoff)
+            }
         }
         if (freshPhotos.isEmpty()) null else item.copy(photos = freshPhotos)
     }
@@ -209,6 +216,21 @@ class HomeViewModel(
             if (selectedMonth == month) isLoadingSelectedMonth = false
         }
     }
+
+    /** Deletes a saved Memories photo for real (see PhotoService.delete on the backend — this
+     * isn't a soft "unsave", the storage is actually freed). Removes it from whichever cached
+     * month it belongs to on success, so the grid reflects it immediately without a full
+     * re-fetch; a failure leaves the cache untouched, matching the same "don't blank what's
+     * already showing" reasoning [ensureMonthLoaded] uses. */
+    suspend fun deleteMemoryPhoto(photoId: String): Result<Unit> =
+        repository.deletePhoto(photoId).onSuccess {
+            memoriesByMonth.keys.toList().forEach { month ->
+                val current = memoriesByMonth[month] ?: return@forEach
+                if (current.any { it.photoId == photoId }) {
+                    memoriesByMonth[month] = current.filterNot { it.photoId == photoId }
+                }
+            }
+        }
 
     /** The signed-in user's display name, for the greeting header. Saved at login, so it can
      * be null for sessions that predate that (falls back to a plain greeting). */

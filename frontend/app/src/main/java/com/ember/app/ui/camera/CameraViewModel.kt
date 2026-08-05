@@ -19,9 +19,11 @@ import androidx.lifecycle.viewModelScope
 import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
 import com.ember.app.data.SubscriptionRepository
+import com.ember.app.data.local.LocalListCache
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.ui.home.FEATURED_CARD_ASPECT_RATIO
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -36,10 +38,24 @@ internal const val CAPTION_Y_FRACTION = 0.72f
  * pagination page size, just far above any real user's friend count. */
 private const val RECIPIENT_PICKER_FRIENDS_LIMIT = 500
 
+/** How long the outbox button's filled-checkmark state holds before fading back to idle — see
+ * [CameraViewModel.markSendComplete]. */
+private const val SEND_ANIM_COMPLETE_HOLD_MS = 1200L
+
+/** Drives the Camera outbox button's own send animation (see CameraScreen's OutboxButton) —
+ * SENDING from the moment [CameraViewModel.sendCaptured] queues the upload, flipped to COMPLETE by
+ * [CameraViewModel.markSendComplete] once the real upload has actually landed (MainActivity
+ * collects EmberApplication.photoSendCompletedEvents for this — see its own doc comment), then
+ * automatically fades back to IDLE a moment later. Deliberately not tied to [isQueuingSend]
+ * (which only covers the brief local queuing step) — the real upload can take much longer,
+ * especially offline, and this is meant to reflect that whole span. */
+enum class SendAnimState { IDLE, SENDING, COMPLETE }
+
 class CameraViewModel(
     private val friendRepository: FriendRepository,
     private val photoRepository: PhotoRepository,
     private val subscriptionRepository: SubscriptionRepository,
+    private val localCache: LocalListCache,
 ) : ViewModel() {
 
     var friends by mutableStateOf<List<FriendSummaryDto>>(emptyList())
@@ -50,13 +66,77 @@ class CameraViewModel(
     /** True only for the brief local step (baking the caption in, moving the file into durable
      * storage) between tapping Send and it actually being handed to [PendingSendWorker] — purely
      * a double-tap guard for that short window, not a "network in flight" flag any more. The
-     * actual upload happens in the background regardless of whether this screen is even open;
-     * see [PendingSendWorker.TAG_PENDING_SEND], which CameraScreen observes directly from
-     * WorkManager to show its own "Sending…" indicator. */
+     * actual upload happens in the background regardless of whether this screen is even open,
+     * with no on-screen indicator of its own any more (see CameraScreen — the top-right corner
+     * that used to show "Sending…"/"Sent" is the bookmark button's spot now). */
     var isQueuingSend by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
+
+    /** See [SendAnimState]'s own doc comment. Not reset per-capture like [isSaved]/[capturedFile]
+     * — a send animation should keep playing through to completion even if the user retakes or
+     * leaves Camera mid-flight, since it's tracking the outbox upload itself, not this specific
+     * review session. */
+    var sendAnimState by mutableStateOf(SendAnimState.IDLE)
+        private set
+
+    /** Called once the real upload this ViewModel most recently queued has actually landed (see
+     * [SendAnimState]'s own doc comment for where that signal comes from) — a no-op unless a send
+     * animation is actually in flight, so a completion echoing in from an unrelated older retry
+     * can't restart an already-finished (or never-started) animation. */
+    fun markSendComplete() {
+        if (sendAnimState != SendAnimState.SENDING) return
+        sendAnimState = SendAnimState.COMPLETE
+        viewModelScope.launch {
+            delay(SEND_ANIM_COMPLETE_HOLD_MS)
+            sendAnimState = SendAnimState.IDLE
+        }
+        // The photo that was just sent is now the outbox's own newest entry — refresh so the
+        // button's thumbnail updates to it once the fill/checkmark fades back out.
+        refreshLastSentPhoto()
+    }
+
+    /** The thumbnail the outbox button itself shows — this account's own single most recent
+     * unsaved send (the same list [SentPhotosScreen] shows, just the first entry of it), fetched
+     * independently of whether that screen has ever actually been opened this session. Silent on
+     * failure/empty, same as every other background refresh in this class — worst case the
+     * button just keeps showing whatever it last had (or its empty fallback), not a user-facing
+     * error over a purely decorative thumbnail. */
+    var lastSentPhotoUrl by mutableStateOf<String?>(null)
+        private set
+
+    private fun refreshLastSentPhoto() {
+        viewModelScope.launch {
+            photoRepository.getSentPhotos().onSuccess { photos -> lastSentPhotoUrl = photos.firstOrNull()?.photoUrl }
+        }
+    }
+
+    /** True once the current capture has been saved to Memories (see [saveToMemories]) — drives
+     * the bookmark button switching from outline to filled. Per-capture, not per-session: reset
+     * back to false by every place a new [capturedFile] gets set (a fresh capture, a retake, a
+     * gallery pick), same as [captionText] already is. Saving is one-way from this screen —
+     * there's no un-save button here, only Memories' own delete (see MemoriesScreen). */
+    var isSaved by mutableStateOf(false)
+        private set
+    /** True only for the brief local step (baking the caption in, moving the file into durable
+     * storage) between tapping the bookmark and it actually being handed to [PendingSendWorker] —
+     * same purpose as [isQueuingSend], just for the independent save action rather than send. */
+    var isSavingToMemories by mutableStateOf(false)
+        private set
+
+    /** True once *either* Save or Send has queued the real upload for this capture — the other
+     * one, if it's also tapped, chains onto that same upload (see [PendingSendWorker.
+     * enqueueMarkSaved]/[PendingSendWorker.enqueueAddRecipients]) instead of uploading the file a
+     * second time. Reset alongside [isSaved] on every new capture. */
+    private var hasQueuedUpload = false
+    /** The stable identity WorkManager's unique-work chain for this capture is keyed on — set
+     * once, from the freshly-captured file's own name, the moment [capturedFile] is assigned.
+     * Deliberately NOT re-derived from whatever the actually-uploaded file ends up named later
+     * (baking a caption in, or Save's own copy, both rename it — see [saveToMemories]), since the
+     * second action needs to target the exact same WorkManager unique-work name the first one
+     * used, and that name has to survive those renames unchanged to do it. */
+    private var uploadWorkName: String? = null
 
     /** Gallery picking is an Ember Gold perk; free accounts are limited to the live camera.
      * Defaults to false (not Gold) until the subscription check resolves, so the upsell never
@@ -110,29 +190,45 @@ class CameraViewModel(
     private var pendingSnapshotFile: File? = null
 
     init {
+        refreshLastSentPhoto()
         // Deliberately NOT loadFriends() here — this ViewModel now lives for the whole app
         // session (Camera is a pager page, not a screen only created on demand), so anything
         // fired from init runs on every single cold start whether or not Camera is ever opened
         // that session. loadFriends() is a limit=500 "give me everyone" fetch for the recipient
         // picker specifically — MainActivity calls it once, lazily, the first time the user
         // actually reaches the Camera page (see its own comment for why), not here.
+        //
+        // The *local* cache read below is a different matter and does belong here: it's plain
+        // disk I/O, not a network call, and without it the recipient badge had no data at all
+        // until that lazy fetch landed — so opening Camera after a restart showed the empty
+        // "Friends" state first and only then popped in the pinned/last-used friend's avatar. The
+        // fetch above still runs on arrival and refreshes this; this just means the badge starts
+        // out already correct instead of visibly correcting itself a moment later.
         viewModelScope.launch {
+            localCache.read<FriendSummaryDto>(LocalListCache.KEY_FRIENDS)?.let { cached ->
+                // Guarded on friends still being empty — if the real fetch somehow beat this read,
+                // its fresher (and complete, limit=500 rather than the Friends tab's own 30) list
+                // must not be replaced by this snapshot.
+                if (friends.isEmpty()) applyFriends(cached)
+            }
             isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
         }
     }
 
+    // Ordered by selectedRecipientIds itself, not by filtering `friends` — Set's own + / - here
+    // (see toggleSelected/setSelectedRecipients) already preserve tap order as a LinkedHashSet
+    // under the hood, but filtering `friends` against that set would've thrown that away and
+    // shown them back in the friends list's own order instead of the order actually picked.
     val selectedFriends: List<FriendSummaryDto>
-        get() = friends.filter { it.friendId in selectedRecipientIds }
-
-    val recipientLabel: String
         get() {
-            val selected = selectedFriends
-            return when {
-                selected.isEmpty() -> "Choose recipients"
-                selected.size == 1 -> selected.first().displayName
-                else -> "${selected.size} friends"
-            }
+            val friendsById = friends.associateBy { it.friendId }
+            return selectedRecipientIds.mapNotNull { friendsById[it] }
         }
+
+    // Always the plain word "Friends" now, never a specific name — the avatar stack (plus its
+    // own "+N" circle once there's more than a couple) already shows exactly who's selected, so
+    // naming them again in text was saying the same thing twice.
+    val recipientLabel: String = "Friends"
 
     val hasPinnedSelected: Boolean
         get() = friends.any { it.friendId in selectedRecipientIds && it.pinnedByMe }
@@ -144,7 +240,7 @@ class CameraViewModel(
      * fallback for whenever that isn't the case (Friends hasn't loaded yet, or genuinely has more
      * than a page of friends). */
     fun provideFriends(list: List<FriendSummaryDto>) {
-        applyFriends(list)
+        viewModelScope.launch { applyFriends(list) }
     }
 
     fun loadFriends() {
@@ -159,16 +255,38 @@ class CameraViewModel(
         }
     }
 
-    // Shared by provideFriends and loadFriends so both paths apply the exact same "default to the
-    // pinned partner" rule below — never to "everyone" with no explicit choice. A silent
-    // reply-all default is exactly the kind of invisible behavior that makes a send flow feel
-    // unsafe rather than just unpolished: nothing should leave the device to a friend the user
-    // never actually picked.
-    private fun applyFriends(list: List<FriendSummaryDto>) {
-        friends = list
-        if (selectedRecipientIds.isEmpty()) {
-            selectedRecipientIds = list.filter { it.pinnedByMe }.map { it.friendId }.toSet()
+    // Shared by provideFriends and loadFriends so both paths apply the exact same default-
+    // recipient rule below — never to "everyone" with no explicit choice. A silent reply-all
+    // default is exactly the kind of invisible behavior that makes a send flow feel unsafe rather
+    // than just unpolished: nothing should leave the device to a friend the user never actually
+    // picked. A pinned best-friend always wins as that default; failing that, this falls back to
+    // whoever the last real send actually went to (see sendCaptured), so a restart remembers "who
+    // I was sending to" instead of resetting to nobody every time nothing is pinned.
+    //
+    // The default is fully computed *before* either `friends` or `selectedRecipientIds` is
+    // written, specifically so both land in the same recomposition. The first version of this
+    // wrote `friends = list` immediately and only resolved the default afterward — harmless for
+    // the pinned case (no suspension in between), but the local-cache read in the non-pinned path
+    // is a real suspend point, so Compose recomposed once with friends populated and the
+    // selection still empty (the badge briefly showing "Friends" / nobody picked), then again a
+    // moment later once the read completed — a visible flash on every cold start with no pinned
+    // friend that the user explicitly didn't want.
+    private suspend fun applyFriends(list: List<FriendSummaryDto>) {
+        val resolvedSelection = if (selectedRecipientIds.isEmpty()) {
+            val pinnedIds = list.filter { it.pinnedByMe }.map { it.friendId }.toSet()
+            if (pinnedIds.isNotEmpty()) {
+                pinnedIds
+            } else {
+                val lastUsedIds = localCache.read<String>(LocalListCache.KEY_LAST_RECIPIENT_IDS).orEmpty().toSet()
+                // Filtered against the freshly-loaded list, not trusted blindly — a friend from a
+                // past send could since have been unfriended/removed.
+                lastUsedIds.filterTo(mutableSetOf()) { id -> list.any { friend -> friend.friendId == id } }
+            }
+        } else {
+            selectedRecipientIds
         }
+        friends = list
+        selectedRecipientIds = resolvedSelection
     }
 
     fun setSelectedRecipients(ids: Set<String>) {
@@ -198,6 +316,9 @@ class CameraViewModel(
         isRealCaptureReady = false
         captionText = ""
         errorMessage = null
+        isSaved = false
+        hasQueuedUpload = false
+        uploadWorkName = file.name
     }
 
     /** The real, final photo — either the hardware capture landing (superseding whatever
@@ -230,6 +351,9 @@ class CameraViewModel(
         if (staleSnapshot != null && staleSnapshot != file) staleSnapshot.delete()
         captionText = ""
         errorMessage = null
+        isSaved = false
+        hasQueuedUpload = false
+        uploadWorkName = file.name
     }
 
     fun onCaptionChange(value: String) {
@@ -244,6 +368,9 @@ class CameraViewModel(
         previewBitmap = null
         isRealCaptureReady = true
         captionText = ""
+        isSaved = false
+        hasQueuedUpload = false
+        uploadWorkName = null
     }
 
     /** Queues the captured photo for background sending and returns immediately — this no
@@ -251,7 +378,13 @@ class CameraViewModel(
      * [PendingSendWorker] does the actual upload whenever the device next has connectivity, even
      * if the app is later closed. [context] is used transiently (moving a file, enqueuing
      * WorkManager) and never retained — the caller passes `context.applicationContext`, not an
-     * Activity Context, since this can outlive the screen that called it. */
+     * Activity Context, since this can outlive the screen that called it.
+     *
+     * If [saveToMemories] already queued the real upload for this exact capture, this doesn't
+     * upload the file again — it chains a lightweight "add these recipients" request onto that
+     * same upload instead (see [PendingSendWorker.enqueueAddRecipients]). Tapping both Save and
+     * Send on one capture used to mean two full, independent uploads of the same file; this is
+     * the fix for that. */
     fun sendCaptured(context: Context, onQueued: () -> Unit) {
         // Guards the top of the function itself, not just the button's own `enabled` — enabled
         // only takes effect once Compose recomposes after isQueuingSend flips true, so a fast
@@ -261,6 +394,7 @@ class CameraViewModel(
         // temporary frame instead.
         if (isQueuingSend || !isRealCaptureReady) return
         val file = capturedFile ?: return
+        val workName = uploadWorkName ?: file.name
         if (selectedRecipientIds.isEmpty()) {
             errorMessage = "Select at least one friend first"
             return
@@ -269,25 +403,90 @@ class CameraViewModel(
         viewModelScope.launch {
             isQueuingSend = true
             errorMessage = null
-            val baked = withContext(Dispatchers.Default) {
-                runCatching { bakeCaptionIntoPhoto(file, captionText) }.getOrDefault(file)
+            sendAnimState = SendAnimState.SENDING
+            if (hasQueuedUpload) {
+                // Save already uploaded a *copy* of this capture (see saveToMemories), leaving
+                // the original file — still sitting right here — untouched on purpose in case
+                // Send followed. Now that it has, and nothing else needs it, it can finally go.
+                withContext(Dispatchers.IO) { file.delete() }
+                PendingSendWorker.enqueueAddRecipients(context, workName, recipientIds)
+            } else {
+                val baked = withContext(Dispatchers.Default) {
+                    runCatching { bakeCaptionIntoPhoto(file, captionText) }.getOrDefault(file)
+                }
+                val queuedFile = withContext(Dispatchers.IO) {
+                    runCatching { moveToPendingSendStorage(context, baked) }.getOrNull()
+                }
+                // The captioned copy (if there was one) supersedes the original the instant
+                // baking succeeds, same as the old inline-upload path did — nothing else still
+                // needs it.
+                if (baked != file) file.delete()
+                if (queuedFile == null) {
+                    errorMessage = "Couldn't queue your photo — please try again"
+                    isQueuingSend = false
+                    sendAnimState = SendAnimState.IDLE
+                    return@launch
+                }
+                PendingSendWorker.enqueuePrimary(context, workName, queuedFile, recipientIds, save = isSaved)
+                hasQueuedUpload = true
             }
-            val queuedFile = withContext(Dispatchers.IO) {
-                runCatching { moveToPendingSendStorage(context, baked) }.getOrNull()
-            }
-            // The captioned copy (if there was one) supersedes the original the instant baking
-            // succeeds, same as the old inline-upload path did — nothing else still needs it.
-            if (baked != file) file.delete()
-            if (queuedFile == null) {
-                errorMessage = "Couldn't queue your photo — please try again"
-                isQueuingSend = false
-                return@launch
-            }
-            PendingSendWorker.enqueue(context, queuedFile, recipientIds)
+            // Only persisted once a send actually goes out — not on every tap in the picker —
+            // so a selection made and then backed out of never overwrites "who I last sent to".
+            localCache.write(LocalListCache.KEY_LAST_RECIPIENT_IDS, recipientIds)
             capturedFile = null
             captionText = ""
             isQueuingSend = false
             onQueued()
+        }
+    }
+
+    /** Saves the current capture to Memories, independent of [sendCaptured] — you can tap this
+     * alone, with nobody selected to send to, and it still saves. If Send *also* gets tapped for
+     * the very same capture (in either order), the two share one real upload instead of each
+     * independently uploading the same file — see [sendCaptured]'s own doc comment and
+     * [PendingSendWorker.enqueueMarkSaved].
+     *
+     * Bakes the caption onto a *copy* of [capturedFile] when this is the first of the two actions
+     * to run, never the original — unlike [sendCaptured], this can't consume/delete the file
+     * still backing the live preview, since the user might still go on to tap Send (or Retake)
+     * afterward. */
+    fun saveToMemories(context: Context) {
+        if (isSaved || isSavingToMemories || !isRealCaptureReady) return
+        val file = capturedFile ?: return
+        val workName = uploadWorkName ?: file.name
+        viewModelScope.launch {
+            isSavingToMemories = true
+            errorMessage = null
+            if (hasQueuedUpload) {
+                PendingSendWorker.enqueueMarkSaved(context, workName)
+                isSaved = true
+                isSavingToMemories = false
+                return@launch
+            }
+            val sourceCopy = withContext(Dispatchers.IO) {
+                runCatching { File(file.parentFile, "save_${file.name}").also { file.copyTo(it, overwrite = true) } }.getOrNull()
+            }
+            if (sourceCopy == null) {
+                errorMessage = "Couldn't save your photo — please try again"
+                isSavingToMemories = false
+                return@launch
+            }
+            val baked = withContext(Dispatchers.Default) {
+                runCatching { bakeCaptionIntoPhoto(sourceCopy, captionText) }.getOrDefault(sourceCopy)
+            }
+            if (baked != sourceCopy) sourceCopy.delete()
+            val queuedFile = withContext(Dispatchers.IO) {
+                runCatching { moveToPendingSendStorage(context, baked) }.getOrNull()
+            }
+            if (queuedFile == null) {
+                errorMessage = "Couldn't save your photo — please try again"
+                isSavingToMemories = false
+                return@launch
+            }
+            PendingSendWorker.enqueuePrimary(context, workName, queuedFile, recipientIds = emptyList(), save = true)
+            hasQueuedUpload = true
+            isSaved = true
+            isSavingToMemories = false
         }
     }
 }

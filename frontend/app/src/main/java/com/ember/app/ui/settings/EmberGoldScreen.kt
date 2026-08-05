@@ -50,7 +50,7 @@ fun EmberGoldScreen(onBack: () -> Unit) {
     val perks = listOf(
         GoldPerk(Icons.Rounded.Palette, "Exclusive themes", "Unlock Cyber, Botanica, and Citrus looks"),
         GoldPerk(Icons.Rounded.History, "Longer photo history", "Friends' photos stay for 7 days instead of 24 hours"),
-        GoldPerk(Icons.Rounded.VolunteerActivism, "Support Ember", "Help keep the lights glowing for everyone"),
+        GoldPerk(Icons.Rounded.VolunteerActivism, "Support Emigo", "Help keep the lights glowing for everyone"),
     )
 
     Column(
@@ -77,7 +77,7 @@ fun EmberGoldScreen(onBack: () -> Unit) {
         }
 
         Text(
-            text = "Ember Gold",
+            text = "Emigo Gold",
             fontFamily = typography.display,
             fontSize = 26.sp,
             color = colors.cream,

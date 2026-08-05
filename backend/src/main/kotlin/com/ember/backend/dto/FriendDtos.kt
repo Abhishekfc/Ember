@@ -26,6 +26,9 @@ data class FriendSummary(
     val pinnedByMe: Boolean,
     val pinnedByThem: Boolean,
     val lastActivityAt: Instant?,
+    // Null exactly when lastActivityAt is — true if the most recent exchange was this user
+    // sending to the friend, false if the friend sent it to this user.
+    val lastActivityBySelf: Boolean?,
     val streak: Int,
 )
 

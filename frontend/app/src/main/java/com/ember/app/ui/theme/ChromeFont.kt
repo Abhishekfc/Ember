@@ -20,6 +20,6 @@ val PublicSansFontFamily = FontFamily(
     Font(R.font.public_sans, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
 
-/** Courgette — the cursive "Ember" wordmark on the Home tab only. Fixed font, but its color
+/** Courgette — the cursive "Emigo" wordmark on the Home tab only. Fixed font, but its color
  *  follows the active theme's text color rather than a fixed brand color. */
 val CourgetteFontFamily = FontFamily(Font(R.font.courgette, FontWeight.Normal))

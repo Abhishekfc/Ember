@@ -23,11 +23,22 @@ class PhotoWriteService(
     private val photoRecipientRepository: PhotoRecipientRepository,
 ) {
     @Transactional
-    fun persist(sender: User, storageKey: String, contentType: String, recipients: List<User>): Pair<Photo, List<PhotoRecipient>> {
-        val photo = photoRepository.save(Photo(sender = sender, storageKey = storageKey, contentType = contentType))
+    fun persist(sender: User, storageKey: String, contentType: String, recipients: List<User>, save: Boolean): Pair<Photo, List<PhotoRecipient>> {
+        val photo = photoRepository.save(
+            Photo(sender = sender, storageKey = storageKey, contentType = contentType, savedAt = if (save) Instant.now() else null)
+        )
         val photoRecipients = photoRecipientRepository.saveAll(
             recipients.map { recipient -> PhotoRecipient(photo = photo, recipient = recipient, deliveredAt = Instant.now()) }
         )
         return photo to photoRecipients
     }
+
+    /** Same recipient-row creation [persist] does, for an already-existing [photo] instead of a
+     * freshly-uploaded one — see PhotoService.addRecipients, the counterpart to a save-only
+     * upload later getting sent to someone without re-uploading the file. */
+    @Transactional
+    fun addRecipients(photo: Photo, recipients: List<User>): List<PhotoRecipient> =
+        photoRecipientRepository.saveAll(
+            recipients.map { recipient -> PhotoRecipient(photo = photo, recipient = recipient, deliveredAt = Instant.now()) }
+        )
 }

@@ -141,7 +141,7 @@ fun ThemeScreen(
         ) {
             Text(
                 text = when {
-                    needsUpgrade -> "Get Ember Gold"
+                    needsUpgrade -> "Get Emigo Gold"
                     canApply -> "Apply theme"
                     else -> "Applied"
                 },
@@ -219,7 +219,7 @@ private fun ThemeChip(
             modifier = Modifier.padding(top = 8.dp),
         )
         Text(
-            text = if (option.locked) "Ember Gold" else "Free",
+            text = if (option.locked) "Emigo Gold" else "Free",
             fontFamily = PublicSansFontFamily,
             fontSize = 10.5.sp,
             color = if (option.locked) optionColors.glow else activeColors.mutedDim,

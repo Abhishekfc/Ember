@@ -138,7 +138,7 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
                     if (result.available) {
                         goTo(AuthStep.REGISTER_PASSWORD)
                     } else {
-                        errorMessage = "That email already has an Ember account."
+                        errorMessage = "That email already has an Emigo account."
                     }
                 },
                 // A check that couldn't reach the server must not become a wall in front of
