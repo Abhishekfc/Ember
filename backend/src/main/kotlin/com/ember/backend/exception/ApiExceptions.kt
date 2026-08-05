@@ -17,6 +17,8 @@ class ResourceNotFoundException(message: String) : ApiException(HttpStatus.NOT_F
 
 class InvalidFriendRequestException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
 
+class InvalidRecipientListException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
+
 // Reaction feature disabled — see PhotoReactionService's own comment.
 // class InvalidReactionException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)
 
@@ -29,3 +31,6 @@ class PurchaseTokenAlreadyClaimedException :
 
 class RateLimitExceededException :
     ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many attempts — please try again later")
+
+class UnsendWindowExpiredException :
+    ApiException(HttpStatus.GONE, "This photo can no longer be unsent")

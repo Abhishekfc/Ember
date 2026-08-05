@@ -91,7 +91,7 @@ class EmberWidget : GlanceAppWidget() {
         Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "Ember",
+                    text = "Emigo",
                     style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp, fontWeight = FontWeight.Medium),
                 )
                 Text(

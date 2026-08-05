@@ -8,6 +8,11 @@ data class PhotoUploadResponse(
     val url: String,
     val createdAt: Instant,
     val recipientIds: List<UUID>,
+    val saved: Boolean,
+)
+
+data class AddPhotoRecipientsRequest(
+    val recipientIds: List<UUID>,
 )
 
 /** [seen] is scoped to the single (photo, recipient) pair this entry represents — when a photo
@@ -34,6 +39,14 @@ data class FeedItem(
 /** One photo in the Memories grid — always one this user sent themselves, with no time-window
  * cutoff (unlike the 24h Home feed). */
 data class MemoryPhoto(
+    val photoId: UUID,
+    val photoUrl: String,
+    val createdAt: Instant,
+)
+
+/** One entry in the Camera outbox — this account's own recent, unsaved sends, still within
+ * their unsend window (see PhotoService.getRecentSent/delete). */
+data class SentPhoto(
     val photoId: UUID,
     val photoUrl: String,
     val createdAt: Instant,

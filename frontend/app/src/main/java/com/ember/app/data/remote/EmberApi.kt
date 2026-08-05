@@ -2,8 +2,10 @@ package com.ember.app.data.remote
 
 import com.ember.app.data.remote.dto.ActivityEventDto
 import com.ember.app.data.remote.dto.ActivityLastSeenDto
+import com.ember.app.data.remote.dto.AddPhotoRecipientsBody
 import com.ember.app.data.remote.dto.AuthResponse
 import com.ember.app.data.remote.dto.BlockedUserDto
+import com.ember.app.data.remote.dto.CreateRecipientListBody
 import com.ember.app.data.remote.dto.DeviceTokenRequestDto
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.FriendAcceptBody
@@ -15,8 +17,10 @@ import com.ember.app.data.remote.dto.MemoryPhotoDto
 import com.ember.app.data.remote.dto.PageDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
 import com.ember.app.data.remote.dto.PhotoUploadResponseDto
+import com.ember.app.data.remote.dto.RecipientListDto
 import com.ember.app.data.remote.dto.RegisterRequest
 import com.ember.app.data.remote.dto.ReportUserRequestDto
+import com.ember.app.data.remote.dto.SentPhotoDto
 import com.ember.app.data.remote.dto.SubscriptionStatusDto
 import com.ember.app.data.remote.dto.UpdateProfileRequestDto
 import com.ember.app.data.remote.dto.EmailAvailabilityDto
@@ -65,15 +69,32 @@ interface EmberApi {
         @Query("end") end: String,
     ): Response<List<MemoryPhotoDto>>
 
+    // Backs the Camera outbox — see PhotoService.getRecentSent (backend) for why this is a plain
+    // 24h-from-send window rather than the feed's own "still visible" rule.
+    @GET("photos/sent")
+    suspend fun getSentPhotos(): Response<List<SentPhotoDto>>
+
     @Multipart
     @POST("photos")
     suspend fun uploadPhoto(
         @Part file: MultipartBody.Part,
         @Part recipientIds: List<MultipartBody.Part>,
+        @Part save: MultipartBody.Part,
     ): Response<PhotoUploadResponseDto>
 
     @POST("photos/{photoId}/seen")
     suspend fun markPhotoSeen(@Path("photoId") photoId: String): Response<Unit>
+
+    @DELETE("photos/{photoId}")
+    suspend fun deletePhoto(@Path("photoId") photoId: String): Response<Unit>
+
+    // Reuses an already-uploaded photo instead of uploading the same file twice — see
+    // PendingSendWorker.AttachPhotoWorker, the only caller.
+    @POST("photos/{photoId}/save")
+    suspend fun markPhotoSaved(@Path("photoId") photoId: String): Response<Unit>
+
+    @POST("photos/{photoId}/recipients")
+    suspend fun addPhotoRecipients(@Path("photoId") photoId: String, @Body request: AddPhotoRecipientsBody): Response<Unit>
 
     @GET("friends")
     suspend fun getFriends(
@@ -103,6 +124,15 @@ interface EmberApi {
     @DELETE("friends/{friendshipId}")
     suspend fun removeFriend(@Path("friendshipId") friendshipId: String): Response<Unit>
 
+    @GET("recipient-lists")
+    suspend fun getRecipientLists(): Response<List<RecipientListDto>>
+
+    @POST("recipient-lists")
+    suspend fun createRecipientList(@Body request: CreateRecipientListBody): Response<RecipientListDto>
+
+    @DELETE("recipient-lists/{listId}")
+    suspend fun deleteRecipientList(@Path("listId") listId: String): Response<Unit>
+
     @GET("activity")
     suspend fun getActivity(
         @Query("refresh") refresh: Boolean = false,
@@ -128,6 +158,9 @@ interface EmberApi {
     @Multipart
     @POST("users/me/photo")
     suspend fun uploadProfilePhoto(@Part file: MultipartBody.Part): Response<UserProfileDto>
+
+    @DELETE("users/me")
+    suspend fun deleteAccount(): Response<Unit>
 
     @GET("subscription/status")
     suspend fun getSubscriptionStatus(): Response<SubscriptionStatusDto>

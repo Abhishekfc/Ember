@@ -64,7 +64,7 @@ fun ActivityScreen(
         // Only true once there's already content on screen — the cold-start load is covered by
         // the full-screen spinner instead, so the pull indicator doesn't animate in from the top
         // on every app launch.
-        isRefreshing = viewModel.isLoading && viewModel.events.isNotEmpty(),
+        isRefreshing = viewModel.isPullRefreshing,
         onRefresh = { viewModel.loadActivity(isPullRefresh = true) },
     ) {
         when {

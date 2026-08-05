@@ -1,6 +1,7 @@
 package com.ember.app.data
 
 import com.ember.app.data.remote.EmberApi
+import com.ember.app.data.remote.dto.CreateRecipientListBody
 import com.ember.app.data.remote.dto.ErrorResponse
 import com.ember.app.data.remote.dto.FriendAcceptBody
 import com.ember.app.data.remote.dto.FriendRequestBody
@@ -8,6 +9,7 @@ import com.ember.app.data.remote.dto.FriendSearchResultDto
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.PageDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
+import com.ember.app.data.remote.dto.RecipientListDto
 import kotlinx.serialization.json.Json
 import retrofit2.Response
 
@@ -75,6 +77,31 @@ class FriendRepository(private val api: EmberApi) {
             Result.failure(Exception(message))
         }
     }.onSuccess { friendsCache.invalidateAll() }
+
+    // Kept on the backend rather than only on-device (LocalListCache), specifically so a list
+    // saved on one phone shows up after logging into the same account on another — see
+    // RecipientPickerViewModel for the local-cache fast-path this is paired with.
+    suspend fun getRecipientLists(): Result<List<RecipientListDto>> = safeCall {
+        handle(api.getRecipientLists()) { "Couldn't load your saved lists (${it})" }
+    }
+
+    suspend fun createRecipientList(name: String, friendIds: List<String>): Result<RecipientListDto> = safeCall {
+        handle(api.createRecipientList(CreateRecipientListBody(name = name, friendIds = friendIds))) {
+            "Couldn't save that list (${it})"
+        }
+    }
+
+    suspend fun deleteRecipientList(listId: String): Result<Unit> = safeCall {
+        val response = api.deleteRecipientList(listId)
+        if (response.isSuccessful) {
+            Result.success(Unit)
+        } else {
+            val message = response.errorBody()?.string()?.let {
+                runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+            } ?: "Couldn't delete that list (${response.code()})"
+            Result.failure(Exception(message))
+        }
+    }
 
     private suspend fun <T> handle(response: Response<T>, defaultMessage: (Int) -> String): Result<T> {
         val body = response.body()

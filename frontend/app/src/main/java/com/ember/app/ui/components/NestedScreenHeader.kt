@@ -12,14 +12,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,10 +90,22 @@ fun NestedScreenHeader(
  * header (Activity, Settings) sizes itself to the title text's own natural height with nothing
  * forcing it taller. A `Box` sizes itself to its tallest child, so a [trailing] control taller
  * than that text would silently make its screen's whole header row taller than its siblings',
- * which is exactly the drift this previously caused for Friends' "+". Rather than guessing a
- * dp value that happens to be no taller than the title text, the title's real rendered height is
- * measured and [trailing] is clamped to it directly — [trailing] can ask for whatever size looks
- * right; it always gets capped to the title's own height, never the reverse.
+ * which is exactly the drift this previously caused for Friends' "+".
+ *
+ * [trailing] is placed with `matchParentSize()`, which measures it against this Box's already-
+ * decided size instead of letting it contribute to that size — so the row's height comes from the
+ * title alone, always, and [trailing] can ask for whatever size looks right (a generous touch
+ * target, say) without ever pushing the row taller.
+ *
+ * This deliberately replaced an earlier version that measured the title's real rendered height
+ * into state and clamped [trailing] to it. That worked once settled, but the measurement is only
+ * available on the *second* frame — on the first, [trailing] was unclamped and the header
+ * rendered at the taller control's height, so every fresh composition of a screen with a
+ * [trailing] (only Friends today) briefly laid its whole page out ~10dp lower, then snapped up
+ * once the measurement landed. Returning from a nested screen is exactly such a fresh
+ * composition, which is what made the Friends list visibly jump on every back-navigation.
+ * `matchParentSize()` needs no measurement pass of its own, so there is no first frame that
+ * disagrees with the rest.
  */
 @Composable
 fun TabScreenHeader(
@@ -108,8 +114,6 @@ fun TabScreenHeader(
     trailing: @Composable (BoxScope.() -> Unit)? = null,
 ) {
     val colors = EmberTheme.colors
-    val density = LocalDensity.current
-    var titleHeightPx by remember { mutableIntStateOf(0) }
 
     Box(
         modifier = modifier
@@ -122,18 +126,12 @@ fun TabScreenHeader(
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = colors.cream,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .onSizeChanged { titleHeightPx = it.height },
+            modifier = Modifier.align(Alignment.Center),
         )
         if (trailing != null) {
             Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .let { base ->
-                        if (titleHeightPx > 0) base.height(with(density) { titleHeightPx.toDp() }) else base
-                    },
-                contentAlignment = Alignment.Center,
+                modifier = Modifier.matchParentSize(),
+                contentAlignment = Alignment.CenterEnd,
                 content = trailing,
             )
         }

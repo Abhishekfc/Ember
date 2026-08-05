@@ -222,7 +222,7 @@ private fun RegisterEmailStep(viewModel: LoginViewModel) {
             onImeAction = viewModel::onEmailStepContinue,
             modifier = Modifier.padding(top = 24.dp).focusRequester(focusRequester),
         )
-        // "That email already has an Ember account" lands here, at the step that can actually fix
+        // "That email already has an Emigo account" lands here, at the step that can actually fix
         // it, instead of at the end of the flow.
         viewModel.errorMessage?.let { message ->
             Text(
@@ -517,9 +517,9 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
     val username = viewModel.usernameDraft.trim()
     val inviteMessage = remember(username) {
         if (username.isEmpty()) {
-            "Come add me on Ember — it puts my photos right on your home screen."
+            "Come add me on Emigo — it puts my photos right on your home screen."
         } else {
-            "Come add me on Ember — I'm @$username. It puts my photos right on your home screen."
+            "Come add me on Emigo — I'm @$username. It puts my photos right on your home screen."
         }
     }
 

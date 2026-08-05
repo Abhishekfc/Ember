@@ -13,6 +13,9 @@ data class FriendSummaryDto(
     val pinnedByMe: Boolean,
     val pinnedByThem: Boolean,
     val lastActivityAt: String?,
+    // Null exactly when lastActivityAt is — true if the most recent exchange was this user
+    // sending to the friend, false if the friend sent it to this user.
+    val lastActivityBySelf: Boolean?,
     val streak: Int,
 )
 
@@ -52,4 +55,21 @@ data class FriendRequestBody(
 @Serializable
 data class FriendAcceptBody(
     val friendshipId: String,
+)
+
+/** A saved recipient-picker shortcut (see RecipientPickerViewModel) — kept on the backend, not
+ * just on-device, so a list created on one phone shows up after logging into the same account on
+ * another. */
+@Serializable
+data class RecipientListDto(
+    val id: String,
+    val name: String,
+    val friendIds: List<String>,
+    val createdAt: String,
+)
+
+@Serializable
+data class CreateRecipientListBody(
+    val name: String,
+    val friendIds: List<String>,
 )

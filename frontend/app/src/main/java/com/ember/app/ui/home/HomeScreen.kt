@@ -102,6 +102,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
@@ -110,6 +111,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
+import com.ember.app.R
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.PhotoEntryDto
 import com.ember.app.ui.components.LocalNavDockHeight
@@ -123,6 +125,7 @@ import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -931,6 +934,7 @@ fun HomeScreen(
             progress = dayFocusState.progress.value,
             onDismiss = { dayFocusState.isOpen = false },
             onCurrentPhotoChanged = { currentPhotoUrl = it },
+            onDeletePhoto = { photoId -> viewModel.deleteMemoryPhoto(photoId) },
         )
     }
     }
@@ -992,7 +996,7 @@ private fun MemoriesSectionLabel(modifier: Modifier = Modifier) {
 
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         // Plain UI font, not typography.display — that face is a decorative, per-theme character
-        // face (serif/script depending on theme) meant for the odd hero moment (the "Ember"
+        // face (serif/script depending on theme) meant for the odd hero moment (the "Emigo"
         // wordmark, a name on a profile), not a section label. A section label reads as cleaner
         // and more legible in the same simple sans every messaging/social app (WhatsApp,
         // Instagram, Snapchat) uses for its own UI chrome, same as the rest of this app's own
@@ -1097,7 +1101,7 @@ private fun daypart(): String {
     }
 }
 
-/** The "Ember" wordmark + [ProfileChip], as their own row — split out from the rest of Home's
+/** The "Emigo" wordmark + [ProfileChip], as their own row — split out from the rest of Home's
  * header (the greeting/date lines) so it can be positioned and customized independently of them.
  * At its call site in [HomeScreen] this is deliberately kept outside the scrollable/pull-to-
  * refresh area, so it behaves like a fixed top bar (Instagram's own top bar is the reference)
@@ -1119,7 +1123,7 @@ private fun HomeBrandHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "Ember",
+            text = "Emigo",
             fontFamily = CourgetteFontFamily,
             fontSize = 34.sp,
             letterSpacing = (-0.5).sp,
@@ -1472,6 +1476,23 @@ private fun FeaturedPhotoCard(
 
             val current = entries.getOrNull(pagerState.currentPage) ?: entries.first()
 
+            // Null for a friend's newest photo (it never expires, see HomeCarouselEntry — no
+            // countdown needed). For an older one, this is when its own 24-hour grace period
+            // actually runs out: 24 hours after the photo that superseded it arrived, not from
+            // this photo's own send time — see buildHomeCarousel's isFriendsNewest/
+            // indexWithinFriend ordering (0 = newest) for why the "successor" lookup goes to
+            // indexWithinFriend - 1 rather than + 1.
+            val expiresAt = remember(entries, current.friendId, current.indexWithinFriend) {
+                if (current.isFriendsNewest) {
+                    null
+                } else {
+                    val friendEntries = entries.filter { it.friendId == current.friendId }.sortedBy { it.indexWithinFriend }
+                    val successor = friendEntries.getOrNull(current.indexWithinFriend - 1)
+                    successor?.let { runCatching { Instant.parse(it.photo.createdAt) }.getOrNull() }
+                        ?.plus(24, ChronoUnit.HOURS)
+                }
+            }
+
             // Per-friend photo count, same as before the flattened carousel — how many this
             // specific friend has and which one you're on, not a position in the whole sequence.
             if (current.totalForFriend > 1) {
@@ -1559,13 +1580,38 @@ private fun FeaturedPhotoCard(
                         letterSpacing = (-0.2).sp,
                         color = Color(0xFFFBF8F3),
                     )
-                    Text(
-                        text = formatRelativeTime(current.photo.createdAt),
-                        fontFamily = typography.body,
-                        fontSize = 12.5.sp,
-                        color = Color.White.copy(alpha = 0.75f),
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
+                    // A photo still in its 24-hour grace period gets a small countdown instead of
+                    // the usual relative-time text — the newest photo needs no explanation (it's
+                    // just "there"), but a photo that's actually about to disappear should say so,
+                    // rather than reading identically to one that isn't going anywhere.
+                    if (expiresAt != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 2.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_clock_fading),
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.75f),
+                                modifier = Modifier.size(13.dp),
+                            )
+                            Text(
+                                text = formatRemainingTime(expiresAt),
+                                fontFamily = typography.body,
+                                fontSize = 12.5.sp,
+                                color = Color.White.copy(alpha = 0.75f),
+                                modifier = Modifier.padding(start = 4.dp),
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = formatRelativeTime(current.photo.createdAt),
+                            fontFamily = typography.body,
+                            fontSize = 12.5.sp,
+                            color = Color.White.copy(alpha = 0.75f),
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(

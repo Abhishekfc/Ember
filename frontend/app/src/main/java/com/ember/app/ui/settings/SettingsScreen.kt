@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Feedback
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Widgets
@@ -33,7 +34,10 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +87,10 @@ fun SettingsScreen(
     onGoldClick: () -> Unit,
     onWidgetClick: () -> Unit,
     onBlockedUsersClick: () -> Unit,
+    // Delete account no longer lives on this screen at all — see OtherSettingsScreen, reached
+    // through this one plain "Other" row, for why: it's rare and serious enough that it shouldn't
+    // sit visible (and tappable) among the routine rows every time Settings opens.
+    onOtherClick: () -> Unit,
     onSignOut: () -> Unit,
     hazeState: HazeState,
 ) {
@@ -161,7 +169,7 @@ fun SettingsScreen(
         item(key = "gold") {
             FlatSettingsRow(
                 icon = Icons.Rounded.AutoAwesome,
-                label = "Ember Gold",
+                label = "Emigo Gold",
                 badge = if (isGoldMember) "Gold" else "Free",
                 onClick = onGoldClick,
                 modifier = Modifier.padding(top = 8.dp),
@@ -230,13 +238,19 @@ fun SettingsScreen(
             SectionLabel(text = "Support", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
         }
         item(key = "help") {
-            FlatSettingsRow(Icons.AutoMirrored.Rounded.HelpOutline, "Help & support", null, { openSupportEmail(context, "Ember support") })
+            FlatSettingsRow(Icons.AutoMirrored.Rounded.HelpOutline, "Help & support", null, { openSupportEmail(context, "Emigo support") })
         }
         item(key = "feedback") {
-            FlatSettingsRow(Icons.Rounded.Feedback, "Send feedback", null, { openSupportEmail(context, "Ember feedback") })
+            FlatSettingsRow(Icons.Rounded.Feedback, "Send feedback", null, { openSupportEmail(context, "Emigo feedback") })
         }
         item(key = "about") {
-            FlatSettingsRow(Icons.Rounded.Article, "About Ember", versionName, null)
+            FlatSettingsRow(Icons.Rounded.Article, "About Emigo", versionName, null)
+        }
+
+        item(key = "other") {
+            // Deliberately generic — what's actually inside (Delete account) isn't named here at
+            // all, so it's not sitting in front of the user every time this screen opens.
+            FlatSettingsRow(Icons.Rounded.MoreHoriz, "Other", null, onOtherClick)
         }
 
         item(key = "logout") {
@@ -332,3 +346,6 @@ private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
         modifier = modifier,
     )
 }
+
+// Delete account moved to OtherSettingsScreen.kt entirely — see that file for
+// DeleteAccountDestructiveColor and the DeleteAccountDialog itself.

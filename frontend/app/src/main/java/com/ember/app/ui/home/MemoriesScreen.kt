@@ -1,12 +1,20 @@
 package com.ember.app.ui.home
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -33,7 +42,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -70,17 +86,24 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.ember.app.R
 import com.ember.app.data.remote.dto.MemoryPhotoDto
 import com.ember.app.ui.components.LocalNavDockHeight
+import com.ember.app.ui.profile.EditDialogShell
+import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
+import com.ember.app.ui.theme.PublicSansFontFamily
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -88,6 +111,7 @@ import java.time.ZoneId
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /** Calendar-style column count — a week per row, so a month reads as a compact block (~5 rows)
  * rather than a handful of oversized tiles sprawling down the whole screen. */
@@ -198,6 +222,11 @@ internal fun MemoriesGridContent(
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
+    val density = LocalDensity.current
+    // Set the first time the real grid is ever measured (see its own onGloballyPositioned
+    // below) and reused for every loading spinner after that, so switching a not-yet-visited
+    // month in never changes this card's height — see that Column's own doc comment.
+    var measuredGridHeight by remember { mutableStateOf<Dp?>(null) }
 
     val isOpen = focusState.isOpen
     val progress = focusState.progress
@@ -261,13 +290,37 @@ internal fun MemoriesGridContent(
         allCells + List((targetCount - allCells.size).coerceAtLeast(0)) { MemoryGridCell.Filler }
     }
 
-    Box(modifier = modifier) {
+    // A Box, not just the Column below — the info popover (see showInfo further down) needs
+    // to float on top of the grid without changing this card's own height, which a sibling
+    // occupying normal Column flow can't do (that was the previous, rejected version: the
+    // card visibly grew every time the popover opened). A Box's non-Column children draw on
+    // top of the Column without contributing to its measured size at all.
+    var showInfo by remember { mutableStateOf(false) }
+    // This composable has no scroll state of its own to observe directly — it's just a fixed
+    // section inside Home's outer scrollable Column. What it *can* observe is its own
+    // position on screen, which that ancestor scrolling is exactly what changes. First report
+    // only seeds the baseline (composing for the first time isn't a scroll); every report
+    // after that whose Y actually moved means the page scrolled, and the popover — anchored
+    // to a fixed spot in this card — would otherwise appear to drift along with it instead of
+    // just closing the way tapping elsewhere already does.
+    var lastKnownTopY by remember { mutableStateOf<Float?>(null) }
+
+    Box(
+        modifier = modifier.onGloballyPositioned { coordinates ->
+            val topY = coordinates.boundsInRoot().top
+            val previous = lastKnownTopY
+            if (previous != null && kotlin.math.abs(topY - previous) > 0.5f) {
+                showInfo = false
+            }
+            lastKnownTopY = topY
+        },
+    ) {
         // One opaque card behind the whole section — month header and grid together. Without it
         // the grid sits directly on the screen background, which for an image-backed theme (see
         // EmberBackground.ImageBacked) means the artwork runs straight through every empty day
         // cell and the whole month reads as noise rather than a calendar. Being opaque is the
         // entire point: it stops the backdrop at its own edge.
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 22.dp, end = 22.dp, bottom = 24.dp)
@@ -281,6 +334,7 @@ internal fun MemoriesGridContent(
                 .blur(gridBlur, BlurredEdgeTreatment.Unbounded)
                 .graphicsLayer { alpha = gridFade },
         ) {
+        Column {
             // Header strip: one step up the tonal ladder from the grid body below it (panel is
             // lighter than surface), so the month row reads as its own band rather than floating
             // in the same field as the days — the distinction the reference design draws. Taken
@@ -304,6 +358,7 @@ internal fun MemoriesGridContent(
                         modifier = Modifier.padding(horizontal = 6.dp),
                     )
                     MonthNavArrow(pointsLeft = false, enabled = canGoToNextMonth, onClick = onNextMonth)
+                    MemoriesInfoButton(onClick = { showInfo = !showInfo })
                 }
                 if (memories.isNotEmpty()) {
                     Text(
@@ -320,10 +375,23 @@ internal fun MemoriesGridContent(
                     )
                 }
             }
-
+            // A Box, not an if/else swap between the grid and a small centered spinner — that
+            // swap used to change this card's height every time a not-yet-visited month was
+            // opened for the first time (the spinner's own box is much shorter than a real
+            // 6-row calendar), which shifted Home's whole scroll position out from under
+            // whoever was mid-scroll when they tapped the arrow. Rather than showing the grid
+            // itself underneath the spinner (tried, but looked wrong — an empty calendar with a
+            // spinner floating over the top of it isn't the clean "loading…" moment the plain
+            // spinner alone already was), the spinner's own box is pinned to the grid's real,
+            // once-measured height instead. The grid is a fixed 6 rows regardless of month, and
+            // each cell's height only depends on the card's width (a fixed aspect ratio) — which
+            // doesn't change between months — so one measurement is valid for the rest of the
+            // session, and swapping to the spinner never changes this card's own height again.
             if (isLoadingMonth) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(measuredGridHeight?.let { Modifier.height(it) } ?: Modifier.padding(vertical = 40.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(color = colors.glow, modifier = Modifier.size(20.dp))
@@ -331,7 +399,11 @@ internal fun MemoriesGridContent(
             } else {
                 // The grid keeps its own inset from the card's edges; the cells themselves are
                 // untouched (same size, spacing, radius and per-state treatment as before).
-                Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 6.dp)) {
+                Column(
+                    modifier = Modifier
+                        .padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 6.dp)
+                        .onGloballyPositioned { measuredGridHeight = with(density) { it.size.height.toDp() } },
+                ) {
                 cells.chunked(GRID_COLUMNS).forEach { rowCells ->
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -358,7 +430,62 @@ internal fun MemoriesGridContent(
                 }
             }
         }
+
+        // A real floating overlay this time, but positioned with a plain Modifier.align + fixed
+        // padding rather than a DropdownMenu/Popup — those position themselves via the anchor's
+        // coordinates *in the window*, which this card's own ancestors (several blur/graphicsLayer
+        // wrappers up the tree) were throwing off. Alignment within this Box is resolved during
+        // normal layout instead, immune to that. Drawn after the Column above, so it sits on top
+        // of the grid without adding to this card's own height.
+        AnimatedVisibility(
+            visible = showInfo,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(150)),
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Invisible — its only job is to catch a tap on anything else (the month arrows,
+                // a day in the grid, the info icon itself again) and close this, the same
+                // tap-outside-to-dismiss behavior every menu/dialog elsewhere in the app already
+                // has. Sits above the header/grid in the Box's own draw order, so it intercepts
+                // the tap before whatever's underneath ever sees it — closing this is what that
+                // first tap does, not also whatever button happened to be under it.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { showInfo = false },
+                        ),
+                )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 50.dp, start = 14.dp, end = 14.dp)
+                        .clip(EmberRadii.dialogShape)
+                        .background(colors.overlayPanel)
+                        .border(1.dp, colors.border, EmberRadii.dialogShape)
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_bookmark_filled),
+                        contentDescription = null,
+                        tint = colors.glow,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = "Only photos you save appear here.",
+                        fontFamily = PublicSansFontFamily,
+                        fontSize = 13.sp,
+                        color = colors.cream,
+                        modifier = Modifier.padding(start = 10.dp),
+                    )
+                }
+            }
+        }
     }
+}
 }
 
 @Composable
@@ -377,6 +504,30 @@ private fun MonthNavArrow(pointsLeft: Boolean, enabled: Boolean, onClick: () -> 
                 indication = null,
                 onClick = onClick,
             ),
+    )
+}
+
+/** Explains why Memories no longer mirrors every photo ever sent — since only explicitly saved
+ * photos show up here now, a first-time (or just-updated) user has no way to know that from the
+ * grid alone. A quiet "i" next to the month arrows, not a banner or a dialog forced on anyone —
+ * entirely optional to ever tap; see the call site for the floating explanation this toggles. */
+@Composable
+private fun MemoriesInfoButton(onClick: () -> Unit) {
+    val colors = EmberTheme.colors
+    Icon(
+        painter = painterResource(R.drawable.ic_info),
+        contentDescription = "About Memories",
+        tint = colors.mutedDim,
+        modifier = Modifier
+            .padding(start = 4.dp)
+            .size(20.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(2.dp),
     )
 }
 
@@ -510,11 +661,32 @@ internal fun DayFeaturedOverlay(
     // up — deliberately NOT wired to the live page the way currentEntry below is. See
     // HomeScreen's own identical isScrollInProgress effect for the fuller reasoning.
     onCurrentPhotoChanged: (String?) -> Unit = {},
+    // Real, permanent deletion (see HomeViewModel.deleteMemoryPhoto/PhotoService.delete on the
+    // backend) — a suspend Result rather than a fire-and-forget callback so the confirm dialog
+    // below can show its own spinner/error inline instead of closing optimistically.
+    onDeletePhoto: suspend (String) -> Result<Unit> = { Result.success(Unit) },
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     val density = LocalDensity.current
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
+
+    // Only actually needed on Android 9 and below — scoped storage on 10+ lets MediaStore.insert
+    // write to the gallery with no permission at all (see saveImageToGallery's own doc comment).
+    // The lambda captured here always re-attempts the same download once the user responds,
+    // rather than needing a second explicit tap after granting.
+    var pendingDownloadUrl by remember { mutableStateOf<String?>(null) }
+    val storagePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val url = pendingDownloadUrl
+        pendingDownloadUrl = null
+        if (granted && url != null) {
+            coroutineScope.launch { downloadPhoto(context, url) }
+        }
+    }
     // Pages through the whole month's flattened photo list (see buildMonthCarousel), not just
     // the tapped day's own photos — landing on the tapped day's first photo, but continuing into
     // neighboring days instead of stopping dead at that one day's boundary.
@@ -705,6 +877,161 @@ internal fun DayFeaturedOverlay(
                     .padding(start = 22.dp, bottom = 22.dp)
                     .alpha(progress),
             )
+        }
+
+        // A true screen-level overlay, not a child of the card above — deliberately NOT inside
+        // that Box (which clips to the card's own animated, growing/shrinking bounds and sits
+        // underneath Home's chromeBlur in the same way the rest of that card's content does).
+        // Living here instead, as this Box's own last child, means it's laid out against the
+        // real screen (top-right corner, below the status bar, entirely independent of wherever
+        // the card itself currently is mid-animation) and painted after everything else — above
+        // the blur, not affected by the card's own clip/transform, and a tap on it can't reach
+        // the dismiss-scrim or the card underneath since it's a fully separate subtree, not
+        // nested inside either one's own gesture-catching Box.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 16.dp, end = 16.dp)
+                .alpha(progress),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.35f))
+                    .clickable(enabled = !isDeleting) { menuExpanded = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = Color.White, modifier = Modifier.size(18.dp))
+            }
+            // Material3's DropdownMenu already fades+scales in/out by default — that's the
+            // "fade animation" here, rather than a second, hand-rolled AnimatedVisibility on
+            // top of it, which would just fight the built-in one.
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+                containerColor = colors.panel,
+                shape = EmberRadii.dialogShape,
+                tonalElevation = 0.dp,
+                shadowElevation = 8.dp,
+                border = BorderStroke(1.dp, colors.border),
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Save", fontFamily = PublicSansFontFamily, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = colors.cream) },
+                    leadingIcon = { Icon(Icons.Rounded.Download, contentDescription = null, tint = colors.cream, modifier = Modifier.size(18.dp)) },
+                    onClick = {
+                        menuExpanded = false
+                        val url = currentEntry.photo.photoUrl
+                        val needsPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                        if (needsPermission) {
+                            pendingDownloadUrl = url
+                            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        } else {
+                            coroutineScope.launch { downloadPhoto(context, url) }
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(horizontal = 12.dp))
+                DropdownMenuItem(
+                    text = { Text("Delete", fontFamily = PublicSansFontFamily, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MemoriesDestructiveColor) },
+                    leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = MemoriesDestructiveColor, modifier = Modifier.size(18.dp)) },
+                    onClick = {
+                        menuExpanded = false
+                        showDeleteConfirm = true
+                    },
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+        }
+    }
+
+    if (showDeleteConfirm) {
+        DeleteMemoryConfirmDialog(
+            isDeleting = isDeleting,
+            onDismiss = { if (!isDeleting) showDeleteConfirm = false },
+            onConfirm = {
+                val photoId = currentEntry.photo.photoId
+                coroutineScope.launch {
+                    isDeleting = true
+                    onDeletePhoto(photoId).onSuccess {
+                        isDeleting = false
+                        showDeleteConfirm = false
+                        // Back to the grid rather than trying to re-page a now-shorter carousel —
+                        // the grid itself already reflects the removal (HomeViewModel updates its
+                        // cache on success), so there's nothing stale left to look at here.
+                        onDismiss()
+                    }.onFailure {
+                        isDeleting = false
+                        Toast.makeText(context, it.message ?: "Couldn't delete that photo", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+        )
+    }
+}
+
+private suspend fun downloadPhoto(context: Context, photoUrl: String) {
+    saveImageToGallery(context, photoUrl).fold(
+        onSuccess = { Toast.makeText(context, "Saved to your gallery", Toast.LENGTH_SHORT).show() },
+        onFailure = { Toast.makeText(context, it.message ?: "Couldn't save that photo", Toast.LENGTH_SHORT).show() },
+    )
+}
+
+// Same dark red already used for Delete account/list confirms elsewhere in the app (see
+// SettingsScreen/RecipientPickerScreen's own DeleteAccountDestructiveColor/
+// DeleteListDestructiveColor) — kept as its own local constant rather than a shared one across
+// three unrelated packages purely for one hex value.
+private val MemoriesDestructiveColor = Color(0xFFB3261E)
+
+/** Same shell every other confirm-before-delete dialog in the app uses (see
+ * RecipientPickerScreen's DeleteListConfirmDialog) — plain "This can't be undone.", no dash, dark
+ * red confirm button. Stays open through the delete request (spinner on the confirm button)
+ * rather than closing optimistically, since a real, permanent deletion failing needs to be
+ * visibly a failure, not silently pretend to have worked. */
+@Composable
+private fun DeleteMemoryConfirmDialog(isDeleting: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val colors = EmberTheme.colors
+    EditDialogShell(title = "Delete this photo?", onDismiss = onDismiss) {
+        Text(
+            text = "This can't be undone.",
+            fontFamily = PublicSansFontFamily,
+            fontSize = 13.sp,
+            color = colors.muted,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.panel)
+                    .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+                    .clickable(enabled = !isDeleting, onClick = onDismiss)
+                    .padding(vertical = 13.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(text = "Cancel", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MemoriesDestructiveColor)
+                    .clickable(enabled = !isDeleting, onClick = onConfirm)
+                    .padding(vertical = 13.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (isDeleting) {
+                    CircularProgressIndicator(modifier = Modifier.size(15.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Text(text = "Delete", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
         }
     }
 }

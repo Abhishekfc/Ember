@@ -42,6 +42,22 @@ class UserRepository(private val api: EmberApi) {
         handle(api.uploadProfilePhoto(filePart))
     }
 
+    /** Irreversible — the backend has already deleted the account and everything it owns by the
+     * time this returns successfully. The caller is responsible for the same local sign-out
+     * cleanup (token, caches) a normal sign-out does, since there's no account left for any of
+     * that cached state to belong to either. */
+    suspend fun deleteAccount(): Result<Unit> = safeCall {
+        val response = api.deleteAccount()
+        if (response.isSuccessful) {
+            Result.success(Unit)
+        } else {
+            val message = response.errorBody()?.string()?.let {
+                runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+            } ?: "Couldn't delete your account (${response.code()})"
+            Result.failure(Exception(message))
+        }
+    }
+
     private fun handle(response: Response<UserProfileDto>): Result<UserProfileDto> {
         val body = response.body()
         return if (response.isSuccessful && body != null) {

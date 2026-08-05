@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -69,6 +71,10 @@ fun FriendsScreen(
     onFriendClick: (FriendSummaryDto) -> Unit,
     onPendingRequestClick: (PendingFriendRequestDto) -> Unit,
     hazeState: HazeState,
+    // Left to TabScreenScaffold's own default for any other caller — MainActivity hoists and
+    // passes one specifically so scroll position survives opening a friend's profile and coming
+    // back, the same reasoning Home's own hoisted scroll state already documents.
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -91,11 +97,13 @@ fun FriendsScreen(
                 Icon(Icons.Rounded.PersonAdd, contentDescription = "Find people", tint = colors.cream, modifier = Modifier.size(26.dp))
             }
         },
-        // Only true once there's already content on screen — the cold-start load is covered by
-        // the full-screen spinner instead, so the pull indicator doesn't animate in from the top
-        // on every app launch.
-        isRefreshing = viewModel.isLoading && (viewModel.filteredFriends.isNotEmpty() || viewModel.pendingRequests.isNotEmpty()),
+        // Strictly the manual pull gesture — not isLoading, which is also true for the automatic
+        // load this ViewModel fires on every app start. With a warm cache there's already content
+        // on screen by then, so keying off isLoading meant opening Friends after a restart showed
+        // a refresh nobody asked for.
+        isRefreshing = viewModel.isPullRefreshing,
         onRefresh = { viewModel.loadFriends(isPullRefresh = true) },
+        listState = listState,
     ) {
         // The search bar is the scaffold's own first list item, not a fixed sibling above it —
         // it scrolls away with the rest of the list instead of staying pinned forever.
@@ -275,7 +283,7 @@ private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** "Your Ember" — the person you've pinned, spotlighted in the exact card language Home uses
+/** "Your Emigo" — the person you've pinned, spotlighted in the exact card language Home uses
  * for a sent photo (same shape, shadow, bottom scrim). The repetition is deliberate: it tells
  * you this is the same kind of glow, just standing for a relationship instead of a single photo. */
 @Composable
@@ -285,7 +293,7 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
     val cardShape = RoundedCornerShape(28.dp)
 
     Column(modifier = modifier) {
-        SectionLabel(text = "Your ember")
+        SectionLabel(text = "Your Emigo")
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -521,7 +529,12 @@ private fun FriendRow(friend: FriendSummaryDto, onClick: () -> Unit) {
                 }
             }
             Text(
-                text = friend.lastActivityAt?.let { "Last sent ${formatRelativeTime(it)}" } ?: "No photos yet",
+                // Direction-aware, not a blind "Last sent" — lastActivityBySelf says whether the
+                // most recent exchange was this account sending or the friend sending, same
+                // reasoning as the Friend Profile screen's own identical wording.
+                text = friend.lastActivityAt?.let {
+                    if (friend.lastActivityBySelf == true) "You sent ${formatRelativeTime(it)}" else "Sent to you ${formatRelativeTime(it)}"
+                } ?: "No photos yet",
                 fontFamily = typography.body,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Normal,

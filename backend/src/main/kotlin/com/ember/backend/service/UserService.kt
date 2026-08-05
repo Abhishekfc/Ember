@@ -7,9 +7,13 @@ import com.ember.backend.dto.UserProfile
 import com.ember.backend.exception.InvalidFriendRequestException
 import com.ember.backend.exception.ResourceNotFoundException
 import com.ember.backend.exception.UsernameAlreadyTakenException
+import com.ember.backend.model.FriendshipStatus
 import com.ember.backend.model.User
+import com.ember.backend.repository.FriendshipRepository
+import com.ember.backend.repository.PhotoRepository
 import com.ember.backend.repository.UserRepository
 import org.slf4j.LoggerFactory
+import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
@@ -26,6 +30,9 @@ private const val MAX_SUGGESTIONS = 3
 class UserService(
     private val userRepository: UserRepository,
     private val r2StorageService: R2StorageService,
+    private val friendshipRepository: FriendshipRepository,
+    private val photoRepository: PhotoRepository,
+    private val cacheManager: CacheManager,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -134,6 +141,38 @@ class UserService(
         val normalized = candidate.trim().lowercase()
         if (normalized.isEmpty()) return EmailAvailability(available = false)
         return EmailAvailability(available = !userRepository.existsByEmail(normalized))
+    }
+
+    /**
+     * Permanently deletes an account. Every other table with a foreign key to `users` (photos,
+     * photo_recipients, friendships, device_tokens, blocked_users, subscriptions, user_reports,
+     * photo_reactions) is `ON DELETE CASCADE`, so deleting the row itself is enough to clean up
+     * the database side — the two things that need doing by hand first are the parts a DB
+     * cascade can't reach:
+     *
+     * 1. The actual files in R2 (a cascaded `photos` row deletes the *row*, not the object it
+     *    points to — nothing in Postgres knows R2 exists).
+     * 2. Every friend's own cached friends/feed/activity list, which would otherwise keep
+     *    showing this account until each cache's TTL happens to expire on its own, the same
+     *    staleness [removeFriend] already guards against for a single unfriend.
+     */
+    @Transactional
+    fun deleteAccount(userId: UUID) {
+        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
+
+        val friendIds = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
+            .map { if (it.requester.id == userId) it.addressee.id else it.requester.id }
+        friendIds.forEach { friendId ->
+            cacheManager.getCache("friends")?.evict(friendId.toString())
+            cacheManager.getCache("feed")?.evict(friendId.toString())
+            cacheManager.getCache("activity")?.evict(friendId.toString())
+        }
+
+        photoRepository.findAllBySenderId(userId).forEach { r2StorageService.delete(it.storageKey) }
+        user.profilePhotoStorageKey?.let { r2StorageService.delete(it) }
+
+        userRepository.delete(user)
+        logger.info("Account deleted: userId={} email={}", userId, user.email)
     }
 
     private fun generateUsernameSuggestions(base: String): List<String> {

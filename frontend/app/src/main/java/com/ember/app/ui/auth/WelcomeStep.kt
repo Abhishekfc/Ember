@@ -67,7 +67,7 @@ fun WelcomeStep(
         PhoneHomeMockup(modifier = Modifier.fillMaxWidth(0.56f))
         StaggeredEntrance(delayMillis = 80) {
             Text(
-                text = "Ember",
+                text = "Emigo",
                 fontFamily = CourgetteFontFamily,
                 fontSize = 40.sp,
                 color = colors.cream,

@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,12 +20,14 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.TaskAlt
@@ -46,15 +51,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.ReportReason
-import com.ember.app.ui.components.HeaderRowHeight
-import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.emberButtonBrush
+import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.profile.EditDialogShell
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
@@ -65,20 +68,19 @@ import com.ember.app.ui.theme.PublicSansFontFamily
  * invented just for Block/Report. */
 private val DestructiveColor = Color(0xFFE8756C)
 
-/** One profile layout for every person — an existing friend, someone who's sent a pending
- * request, and a stranger found via search all share the exact same header (avatar, name,
- * username, streak) with no banner/hero image. Only the action area at the bottom differs: Send
- * photo/Pin/Remove for a friend, Accept/Decline for a pending request, and for a search result —
- * Add if there's no relationship yet, Accept/Decline if they already requested this user, a
- * cancelable Requested state if this user already requested them, and nothing at all if they're
- * already friends (that has its own dedicated actions, reached from the Friends tab instead).
- *
- * Visual language is deliberately closer to Instagram/Snapchat's own profile screens than the
- * rest of Ember's more illustrated UI: a plain centered header, one quiet chip instead of a
- * card for the one piece of data that matters (the streak), a hairline rule separating identity
- * from action, and a strict two-tier button hierarchy (one solid, one outline). The only thing
- * that still marks this as *Ember* rather than a generic clone is the Fraunces serif on the
- * name — every other label uses the plain UI face. */
+/** A full-bleed hero photo at the top — same structural idea Instagram/Snapchat's own profile
+ * screens use — instead of the small centered circle avatar this used to be. Back and overflow
+ * float directly on the photo in translucent scrim-backed circles; the streak (the one real,
+ * meaningful stat this app actually has) sits as its own badge over the photo's bottom-left
+ * corner, the same spot a follower count would occupy on those other apps' profiles. Everything
+ * below the photo is data Ember genuinely has — no bio, location, or follower count invented to
+ * fill space the reference image had real content for and this app doesn't: "Last sent" (a real,
+ * already-used-elsewhere fact) stands in for the bio line instead of a placeholder. Only the
+ * action area at the bottom differs by relationship: Send photo/Pin/Remove for a friend,
+ * Accept/Decline for a pending request, and for a search result — Add if there's no relationship
+ * yet, Accept/Decline if they already requested this user, a cancelable Requested state if this
+ * user already requested them, and nothing at all if they're already friends (that has its own
+ * dedicated actions, reached from the Friends tab instead). */
 @Composable
 fun FriendProfileScreen(
     viewModel: FriendProfileViewModel,
@@ -94,7 +96,8 @@ fun FriendProfileScreen(
     val typography = EmberTheme.typography
     var screenSize by remember { mutableStateOf(Size.Zero) }
     val subject = viewModel.subject
-    val streak = (subject as? ProfileSubject.Friend)?.summary?.streak ?: 0
+    val friend = (subject as? ProfileSubject.Friend)?.summary
+    val streak = friend?.streak ?: 0
     val pillShape = EmberRadii.buttonShape
 
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -106,22 +109,75 @@ fun FriendProfileScreen(
             .fillMaxSize()
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize))
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, bottom = 30.dp),
+            .navigationBarsPadding(),
     ) {
-        NestedScreenHeader(
-            onBack = onBack,
-            trailing = {
-                // Same flat, icon-only treatment as the back control — Block/Report are safety
-                // actions relevant to any subject (friend, pending request, or a stranger found
-                // via search), not gated on relationship state the way Pin/Remove are.
-                Box(modifier = Modifier.size(HeaderRowHeight), contentAlignment = Alignment.CenterEnd) {
-                    Box(
-                        modifier = Modifier.size(HeaderRowHeight).clickable { showOverflowMenu = true },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = colors.cream, modifier = Modifier.size(22.dp))
+        // Square, edge-to-edge, running up under the status bar — the back/overflow controls
+        // below carry their own statusBarsPadding instead of the whole screen having one, which
+        // is what lets the photo itself reach the very top rather than stopping short of it.
+        // Rounded on the bottom two corners only — flush with the screen everywhere else, the
+        // one place it isn't butting up against a real edge.
+        val heroShape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+        Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(heroShape)) {
+            if (subject.profilePhotoUrl != null) {
+                AsyncImage(
+                    model = subject.profilePhotoUrl,
+                    contentDescription = subject.displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                // No fake placeholder photo — the app's own premium accent gradient (the same
+                // fill every primary button already uses) with the person's initial, so a friend
+                // with no profile photo still reads as a deliberate, branded hero rather than a
+                // broken image.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(emberButtonBrush(EmberTheme.key, colors, Size(screenSize.width, screenSize.width))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = subject.displayName.firstOrNull()?.uppercase() ?: "•",
+                        fontFamily = typography.display,
+                        fontSize = 96.sp,
+                        color = colors.accentText,
+                    )
+                }
+            }
+
+            // Top scrim — just enough for the back/overflow circles to stay legible over a
+            // bright photo, without darkening the rest of the hero.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp)
+                    .align(Alignment.TopCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))),
+            )
+            // Bottom scrim — always present now, not just for the streak badge, since the
+            // identity block (name/username/last-sent) lives directly on the photo too and
+            // needs to stay legible over whatever the photo itself contains.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f)))),
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                HeroCircleButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+                Box {
+                    HeroCircleButton(onClick = { showOverflowMenu = true }) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                     DropdownMenu(
                         expanded = showOverflowMenu,
@@ -142,6 +198,29 @@ fun FriendProfileScreen(
                         shadowElevation = 8.dp,
                         border = BorderStroke(1.dp, colors.border),
                     ) {
+                        // Only for an actual friend — nothing to unfriend for a pending request
+                        // or a stranger found via search, the other two subjects this same menu
+                        // can appear for.
+                        if (friend != null) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "Unfriend",
+                                        fontFamily = PublicSansFontFamily,
+                                        fontSize = 14.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DestructiveColor,
+                                    )
+                                },
+                                leadingIcon = { Icon(Icons.Rounded.PersonRemove, contentDescription = null, tint = DestructiveColor, modifier = Modifier.size(18.dp)) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.removeFriend(onRemoved)
+                                },
+                                modifier = Modifier.padding(horizontal = 4.dp),
+                            )
+                            HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(horizontal = 12.dp))
+                        }
                         DropdownMenuItem(
                             text = {
                                 Text(
@@ -179,113 +258,113 @@ fun FriendProfileScreen(
                         )
                     }
                 }
-            },
-        )
-
-        Box(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 20.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(108.dp)
-                    .clip(CircleShape)
-                    .background(streakRingBrush(colors, streak))
-                    .padding(3.dp)
-                    .clip(CircleShape)
-                    .background(colors.elevatedPanel)
-                    .padding(3.dp)
-                    .clip(CircleShape)
-                    .background(colors.elevatedPanel),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (subject.profilePhotoUrl != null) {
-                    AsyncImage(
-                        model = subject.profilePhotoUrl,
-                        contentDescription = subject.displayName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(CircleShape),
-                    )
-                } else {
-                    Text(
-                        text = subject.displayName.firstOrNull()?.uppercase() ?: "•",
-                        fontFamily = typography.display,
-                        fontSize = 34.sp,
-                        color = colors.cream,
-                    )
-                }
             }
-        }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Text(text = subject.displayName, fontFamily = typography.display, fontSize = 24.sp, color = colors.cream)
-            Text(
-                text = "@${subject.username}",
-                fontFamily = PublicSansFontFamily,
-                fontSize = 12.5.sp,
-                color = colors.mutedDim,
-                modifier = Modifier.padding(top = 3.dp),
-            )
-            if (streak > 0) {
-                // A quiet pill, not a card — the one piece of data a profile needs to carry here,
-                // given the same weight a bio would get elsewhere and no more.
-                Row(
-                    modifier = Modifier
-                        .padding(top = 14.dp)
-                        .background(colors.elevatedPanel, RoundedCornerShape(20.dp))
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.LocalFireDepartment, contentDescription = null, tint = colors.glow, modifier = Modifier.size(13.dp))
+            // Everything else — streak, name, username, "last sent" — stacked directly on the
+            // photo itself over the scrim above, the same way the reference profile keeps its
+            // whole identity block sitting on the image rather than on the plain background
+            // below it. Always white/near-white text here regardless of theme: this sits over an
+            // arbitrary photo, not the app's own surface, so it needs to stay legible no matter
+            // which theme is active or what the photo's own colors are.
+            Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 18.dp, end = 18.dp, bottom = 18.dp)) {
+                if (streak > 0) {
+                    // Sits where a follower count would on the reference profile — the one real
+                    // stat this app actually has, in the same "here's the number that matters" spot.
+                    Row(
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.LocalFireDepartment, contentDescription = null, tint = colors.glow, modifier = Modifier.size(14.dp))
+                        Text(
+                            text = "$streak",
+                            fontFamily = PublicSansFontFamily,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(start = 5.dp),
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
+                    Text(text = subject.displayName, fontFamily = typography.display, fontSize = 26.sp, color = Color.White)
+                    // Real, not decorative — the same "pinned partner" state Friends' own list and
+                    // the action button below both already show, just surfaced here too rather than
+                    // a fabricated verified checkmark the reference had and this app has no
+                    // equivalent concept for.
+                    if (friend?.pinnedByMe == true) {
+                        Icon(
+                            Icons.Rounded.PushPin,
+                            contentDescription = "Pinned as partner",
+                            tint = colors.glow,
+                            modifier = Modifier.padding(start = 6.dp).size(16.dp),
+                        )
+                    }
+                }
+                Text(
+                    text = "@${subject.username}",
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 13.sp,
+                    color = Color.White.copy(alpha = 0.75f),
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+                // Stands in for a bio line — the one other real, human fact this profile has.
+                // Direction-aware, not a blind "Last sent": lastActivityBySelf says whether that
+                // most recent exchange was this account sending or the friend sending, so this
+                // can actually say who — a plain "Last sent" left that ambiguous.
+                friend?.lastActivityAt?.let { lastActivityAt ->
+                    val label = if (friend.lastActivityBySelf == true) {
+                        "You sent ${formatRelativeTime(lastActivityAt)}"
+                    } else {
+                        "Sent to you ${formatRelativeTime(lastActivityAt)}"
+                    }
                     Text(
-                        text = "$streak day streak",
+                        text = label,
                         fontFamily = PublicSansFontFamily,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.glow,
-                        modifier = Modifier.padding(start = 5.dp),
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.75f),
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }
         }
 
-        if (viewModel.errorMessage != null) {
-            Text(
-                text = viewModel.errorMessage.orEmpty(),
-                fontFamily = PublicSansFontFamily,
-                fontSize = 11.5.sp,
-                color = colors.glow2,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            )
-        }
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            if (viewModel.errorMessage != null) {
+                Text(
+                    text = viewModel.errorMessage.orEmpty(),
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 11.5.sp,
+                    color = colors.glow2,
+                    modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+                )
+            }
 
-        HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(top = 26.dp))
+            when (subject) {
+                is ProfileSubject.Friend -> FriendActions(
+                    viewModel = viewModel,
+                    friend = subject.summary,
+                    pillShape = pillShape,
+                    onSendPhotoClick = onSendPhotoClick,
+                    onPinChanged = onPinChanged,
+                )
 
-        when (subject) {
-            is ProfileSubject.Friend -> FriendActions(
-                viewModel = viewModel,
-                friend = subject.summary,
-                pillShape = pillShape,
-                onSendPhotoClick = onSendPhotoClick,
-                onPinChanged = onPinChanged,
-                onRemoved = onRemoved,
-            )
+                is ProfileSubject.PendingRequest -> PendingRequestActions(
+                    viewModel = viewModel,
+                    pillShape = pillShape,
+                    onAccepted = onAccepted,
+                    onRejected = onRejected,
+                )
 
-            is ProfileSubject.PendingRequest -> PendingRequestActions(
-                viewModel = viewModel,
-                pillShape = pillShape,
-                onAccepted = onAccepted,
-                onRejected = onRejected,
-            )
-
-            is ProfileSubject.SearchResult -> SearchResultActions(
-                viewModel = viewModel,
-                result = subject.result,
-                pillShape = pillShape,
-                onAccepted = onAccepted,
-                onRejected = onRejected,
-            )
+                is ProfileSubject.SearchResult -> SearchResultActions(
+                    viewModel = viewModel,
+                    result = subject.result,
+                    pillShape = pillShape,
+                    onAccepted = onAccepted,
+                    onRejected = onRejected,
+                )
+            }
         }
     }
 
@@ -309,6 +388,22 @@ fun FriendProfileScreen(
             onSubmit = { reason -> viewModel.reportUser(reason) },
         )
     }
+}
+
+/** Translucent dark circle, same treatment for both back and overflow — legible over any photo
+ * regardless of its own colors, since it doesn't depend on the theme's own palette the way a
+ * plain tinted glyph (this app's usual icon style) would against a bright or busy image. */
+@Composable
+private fun HeroCircleButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.35f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+        content = { content() },
+    )
 }
 
 /** Same shell MyProfileScreen's own edit dialogs use (EditDialogShell), so this reads as the same
@@ -481,7 +576,6 @@ private fun FriendActions(
     pillShape: RoundedCornerShape,
     onSendPhotoClick: () -> Unit,
     onPinChanged: (FriendSummaryDto) -> Unit,
-    onRemoved: () -> Unit,
 ) {
     val colors = EmberTheme.colors
 
@@ -537,18 +631,6 @@ private fun FriendActions(
             )
         }
     }
-
-    Text(
-        text = if (viewModel.isRemoving) "Removing…" else "Remove friend",
-        fontFamily = PublicSansFontFamily,
-        fontSize = 12.5.sp,
-        color = Color(0xFFE8756C),
-        textAlign = TextAlign.Center,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 26.dp)
-            .clickable(enabled = !viewModel.isRemoving) { viewModel.removeFriend(onRemoved) },
-    )
 }
 
 @Composable
@@ -703,15 +785,4 @@ private fun RequestedActions(viewModel: FriendProfileViewModel, pillShape: Round
             )
         }
     }
-}
-
-/** Same streak-intensity ring language as the friends list (`streakRingBrush` in
- * FriendsScreen.kt) — unlit at 0, warming through a single glow color, full sweep-gradient
- * blaze at 7+. Kept as its own small copy here rather than exported cross-file for a handful
- * of lines. */
-private fun streakRingBrush(colors: com.ember.app.ui.theme.EmberColors, streak: Int): Brush = when {
-    streak >= 7 -> Brush.sweepGradient(listOf(colors.glow, colors.glow2, colors.violet, colors.glow))
-    streak >= 3 -> Brush.linearGradient(listOf(colors.glow, colors.glow2))
-    streak >= 1 -> Brush.linearGradient(listOf(colors.glow.copy(alpha = 0.8f), colors.glow.copy(alpha = 0.8f)))
-    else -> Brush.linearGradient(listOf(colors.border, colors.border))
 }
