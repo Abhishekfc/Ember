@@ -451,6 +451,11 @@ fun HomeScreen(
                 modifier = Modifier
                     .onGloballyPositioned {
                         headerHeightPx = it.size.height.toFloat()
+                        // Camera reads this to line its own card up with Home's — always the real,
+                        // live measurement, forwarded unconditionally. Safe because the status
+                        // block below is one structure for every state (see its own comment):
+                        // same two lines, same fonts, same paddings, both pinned to one line, so
+                        // this height doesn't change just because the feed happens to be empty.
                         onHeaderHeightChanged(headerHeightPx)
                     }
                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
@@ -501,16 +506,39 @@ fun HomeScreen(
                     // instant snap between the two opacities.
                     val unseenCount = viewModel.feedItems.count { viewModel.hasUnseenPhoto(it) }
                     val hasConnectionError = viewModel.errorMessage != null
-                    val isCaughtUp = !hasConnectionError && unseenCount == 0
+                    // Deliberately excludes the empty-feed case: the de-emphasis below is meant for
+                    // a real "nothing new right now" status, not for the plain greeting an account
+                    // with no friends yet gets instead — fading that would just make the one line
+                    // on an otherwise sparse screen look washed out.
+                    val isCaughtUp = !hasConnectionError && unseenCount == 0 && viewModel.feedItems.isNotEmpty()
                     val headlineAlpha by animateFloatAsState(
                         targetValue = if (isCaughtUp) 0.6f else 1f,
                         animationSpec = tween(320, easing = FastOutSlowInEasing),
                         label = "headlineAlpha",
                     )
+                    // ONE header structure for every state — never a second, differently-shaped
+                    // block for the empty state. Both lines below always exist, always with the
+                    // exact same font/size/weight/padding; only the *words* change. That's what
+                    // actually keeps this header's height identical whether or not the feed has
+                    // anything in it, which matters well beyond this screen: Camera sizes its own
+                    // card spacer from this header's measured height (see onHeaderHeightChanged),
+                    // so a taller/shorter header here visibly moved Camera's card for a reason
+                    // that had nothing to do with Camera. An earlier attempt gave the empty state
+                    // its own block (bigger display-font greeting, a divider) and tried to force
+                    // the heights to agree afterward — first by only forwarding the measurement
+                    // from one of them, then by pinning a min-height off the other's measured
+                    // size. Both were patches over a self-inflicted difference; not having two
+                    // different blocks in the first place is the actual fix.
                     Text(
                         text = buildAnnotatedString {
                             if (hasConnectionError) {
                                 append("Couldn't connect")
+                            } else if (viewModel.feedItems.isEmpty()) {
+                                // Nobody to have a status *about* yet — a plain time-of-day
+                                // greeting (HomeViewModel.greeting) is the honest thing to say,
+                                // rather than a freshness claim ("all caught up") about an empty
+                                // feed. The empty-state card below carries the real message.
+                                append(viewModel.greeting)
                             } else if (unseenCount > 0) {
                                 // The count is highlighted with the theme's own glow accent; the
                                 // rest of the sentence stays plain, full-strength cream — not
@@ -541,6 +569,7 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.3).sp,
                         color = colors.cream,
+                        maxLines = 1,
                         modifier = Modifier
                             .padding(top = 14.dp, start = 22.dp, end = 22.dp)
                             .graphicsLayer { alpha = headlineAlpha },
@@ -551,15 +580,24 @@ fun HomeScreen(
                     // height. This line has room for it.
                     Text(
                         text = buildAnnotatedString {
-                            append(viewModel.userName?.substringBefore(" ")?.let { "Hey $it · ${viewModel.dateText}" } ?: viewModel.dateText)
-                            if (hasConnectionError) {
-                                append("  ·  ")
-                                withStyle(SpanStyle(color = colors.glow)) { append("Tap to retry") }
+                            if (!hasConnectionError && viewModel.feedItems.isEmpty()) {
+                                append("Find your closest friends and start sharing moments.")
+                            } else {
+                                append(viewModel.userName?.substringBefore(" ")?.let { "Hey $it · ${viewModel.dateText}" } ?: viewModel.dateText)
+                                if (hasConnectionError) {
+                                    append("  ·  ")
+                                    withStyle(SpanStyle(color = colors.glow)) { append("Tap to retry") }
+                                }
                             }
                         },
                         fontFamily = typography.body,
                         fontSize = 12.5.sp,
                         color = colors.muted,
+                        // Pinned to one line for the same reason the headline above is: a wrap
+                        // here would silently make the whole header taller in one state only,
+                        // which is exactly the class of difference this structure exists to
+                        // prevent.
+                        maxLines = 1,
                         modifier = Modifier
                             .padding(top = 5.dp, start = 22.dp, end = 22.dp)
                             .let { if (hasConnectionError) it.clickable { viewModel.loadFeed() } else it },
@@ -622,46 +660,59 @@ fun HomeScreen(
                 }
 
                 viewModel.feedItems.isEmpty() -> {
-                    // No one's shared anything yet — rather than a dead end, this leads straight
-                    // into the (still-usable) Memories grid below, so there's always something to
-                    // look at instead of just an empty message with nowhere to go. A small icon
-                    // above the line, not just a stray sentence floating in empty space (see this
-                    // app's own empty-state convention: icon + specific copy).
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 28.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.PhotoCamera,
-                            contentDescription = null,
-                            tint = colors.mutedDim,
-                            modifier = Modifier.size(26.dp),
-                        )
-                        Text(
-                            text = "Once a friend shares a photo with you, it'll show up here",
-                            fontFamily = typography.body,
-                            fontSize = 13.sp,
-                            color = colors.muted,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 10.dp),
+                    // No one's shared anything yet — the card itself (with its own "Find
+                    // friends" action) is the whole story here. Memories deliberately doesn't
+                    // show alongside it any more — explicitly asked for, so the empty state
+                    // reads as one clear moment/action instead of a card stacked on top of an
+                    // unrelated grid. Placed in the real remaining space between the header and
+                    // the nav dock (same screenSize/headerHeightPx/LocalNavDockHeight measurements
+                    // the real-feed branch's own topFoldMaxHeightDp bound uses below), top-aligned
+                    // with a fixed gap under the divider rather than truly centered — true
+                    // centering (tried first) put equal empty space above *and* below the card,
+                    // which read as a large dead gap right under the divider; any slack now
+                    // collects below the card instead, near the dock, rather than splitting it
+                    // both places. Gated the same way that bound is: screenSize/headerHeightPx
+                    // both start at zero for one frame, and placing content inside a zero-height
+                    // box would put the card at the very top anyway, then visibly jump down once
+                    // the real measurements land.
+                    if (screenSize != Size.Zero && headerHeightPx > 0f) {
+                        val density = LocalDensity.current
+                        val statusBarPx = WindowInsets.statusBars.getTop(density)
+                        val navDockHeightPx = with(density) { LocalNavDockHeight.current.toPx() }
+                        val remainingHeightDp = with(density) {
+                            (screenSize.height - statusBarPx - headerHeightPx - navDockHeightPx).toDp()
+                        }
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(remainingHeightDp),
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            HomeEmptyStateCard(
+                                onAddFriendClick = onAddFriendClick,
+                                modifier = Modifier.padding(top = 28.dp, start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING),
+                            )
+                        }
+
+                        // Same scroll-triggered reveal the real-feed branch uses
+                        // (memoriesRevealProgress), NOT the always-visible { 1f } an earlier
+                        // version of this branch needed: back then the empty state was a couple of
+                        // lines of text, so there was nothing tall enough above Memories to scroll
+                        // past and the reveal threshold could never be reached, leaving it
+                        // invisible forever. The card above now fills the whole remaining viewport
+                        // height, so scrolling behaves exactly as it does with a real feed —
+                        // hidden at rest, fading in as you swipe up.
+                        HomeMemoriesSection(
+                            viewModel = viewModel,
+                            onCameraClick = onCameraClick,
+                            dayFocusState = dayFocusState,
+                            chromeBlur = chromeBlur,
+                            chromeFade = chromeFade,
+                            revealProgress = memoriesRevealProgress,
+                            onMemoriesFocusChanged = { isMemoriesFocused = it },
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .onGloballyPositioned { memoriesTopWindowY = it.positionInWindow().y },
                         )
                     }
-                    // Immediately visible (revealProgress = 1f), not the scroll-triggered fade-in
-                    // the real-feed case below uses — there's no featured card/avatar row above
-                    // this to scroll past, so scrollState could never reach the reveal threshold
-                    // and the whole section stayed invisible forever (the bug this replaced).
-                    HomeMemoriesSection(
-                        viewModel = viewModel,
-                        onCameraClick = onCameraClick,
-                        dayFocusState = dayFocusState,
-                        chromeBlur = chromeBlur,
-                        chromeFade = chromeFade,
-                        revealProgress = { 1f },
-                        onMemoriesFocusChanged = { isMemoriesFocused = it },
-                        modifier = Modifier
-                            .padding(top = 6.dp)
-                            .onGloballyPositioned { memoriesTopWindowY = it.positionInWindow().y },
-                    )
                 }
 
                 else -> {
@@ -1631,6 +1682,98 @@ private fun FeaturedPhotoCard(
                 }
             }
         }
+    }
+}
+
+/** Shown in place of the featured card when this account has no friends yet, or has friends but
+ * has never received a photo from one ([feedItems.isEmpty()] covers both — see this composable's
+ * own call site). Same shape/slot the real featured card occupies
+ * ([FEATURED_CARD_ASPECT_RATIO]/[FEATURED_CARD_CORNER_RADIUS]) — Memories doesn't render
+ * alongside this any more (removed per explicit feedback), so there's no cramping concern that
+ * would call for a shorter card, and this reads as "the card that's normally here, standing in
+ * for one" instead of a dead end.
+ * `home_empty_backdrop` is a cropped still of `frontend/assets/homeEmptyStateCollage.png` —
+ * blurred and darkened here in code (not baked into the asset) so both stay tunable. A bottom-
+ * weighted gradient, not a flat scrim, is what actually fixes "the image isn't visible" — a flat
+ * 45%-black wash on top of an already-dark night-time photo collage crushed it to near-black
+ * everywhere; fading from fully transparent at the top to dark only where the text actually sits
+ * is the same treatment [FeaturedPhotoCard]'s own bottom scrim already uses. */
+@Composable
+private fun HomeEmptyStateCard(onAddFriendClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
+    val cardShape = RoundedCornerShape(FEATURED_CARD_CORNER_RADIUS)
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
+                .clip(cardShape)
+                .background(colors.elevatedPanel),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.home_empty_backdrop),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(8.dp, BlurredEdgeTreatment.Unbounded),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.45f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.85f),
+                        ),
+                    ),
+            )
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, end = 24.dp, bottom = 26.dp),
+            ) {
+                Text(
+                    text = "Add friends to start\nsharing moments",
+                    fontFamily = typography.display,
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 29.sp,
+                    color = Color.White,
+                )
+                Row(
+                    modifier = Modifier
+                        .padding(top = 18.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(percent = 50))
+                        .background(Color.White)
+                        .clickable(onClick = onAddFriendClick)
+                        .padding(vertical = 15.dp),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = "Find friends",
+                        fontFamily = PublicSansFontFamily,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black,
+                    )
+                }
+            }
+        }
+        Text(
+            text = "Once you're connected, their photos show up right here.",
+            fontFamily = typography.body,
+            fontSize = 12.5.sp,
+            color = colors.muted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+        )
     }
 }
 

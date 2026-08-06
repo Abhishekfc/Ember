@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.PendingFriendRequestDto
+import com.ember.app.ui.components.InviteFriendsRow
 import com.ember.app.ui.components.TabScreenScaffold
 import com.ember.app.ui.home.formatRelativeTime
 import com.ember.app.ui.theme.EmberTheme
@@ -161,25 +162,38 @@ fun FriendsScreen(
             }
 
             viewModel.filteredFriends.isEmpty() && viewModel.pendingRequests.isEmpty() -> item(key = "empty") {
+                // Sits right under the search bar rather than pushed down by the generous top
+                // padding a lone line of text used to get — this state carries a real, tappable
+                // invite row now, and floating it far down the page just read as an unexplained
+                // gap. The search-miss case below keeps its own breathing room, since that one
+                // genuinely is a single line.
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 64.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = if (isSearching) 64.dp else 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (isSearching) "No one matches \"${viewModel.searchQuery}\"" else "No friends yet",
-                            fontFamily = typography.body,
-                            fontSize = 13.sp,
-                            color = colors.muted,
-                        )
-                        if (!isSearching) {
+                        if (isSearching) {
                             Text(
-                                text = "Tap + to find people to glow with",
+                                text = "No one matches \"${viewModel.searchQuery}\"",
+                                fontFamily = typography.body,
+                                fontSize = 13.sp,
+                                color = colors.muted,
+                            )
+                        }
+                        if (!isSearching) {
+                            // Same invite row Find People's own idle state shows — genuinely
+                            // zero friends (not just a search filter with no matches) is exactly
+                            // the moment someone worth inviting might not be on Emigo yet either.
+                            // No separate "No friends yet" line above it any more — the invite
+                            // row already makes that obvious on its own.
+                            Text(
+                                text = "Not on Emigo yet? Invite them.",
                                 fontFamily = typography.body,
                                 fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
                                 color = colors.mutedDim,
-                                modifier = Modifier.padding(top = 4.dp),
                             )
+                            InviteFriendsRow(modifier = Modifier.padding(top = 14.dp))
                         }
                     }
                 }

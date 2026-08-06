@@ -42,11 +42,26 @@ enum class ThemeKey(val displayName: String, val locked: Boolean) {
     AURORA("Aurora", locked = true),
     CYBER("Cyber", locked = true),
     BOTANICA("Botanica", locked = true),
-    CITRUS("Citrus", locked = true),
+    // Free, and the app's default (see [ThemeKey.DEFAULT]) — moved out of Gold deliberately, not
+    // an oversight: the theme every new account actually opens the app in can't be one they're
+    // locked out of.
+    CITRUS("Citrus", locked = false),
     // Added directly against a user-supplied accent color (#A9D7FF, a pale icy blue) rather than
     // from the ember-complete-app.jsx reference this enum's own doc comment describes — not in
     // that file, a deliberate one-off addition.
     FROST("Frost", locked = true),
+    ;
+
+    companion object {
+        /** The one place the app's default theme is decided — every fallback that needs "whatever
+         * a brand-new account, a signed-out device, or a lapsed subscription should land on" reads
+         * this rather than naming a theme itself (see ThemePreferenceStore's own two fallbacks and
+         * ThemeViewModel's lapsed-Gold/reset paths). Changing the default is this one line.
+         *
+         * Must always be an unlocked theme — a locked default would be immediately overridden by
+         * ThemeViewModel's own lapsed-subscription guard, which falls back to exactly this value. */
+        val DEFAULT = CITRUS
+    }
 }
 
 /** Mirrors the JSX theme's `bg` CSS gradient string, resolved lazily against draw size. Its
@@ -455,7 +470,7 @@ fun emberThemeDefinition(key: ThemeKey): EmberThemeDefinition = when (key) {
 }
 
 private val LocalEmberThemeDefinition: ProvidableCompositionLocal<EmberThemeDefinition> =
-    staticCompositionLocalOf { noirDefinition }
+    staticCompositionLocalOf { emberThemeDefinition(ThemeKey.DEFAULT) }
 
 /** Pulls colors/fonts from the single active theme, the same way MaterialTheme.colorScheme does. */
 object EmberTheme {
