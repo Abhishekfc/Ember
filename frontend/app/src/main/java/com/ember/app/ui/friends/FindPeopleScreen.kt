@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ember.app.data.remote.dto.FriendSearchResultDto
+import com.ember.app.ui.components.InviteFriendsRow
 import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.theme.EmberTheme
@@ -125,12 +126,10 @@ fun FindPeopleScreen(
                     color = colors.muted,
                 )
 
-                !isActiveSearch -> Text(
-                    text = "Search for friends by name or username.",
-                    fontFamily = typography.body,
-                    fontSize = 13.sp,
-                    color = colors.muted,
-                )
+                // Shown immediately, before any search — not tied to a failed/empty search
+                // result. Disappears the moment a query starts (isActiveSearch), same as the old
+                // plain hint text this replaced.
+                !isActiveSearch -> FindPeopleNoResults()
 
                 viewModel.results.isEmpty() -> Text(
                     text = "No one found.",
@@ -239,5 +238,34 @@ private fun FindPeopleRow(
                 )
             }
         }
+    }
+}
+
+/** This screen's default, idle state (shown immediately on open, before any query is typed —
+ * see this composable's own call site) — the invite option is front and center rather than
+ * hidden behind a failed search, since not everyone worth inviting is on Ember yet to be found
+ * by one. See [InviteFriendsRow] for the shared invite row itself (also used by Friends' own
+ * "no friends yet" state). */
+@Composable
+private fun FindPeopleNoResults() {
+    val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Search for friends by name or username.",
+            fontFamily = typography.body,
+            fontSize = 13.sp,
+            color = colors.muted,
+        )
+        Text(
+            text = "Not on Emigo yet? Invite them.",
+            fontFamily = PublicSansFontFamily,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = colors.mutedDim,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        InviteFriendsRow(modifier = Modifier.padding(top = 20.dp))
     }
 }

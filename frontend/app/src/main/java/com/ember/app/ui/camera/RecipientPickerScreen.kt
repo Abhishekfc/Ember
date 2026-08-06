@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.RecipientListDto
+import com.ember.app.ui.components.InviteFriendsRow
 import com.ember.app.ui.components.NestedScreenHeader
 import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.profile.EditDialogShell
@@ -152,13 +153,28 @@ fun RecipientPickerScreen(
                     CircularProgressIndicator(color = colors.glow)
                 }
 
-                viewModel.friends.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "Add friends first to send them photos.",
-                        fontFamily = PublicSansFontFamily,
-                        fontSize = 13.sp,
-                        color = colors.muted,
-                    )
+                // TopCenter, not Center — vertically centering this in the whole remaining screen
+                // left a large unexplained gap above it now that it carries a real, tappable
+                // invite row rather than one line of text.
+                viewModel.friends.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Add friends first to send them photos.",
+                            fontFamily = PublicSansFontFamily,
+                            fontSize = 13.sp,
+                            color = colors.muted,
+                        )
+                        // Same invite row Find People/Friends' own empty states show.
+                        Text(
+                            text = "Not on Emigo yet? Invite them.",
+                            fontFamily = PublicSansFontFamily,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.mutedDim,
+                            modifier = Modifier.padding(top = 18.dp),
+                        )
+                        InviteFriendsRow(modifier = Modifier.padding(top = 14.dp))
+                    }
                 }
 
                 // A saved list can end up empty (every member since unfriended) without the

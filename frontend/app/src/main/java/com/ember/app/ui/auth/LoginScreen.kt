@@ -436,7 +436,7 @@ private fun AvailableTickIcon(modifier: Modifier = Modifier) {
 /** One app the invite can be sent through. [packageName] is what makes the row open that app
  * directly instead of the system chooser, and also what its real launcher icon is read from;
  * null means "let the user pick" and falls back to [fallbackIcon]. */
-private data class InviteTarget(
+internal data class InviteTarget(
     val label: String,
     val fallbackIcon: androidx.compose.ui.graphics.vector.ImageVector,
     val packageName: String?,
@@ -451,7 +451,7 @@ private data class InviteTarget(
  * to a plain glyph.
  */
 @Composable
-private fun rememberAppIcon(packageName: String?): ImageBitmap? {
+internal fun rememberAppIcon(packageName: String?): ImageBitmap? {
     val context = LocalContext.current
     return remember(packageName) {
         if (packageName == null) {
@@ -465,7 +465,7 @@ private fun rememberAppIcon(packageName: String?): ImageBitmap? {
 /** Fires a plain text share at [packageName] specifically, falling back to the system chooser
  * whenever that app isn't installed — targeting a package that isn't there throws, and an invite
  * button that does nothing is worse than one that offers the full share sheet instead. */
-private fun shareInvite(context: android.content.Context, message: String, packageName: String?) {
+internal fun shareInvite(context: android.content.Context, message: String, packageName: String?) {
     val base = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, message)
@@ -490,7 +490,7 @@ private fun shareInvite(context: android.content.Context, message: String, packa
  * gets someone there with the text in hand. Falls back to the normal share sheet if Instagram
  * isn't installed, so the row still does something useful either way.
  */
-private fun openInstagram(context: android.content.Context, deepLink: String, fallbackMessage: String) {
+internal fun openInstagram(context: android.content.Context, deepLink: String, fallbackMessage: String) {
     val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(deepLink)).setPackage("com.instagram.android")
     if (intent.resolveActivity(context.packageManager) != null) {
         context.startActivity(intent)

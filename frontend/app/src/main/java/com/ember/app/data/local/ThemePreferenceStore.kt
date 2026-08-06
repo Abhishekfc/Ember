@@ -26,7 +26,7 @@ class ThemePreferenceStore(private val context: Context) {
     val selectedTheme: Flow<ThemeKey> = context.emberDataStore.data.map { prefs ->
         prefs[themeKeyPref]?.let { stored ->
             runCatching { ThemeKey.valueOf(stored) }.getOrNull()
-        } ?: ThemeKey.EMBER
+        } ?: ThemeKey.DEFAULT
     }
 
     suspend fun currentTheme(): ThemeKey = selectedTheme.first()
@@ -38,7 +38,7 @@ class ThemePreferenceStore(private val context: Context) {
     fun lastEffectiveThemeSync(): ThemeKey =
         syncPrefs.getString(syncThemeKeyPref, null)
             ?.let { runCatching { ThemeKey.valueOf(it) }.getOrNull() }
-            ?: ThemeKey.EMBER
+            ?: ThemeKey.DEFAULT
 
     fun saveEffectiveThemeSync(themeKey: ThemeKey) {
         syncPrefs.edit().putString(syncThemeKeyPref, themeKey.name).apply()

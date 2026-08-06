@@ -50,7 +50,7 @@ class ThemeViewModel(
             isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
             // A theme saved while subscribed shouldn't keep applying for free forever once that
             // subscription lapses.
-            val effective = if (persisted.locked && !isGoldMember) ThemeKey.EMBER else persisted
+            val effective = if (persisted.locked && !isGoldMember) ThemeKey.DEFAULT else persisted
             selectedTheme = effective
             store.saveEffectiveThemeSync(effective)
         }
@@ -64,7 +64,7 @@ class ThemeViewModel(
      * applying — correctly cleared on disk, but still showing on screen — until the process was
      * killed and relaunched from scratch. */
     fun reset() {
-        selectedTheme = ThemeKey.EMBER
+        selectedTheme = ThemeKey.DEFAULT
         isGoldMember = false
     }
 
