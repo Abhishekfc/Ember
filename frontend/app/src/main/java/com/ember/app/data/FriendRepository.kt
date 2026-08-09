@@ -13,6 +13,12 @@ import com.ember.app.data.remote.dto.RecipientListDto
 import kotlinx.serialization.json.Json
 import retrofit2.Response
 
+/** A generously high ceiling for "give me every friend," not a real pagination page size — just
+ * far above any real user's friend count. Shared by every call site that needs the whole list at
+ * once (Camera's recipient picker, Home's own friend-avatar photo lookup) rather than each one
+ * hand-picking its own number. */
+const val ALL_FRIENDS_LIMIT = 500
+
 class FriendRepository(private val api: EmberApi) {
     private val json = Json { ignoreUnknownKeys = true }
 

@@ -16,17 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.rounded.Article
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Feedback
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.NotificationsNone
-import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Switch
@@ -42,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -168,7 +158,6 @@ fun SettingsScreen(
 
         item(key = "gold") {
             FlatSettingsRow(
-                icon = Icons.Rounded.AutoAwesome,
                 label = "Emigo Gold",
                 badge = if (isGoldMember) "Gold" else "Free",
                 onClick = onGoldClick,
@@ -189,7 +178,6 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SettingsIconBadge(Icons.Rounded.NotificationsNone)
                 Text(
                     text = "Notifications",
                     fontFamily = PublicSansFontFamily,
@@ -218,39 +206,39 @@ fun SettingsScreen(
             }
         }
         item(key = "appearance") {
-            FlatSettingsRow(Icons.Rounded.Palette, "Appearance", currentTheme.displayName, onThemeClick)
+            FlatSettingsRow("Appearance", currentTheme.displayName, onThemeClick)
         }
         item(key = "widget") {
             // widgetBadge reads "Anyone" (the default every account starts with) or a friend
             // count once a Gold subscriber has chosen who to feature — see WidgetSettingsScreen,
             // which is where choosing anyone at all is actually gated.
-            FlatSettingsRow(Icons.Rounded.Widgets, "Widget", widgetBadge, onWidgetClick)
+            FlatSettingsRow("Widget", widgetBadge, onWidgetClick)
         }
 
         item(key = "privacy-header") {
             SectionLabel(text = "Privacy", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
         }
         item(key = "blocked") {
-            FlatSettingsRow(Icons.Rounded.Block, "Blocked accounts", null, onBlockedUsersClick)
+            FlatSettingsRow("Blocked accounts", null, onBlockedUsersClick)
         }
 
         item(key = "support-header") {
             SectionLabel(text = "Support", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
         }
         item(key = "help") {
-            FlatSettingsRow(Icons.AutoMirrored.Rounded.HelpOutline, "Help & support", null, { openSupportEmail(context, "Emigo support") })
+            FlatSettingsRow("Help & support", null, { openSupportEmail(context, "Emigo support") })
         }
         item(key = "feedback") {
-            FlatSettingsRow(Icons.Rounded.Feedback, "Send feedback", null, { openSupportEmail(context, "Emigo feedback") })
+            FlatSettingsRow("Send feedback", null, { openSupportEmail(context, "Emigo feedback") })
         }
         item(key = "about") {
-            FlatSettingsRow(Icons.Rounded.Article, "About Emigo", versionName, null)
+            FlatSettingsRow("About Emigo", versionName, null)
         }
 
         item(key = "other") {
             // Deliberately generic — what's actually inside (Delete account) isn't named here at
             // all, so it's not sitting in front of the user every time this screen opens.
-            FlatSettingsRow(Icons.Rounded.MoreHoriz, "Other", null, onOtherClick)
+            FlatSettingsRow("Other", null, onOtherClick)
         }
 
         item(key = "logout") {
@@ -282,21 +270,8 @@ fun SettingsScreen(
     }
 }
 
-/** Small tinted circle behind every row's leading icon — one consistent, quiet touch of the
- * theme's own accent color instead of a plain grey glyph floating on its own, without needing a
- * card behind the whole row to read as "considered." Reused verbatim by every row so the accent
- * stays the same weight everywhere, rather than any one row reading as more important than its
- * neighbor purely because of its color. */
-@Composable
-private fun SettingsIconBadge(icon: ImageVector) {
-    val colors = EmberTheme.colors
-    // No background circle behind the icon any more — plain tinted glyph only.
-    Icon(icon, contentDescription = null, tint = colors.glow, modifier = Modifier.size(20.dp))
-}
-
 @Composable
 private fun FlatSettingsRow(
-    icon: ImageVector,
     label: String,
     badge: String?,
     onClick: (() -> Unit)?,
@@ -311,14 +286,13 @@ private fun FlatSettingsRow(
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SettingsIconBadge(icon)
         Text(
             text = label,
             fontFamily = PublicSansFontFamily,
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
             color = colors.cream,
-            modifier = Modifier.padding(start = 14.dp).weight(1f),
+            modifier = Modifier.weight(1f),
         )
         if (badge != null) {
             Text(text = badge, fontFamily = PublicSansFontFamily, fontSize = 12.sp, color = colors.mutedDim)

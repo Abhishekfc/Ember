@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.ember.app.ui.theme.EmberTheme
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -71,7 +72,7 @@ fun TabScreenScaffold(
     trailing: @Composable (BoxScope.() -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
-    contentPadding: PaddingValues = PaddingValues(start = 20.dp, end = 20.dp, bottom = 110.dp),
+    contentPadding: PaddingValues = PaddingValues(start = 20.dp, end = 20.dp, bottom = LocalNavDockHeight.current + 24.dp),
     listState: LazyListState = rememberLazyListState(),
     content: LazyListScope.() -> Unit,
 ) {
@@ -119,11 +120,17 @@ fun TabScreenScaffold(
                             CircularProgressIndicator(
                                 color = Color.White,
                                 strokeWidth = 2.dp,
+                                // Below the content in draw order (PullToRefreshBox otherwise
+                                // paints the indicator over the list, so it visibly overlapped the
+                                // top rows instead of looking tucked behind the page) — with this,
+                                // it only shows in the gap the content's own translationY reveals
+                                // as it's pulled down.
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .padding(top = 14.dp)
                                     .size(26.dp)
-                                    .graphicsLayer { alpha = pullOffsetFraction.coerceIn(0f, 1f) },
+                                    .graphicsLayer { alpha = pullOffsetFraction.coerceIn(0f, 1f) }
+                                    .zIndex(-1f),
                             )
                         }
                     },

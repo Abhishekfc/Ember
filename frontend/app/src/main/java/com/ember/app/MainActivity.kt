@@ -73,7 +73,7 @@ import com.ember.app.ui.friends.ProfileSubject
 import com.ember.app.ui.home.HomeScreen
 import com.ember.app.ui.home.HomeViewModel
 import com.ember.app.ui.home.InitialHomeCache
-import com.ember.app.ui.home.MEMORIES_REVEAL_SCROLL_DP
+import com.ember.app.ui.home.MemoriesTabScreen
 import com.ember.app.ui.profile.MyProfileScreen
 import com.ember.app.ui.profile.MyProfileViewModel
 import com.ember.app.ui.settings.BlockedUsersScreen
@@ -106,24 +106,29 @@ import kotlinx.coroutines.tasks.await
  * Profile) rather than from the bottom nav tabs directly. Kept separate from the current page
  * so back navigation can pop just the nested screen without losing which page you were on.
  * Camera is NOT one of these any more — it's a swipeable page of the main pager, same as Home
- * or Friends, not a modal reached from a button. */
-private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS, BLOCKED_USERS, OTHER_SETTINGS, SENT_PHOTOS }
+ * or Friends, not a modal reached from a button. Activity joined this list (rather than staying
+ * a pager page) once it moved out of the bottom nav dock into a bell icon in Home's own header —
+ * see NavDestination's own doc comment for the full reasoning. */
+private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS, BLOCKED_USERS, OTHER_SETTINGS, SENT_PHOTOS, ACTIVITY }
 
 /** The unified pager's page order — left to right, matching the bottom nav's own visual layout
- * (Home, Friends, [Camera in the center], Activity, Settings). Memories is no longer a page of
- * its own — it lives inline inside Home's scrollable content now (below the avatar row, or below
- * the empty-state message), reachable by scrolling down rather than swiping to a separate page. */
-private const val PAGE_HOME = 0
-private const val PAGE_FRIENDS = 1
+ * (Memories, Home, [Camera in the center], Friends, Settings). Home sits immediately next to
+ * Camera on purpose, not at either end: the app opens on Camera (see PAGE_CAMERA below being the
+ * pager's initialPage), and a single swipe away from it needs to land directly on Home, not
+ * Memories — Memories is one swipe further out instead. Activity has no page of its own any more
+ * (see NestedScreen/NavDestination's own doc comments) — swiping past Friends or Settings never
+ * lands on it, the way it briefly could when it was still page 3 here. */
+private const val PAGE_MEMORIES = 0
+private const val PAGE_HOME = 1
 private const val PAGE_CAMERA = 2
-private const val PAGE_ACTIVITY = 3
+private const val PAGE_FRIENDS = 3
 private const val PAGE_SETTINGS = 4
 private const val PAGE_COUNT = 5
 
 private fun pageForDestination(destination: NavDestination): Int = when (destination) {
+    NavDestination.MEMORIES -> PAGE_MEMORIES
     NavDestination.HOME -> PAGE_HOME
     NavDestination.FRIENDS -> PAGE_FRIENDS
-    NavDestination.ACTIVITY -> PAGE_ACTIVITY
     NavDestination.SETTINGS -> PAGE_SETTINGS
 }
 
@@ -131,9 +136,9 @@ private fun pageForDestination(destination: NavDestination): Int = when (destina
  * any tab (its icon fades out entirely near that page instead, see the dock's own alpha
  * graphicsLayer below), so it falls back to Home. */
 private fun destinationForPage(page: Int): NavDestination = when (page) {
+    PAGE_MEMORIES -> NavDestination.MEMORIES
     PAGE_HOME -> NavDestination.HOME
     PAGE_FRIENDS -> NavDestination.FRIENDS
-    PAGE_ACTIVITY -> NavDestination.ACTIVITY
     PAGE_SETTINGS -> NavDestination.SETTINGS
     else -> NavDestination.HOME
 }
@@ -420,12 +425,6 @@ class MainActivity : ComponentActivity() {
                     // across every page, not something each screen renders for itself.
                     var isHomePhotoFocused by remember { mutableStateOf(false) }
 
-                    // Home's own real, measured header height — reported up so CameraScreen can
-                    // size its own header spacer against Home's real layout instead of a separate
-                    // guessed constant that has no way to stay in sync with it. See CameraScreen's
-                    // own call site below.
-                    var homeHeaderHeightPx by remember { mutableStateOf(0f) }
-
                     // Hoisted up from HomeScreen (rather than let it own its own rememberScrollState)
                     // so the nav dock — which lives outside HomeScreen entirely, alongside every
                     // other page — can read Home's live scroll position for the icon-morph below,
@@ -450,11 +449,6 @@ class MainActivity : ComponentActivity() {
                     // bottom to top." Hoisting it here means it's set once, correctly, and never
                     // guessed again for the rest of the session.
                     var navDockHeight by remember { mutableStateOf(FALLBACK_NAV_DOCK_HEIGHT_DP) }
-                    // Same distance HomeScreen's own Memories-grid fade-in uses (see
-                    // MEMORIES_REVEAL_SCROLL_DP there) — shared so the icon finishes morphing
-                    // in lockstep with the grid finishing its fade-in, not two independently
-                    // tuned numbers that could drift out of sync.
-                    val homeIconMorphScrollPx = with(LocalDensity.current) { MEMORIES_REVEAL_SCROLL_DP.dp.toPx() }
 
                     // Hoisted rather than let each tab screen create its own: real-time backdrop
                     // blur needs to set up a GPU render-effect pipeline (shader compile, capture
@@ -487,6 +481,7 @@ class MainActivity : ComponentActivity() {
                                     photoRepository,
                                     networkModule.tokenStore,
                                     userRepository,
+                                    friendRepository,
                                     localListCache,
                                     initialHomeCache,
                                     onFeedLoaded = { items ->
@@ -568,11 +563,12 @@ class MainActivity : ComponentActivity() {
 
                     // Home, Friends, Camera, Activity and Settings are all pages of one
                     // full-screen pager now — not separate conditionally-composed screens, so a
-                    // swipe can move between any of them, not just a tap on the nav dock. Home is
-                    // simply always the first page; there's no "which page" decision to make any
-                    // more now that Memories lives inline inside Home rather than needing its own
-                    // slot in this pager.
-                    val pagerState = rememberPagerState(initialPage = PAGE_HOME) { PAGE_COUNT }
+                    // swipe can move between any of them, not just a tap on the nav dock. Opens on
+                    // Camera (Snapchat/Locket-style: the app's default view is "take a photo," not
+                    // a feed) — Home is one swipe away from it either direction is irrelevant here
+                    // since PAGE_HOME sits immediately adjacent to PAGE_CAMERA either way (see
+                    // PAGE_HOME's own doc comment for why that adjacency is deliberate).
+                    val pagerState = rememberPagerState(initialPage = PAGE_CAMERA) { PAGE_COUNT }
 
                     // The recipient-picker friends fetch (limit=500 — see CameraViewModel's own
                     // comment) only actually needs to happen once the user reaches Camera, not
@@ -608,11 +604,12 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(pagerState.settledPage) {
                         if (pagerState.settledPage != PAGE_HOME) isHomePhotoFocused = false
                     }
-                    // Clears the nav-dock badge dot the moment Activity actually becomes the
-                    // settled page — not on tab tap alone, so a swipe that passes through without
-                    // stopping there doesn't count as having seen it.
-                    LaunchedEffect(pagerState.settledPage) {
-                        if (pagerState.settledPage == PAGE_ACTIVITY) activityViewModel.markSeen()
+                    // Clears the header bell's badge the moment Activity actually becomes the
+                    // shown nested screen — not on the bell tap alone, matching the exact same
+                    // "only counts once it's actually visible" timing this had back when Activity
+                    // was still a pager page keyed on settledPage instead of nestedScreen.
+                    LaunchedEffect(nestedScreen) {
+                        if (nestedScreen == NestedScreen.ACTIVITY) activityViewModel.markSeen()
                     }
                     // cameraViewModel is scoped to this Activity, not recreated per visit —
                     // without discarding here, a capture the user swiped away from (rather than
@@ -724,6 +721,26 @@ class MainActivity : ComponentActivity() {
                         )
 
                         nestedScreen == NestedScreen.GOLD -> EmberGoldScreen(onBack = { nestedScreen = null })
+
+                        // Activity moved here from being pager page PAGE_ACTIVITY — reached via
+                        // the bell icon in Home's own header now (see HomeScreen's onActivityClick)
+                        // rather than a dock tab/swipe. onCameraClick and onNavigateToFriends both
+                        // need to close this nested screen *and* move the pager, the same two-step
+                        // pattern FriendProfileScreen's own onSendPhotoClick already uses — closing
+                        // alone would leave the pager sitting on whatever page it already was on,
+                        // underneath this screen, rather than actually navigating anywhere.
+                        nestedScreen == NestedScreen.ACTIVITY -> ActivityScreen(
+                            viewModel = activityViewModel,
+                            onCameraClick = {
+                                nestedScreen = null
+                                onCameraClick()
+                            },
+                            onNavigateToFriends = {
+                                nestedScreen = null
+                                onNavigate(NavDestination.FRIENDS)
+                            },
+                            hazeState = hazeState,
+                        )
 
                         nestedScreen == NestedScreen.WIDGET_SETTINGS -> {
                             val widgetSettingsViewModel: WidgetSettingsViewModel = viewModel(
@@ -933,18 +950,26 @@ class MainActivity : ComponentActivity() {
                                     ),
                                 ) { page ->
                                     when (page) {
+                                        PAGE_MEMORIES -> MemoriesTabScreen(
+                                            viewModel = homeViewModel,
+                                            onCameraClick = onCameraClick,
+                                            hazeState = hazeState,
+                                        )
+
                                         PAGE_HOME -> HomeScreen(
                                             viewModel = homeViewModel,
                                             onCameraClick = onCameraClick,
                                             onAddFriendClick = { nestedScreen = NestedScreen.FIND_PEOPLE },
                                             onProfileClick = { nestedScreen = NestedScreen.PROFILE },
+                                            onActivityClick = { nestedScreen = NestedScreen.ACTIVITY },
+                                            activityBadgeCount = activityViewModel.newActivityCount,
                                             hazeState = hazeState,
                                             isPhotoFocused = isHomePhotoFocused,
                                             onToggleFocus = { isHomePhotoFocused = !isHomePhotoFocused },
                                             onDismissFocus = { isHomePhotoFocused = false },
                                             scrollState = homeScrollState,
                                             isActive = pagerState.settledPage == PAGE_HOME,
-                                            onHeaderHeightChanged = { homeHeaderHeightPx = it },
+                                            hasSharedRecently = cameraViewModel.lastSentPhotoUrl != null,
                                         )
 
                                         PAGE_FRIENDS -> FriendsScreen(
@@ -983,14 +1008,6 @@ class MainActivity : ComponentActivity() {
                                                 homeViewModel.loadFeed()
                                                 homeViewModel.loadMemories()
                                             },
-                                            homeHeaderHeightPx = homeHeaderHeightPx,
-                                        )
-
-                                        PAGE_ACTIVITY -> ActivityScreen(
-                                            viewModel = activityViewModel,
-                                            onCameraClick = onCameraClick,
-                                            onNavigateToFriends = { onNavigate(NavDestination.FRIENDS) },
-                                            hazeState = hazeState,
                                         )
 
                                         else -> {
@@ -1030,24 +1047,6 @@ class MainActivity : ComponentActivity() {
                                     onNavigate = onNavigate,
                                     onCameraClick = onCameraClick,
                                     friendsBadgeCount = friendsViewModel.pendingRequests.size,
-                                    activityBadgeCount = activityViewModel.newActivityCount,
-                                    // 0 = fully on Home (top of the scroll), 1 = fully on
-                                    // Memories — driven by how far Home has been scrolled now,
-                                    // not swipe position between two pages. Reads pagerState and
-                                    // homeScrollState lazily (not as plain vals above) so these
-                                    // continuously-changing values never force the scope
-                                    // containing the pager itself to recompose on every scroll
-                                    // frame; see BottomNavDock's own doc comment on this
-                                    // parameter for why that matters. Any page other than Home
-                                    // stays flatly at 0 (plain Home icon) — there's nothing to
-                                    // morph towards there any more.
-                                    homeIconProgress = {
-                                        if (pagerState.currentPage == PAGE_HOME) {
-                                            (homeScrollState.value / homeIconMorphScrollPx).coerceIn(0f, 1f)
-                                        } else {
-                                            0f
-                                        }
-                                    },
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
                                         // Fades the whole dock out near the Camera page (its own

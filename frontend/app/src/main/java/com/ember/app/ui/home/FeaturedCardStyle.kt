@@ -44,7 +44,7 @@ fun rememberFocusFade(active: Boolean): State<Float> = animateFloatAsState(
  * `DayFeaturedOverlay` reserves on either side when it centers itself against the full screen. */
 internal const val FEATURED_CARD_ASPECT_RATIO = 0.8f
 internal val FEATURED_CARD_CORNER_RADIUS = 30.dp
-internal val FEATURED_CARD_SIDE_PADDING = 22.dp
+internal val FEATURED_CARD_SIDE_PADDING = 18.dp
 
 /** The per-friend photo-count segments along the top of the featured card — sized at
  * [FEATURED_CARD_DOT_WIDTH] each as long as they all fit within the card's own
@@ -54,3 +54,17 @@ internal val FEATURED_CARD_SIDE_PADDING = 22.dp
 internal val FEATURED_CARD_DOT_WIDTH = 16.dp
 internal val FEATURED_CARD_DOT_SPACING = 4.dp
 internal val FEATURED_CARD_DOT_MIN_WIDTH = 3.dp
+
+/** The fixed gap above the featured card's own top edge. Deliberately a plain constant rather
+ * than a share of whatever vertical space happens to be left over: a leftover-derived gap (two
+ * `weight(1f)` spacers around the card, which is what this replaced) is large on a tall phone and
+ * collapses to nothing on a short one, so the same screen reads differently per device. Fixed
+ * here, the gap is identical everywhere and the *card* absorbs the difference instead — see the
+ * card's own `weight(1f, fill = false)` at its call site in HomeScreen. */
+internal val FEATURED_CARD_TOP_GAP = 28.dp
+
+/** The gaps around the friend avatar row beneath the card, kept as plain constants for the same
+ * reason as [FEATURED_CARD_TOP_GAP] — every fixed element in that fold keeps its exact spacing on
+ * every device, and only the card flexes. */
+internal val AVATAR_ROW_TOP_GAP = 34.dp
+internal val AVATAR_ROW_BOTTOM_GAP = 12.dp
