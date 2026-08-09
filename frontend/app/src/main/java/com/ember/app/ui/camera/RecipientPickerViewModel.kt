@@ -5,15 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ember.app.data.ALL_FRIENDS_LIMIT
 import com.ember.app.data.FriendRepository
 import com.ember.app.data.local.LocalListCache
 import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.RecipientListDto
 import kotlinx.coroutines.launch
-
-/** A generously high ceiling for "give me every friend to choose a recipient from" — not a real
- * pagination page size, just far above any real user's friend count. */
-private const val RECIPIENT_PICKER_FRIENDS_LIMIT = 500
 
 class RecipientPickerViewModel(
     private val repository: FriendRepository,
@@ -106,7 +103,7 @@ class RecipientPickerViewModel(
         viewModelScope.launch {
             isLoading = true
             errorMessage = null
-            repository.getFriends(limit = RECIPIENT_PICKER_FRIENDS_LIMIT).fold(
+            repository.getFriends(limit = ALL_FRIENDS_LIMIT).fold(
                 onSuccess = { page -> friends = page.items },
                 // A failed refresh must not wipe out whatever the cache (or a previous successful
                 // fetch this session) already populated — only the error banner reflects it.

@@ -31,18 +31,21 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -75,6 +78,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -117,8 +121,14 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.ember.app.R
 import com.ember.app.data.remote.dto.FriendSummaryDto
+import com.ember.app.ui.components.LocalNavDockHeight
 import com.ember.app.ui.components.emberButtonBrush
 import com.ember.app.ui.home.FEATURED_CARD_ASPECT_RATIO
+import com.ember.app.ui.home.FEATURED_CARD_SIDE_PADDING
+import com.ember.app.ui.home.FEATURED_CARD_TOP_GAP
+import com.ember.app.ui.home.AVATAR_ROW_TOP_GAP
+import com.ember.app.ui.home.HomeHeaderHeightTwin
+import com.ember.app.ui.home.SharePromptHeightTwin
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -136,21 +146,16 @@ fun CameraScreen(
     onUpgradeToGold: () -> Unit,
     onOpenSentPhotos: () -> Unit,
     onSent: () -> Unit,
-    // Home's own real, measured header height (see HomeScreen's onHeaderHeightChanged) — used
-    // below to size this screen's own header spacer so the camera card lands at exactly the same
-    // absolute Y position on screen as Home's featured card, rather than a separately-guessed
-    // constant that had no way to track Home's real layout and drifted out of alignment.
-    homeHeaderHeightPx: Float,
 ) {
     val colors = EmberTheme.colors
     val context = LocalContext.current
     val density = LocalDensity.current
     var screenSize by remember { mutableStateOf(Size.Zero) }
+    // This screen's own header row real height — measured the same way Home measures its own,
+    // so the fold below can be bounded by the real remaining space rather than a guess.
+    var headerHeightPx by remember { mutableStateOf(0f) }
     val cardShape = RoundedCornerShape(30.dp)
     val captured = viewModel.capturedFile
-
-    // This screen's own header row real height — measured the same way, not guessed either.
-    var headerRowHeightPx by remember { mutableStateOf(0f) }
 
     // Reviewing a shot? Back retakes instead of leaving the camera.
     BackHandler(enabled = captured != null) { viewModel.discardCapture() }
@@ -171,145 +176,191 @@ fun CameraScreen(
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize)),
     ) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Box(
-                modifier = Modifier
-                    // Must come before fillMaxWidth()/padding() below, not after — see this
-                    // screen's own Spacer further down for why: reporting this Box's *total*
-                    // height (26dp top padding included) is what lets that spacer be computed
-                    // instead of guessed.
-                    .onGloballyPositioned { headerRowHeightPx = it.size.height.toFloat() }
-                    .fillMaxWidth()
-                    .padding(top = 26.dp, start = 22.dp, end = 22.dp),
-            ) {
-                // Real faces, not a text label — who this is going to should be something you
-                // can recognize at a glance, not something you have to read and parse. This is
-                // the *only* recipient control on screen (live and post-capture both). Centered
-                // (a Box, not a SpaceBetween Row pinning it to the left edge) and deliberately
-                // compact rather than stretched wide, leaving both corners genuinely free for
-                // whatever else eventually lands there — the send-status pill on the right today,
-                // more later.
-                //
-                // No close button any more — Camera is a page of the main pager (swipe to Home
-                // like any other tab), not a modal screen that needs its own explicit exit, and
-                // discarding an abandoned capture on the way out is now handled automatically
-                // (see MainActivity's own settledPage effect) rather than needing this button to
-                // be tapped for it to happen.
-                Row(
+            // No .navigationBarsPadding() here — LocalNavDockHeight below already includes the
+            // real system nav-bar inset (see HomeScreen's own identical comment on its dock
+            // reserve), so adding this too would double-count it and throw off topFoldMaxHeightDp.
+            Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            // An overlay Box, not a sequential Column item — sizes itself to its tallest child.
+            // This screen's own header row below is deliberately tuned (its own top padding, see
+            // its own comment) to measure to the exact same real height as the invisible twin —
+            // matching Home's real, unmodified header height, rather than the other way around
+            // (Home's own header staying near the status bar matters more than this row's own
+            // top padding, which no one but this screen ever sees).
+            Box(modifier = Modifier.onGloballyPositioned { headerHeightPx = it.size.height.toFloat() }) {
+                // Invisible structural twin of Home's own header block — see its own doc comment
+                // in HomeScreen.kt. Its natural height (unaffected by alpha, which is a draw-time
+                // property, not a layout one) is what reserves the identical vertical space Home's
+                // real header occupies, computed entirely locally rather than read back from
+                // Home's own live render — the previous approach, and the actual source of the
+                // card jumping: Camera is the app's own opening page, so the very first frame ever
+                // read that value back as zero, then jumped once Home was finally visited for the
+                // first time and reported its real height.
+                Box(modifier = Modifier.alpha(0f)) { HomeHeaderHeightTwin() }
+
+                Box(
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(percent = 50))
-                        .clickable(onClick = onOpenRecipientPicker)
-                        .padding(start = 12.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        // matchParentSize(), not fillMaxWidth() plus a hand-tuned top padding:
+                        // this measures against the invisible twin's already-decided size instead
+                        // of contributing to it, so this row physically cannot make the header
+                        // taller than Home's however its own contents change. The previous version
+                        // added 6dp on top of a 54dp chip for a 60dp total, tuned to a Home header
+                        // that was 60dp at the time — Home's is 44dp since its header icons were
+                        // resized, and nothing tied the two numbers together, so Camera's whole
+                        // card silently sat ~16dp lower than Home's from that point on. The twin
+                        // is now the single source of this height, the same way it already is for
+                        // the space above it.
+                        .matchParentSize()
+                        .padding(start = 22.dp, end = 22.dp),
                 ) {
-                    RecipientAvatarStack(friends = viewModel.selectedFriends, size = 34.dp, ringColor = colors.panel)
-                    if (viewModel.hasPinnedSelected) {
+                    // Real faces, not a text label — who this is going to should be something you
+                    // can recognize at a glance, not something you have to read and parse. This is
+                    // the *only* recipient control on screen (live and post-capture both). Centered
+                    // (a Box, not a SpaceBetween Row pinning it to the left edge) and deliberately
+                    // compact rather than stretched wide, leaving both corners genuinely free for
+                    // whatever else eventually lands there — the send-status pill on the right today,
+                    // more later.
+                    //
+                    // No close button any more — Camera is a page of the main pager (swipe to Home
+                    // like any other tab), not a modal screen that needs its own explicit exit, and
+                    // discarding an abandoned capture on the way out is now handled automatically
+                    // (see MainActivity's own settledPage effect) rather than needing this button to
+                    // be tapped for it to happen.
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(percent = 50))
+                            .clickable(onClick = onOpenRecipientPicker)
+                            // 5dp vertical, not 10 — with the 34dp avatar stack this makes the
+                            // pill 44dp, which fits inside the header height the twin above
+                            // defines. At 10dp it was 54dp and overflowed that slot now that
+                            // matchParentSize() no longer lets it stretch the row to fit itself.
+                            .padding(start = 12.dp, end = 20.dp, top = 5.dp, bottom = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RecipientAvatarStack(friends = viewModel.selectedFriends, size = 34.dp, ringColor = colors.panel)
+                        if (viewModel.hasPinnedSelected) {
+                            Icon(
+                                Icons.Rounded.PushPin,
+                                contentDescription = null,
+                                tint = colors.glow,
+                                modifier = Modifier.padding(start = 9.dp).size(14.dp),
+                            )
+                        }
+                        Text(
+                            text = viewModel.recipientLabel,
+                            fontFamily = PublicSansFontFamily,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(start = 9.dp),
+                        )
                         Icon(
-                            Icons.Rounded.PushPin,
+                            Icons.Rounded.ChevronRight,
                             contentDescription = null,
-                            tint = colors.glow,
-                            modifier = Modifier.padding(start = 9.dp).size(14.dp),
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(start = 3.dp).size(18.dp),
                         )
                     }
-                    Text(
-                        text = viewModel.recipientLabel,
-                        fontFamily = PublicSansFontFamily,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(start = 9.dp),
+
+                    // Always present (unlike the bookmark button, which only appears once reviewing
+                    // a capture) — this opens a screen of *past* sends, independent of whatever's
+                    // currently being framed or reviewed.
+                    OutboxButton(
+                        sendAnimState = viewModel.sendAnimState,
+                        lastSentPhotoUrl = viewModel.lastSentPhotoUrl,
+                        onClick = onOpenSentPhotos,
+                        modifier = Modifier.align(Alignment.CenterStart),
                     )
-                    Icon(
-                        Icons.Rounded.ChevronRight,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(start = 3.dp).size(18.dp),
-                    )
-                }
 
-                // Always present (unlike the bookmark button, which only appears once reviewing
-                // a capture) — this opens a screen of *past* sends, independent of whatever's
-                // currently being framed or reviewed.
-                OutboxButton(
-                    sendAnimState = viewModel.sendAnimState,
-                    lastSentPhotoUrl = viewModel.lastSentPhotoUrl,
-                    onClick = onOpenSentPhotos,
-                    modifier = Modifier.align(Alignment.CenterStart),
-                )
-
-                if (captured != null) {
-                    SaveToMemoriesButton(
-                        viewModel = viewModel,
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    )
-                }
-            }
-
-            // Home's card sits below three stacked header lines (wordmark, greeting, date);
-            // this screen's header is a single row, so matching just the "18dp after header"
-            // padding below isn't enough on its own — this spacer makes up the *real* difference
-            // between Home's real measured header height and this screen's own real measured
-            // header row height (both computed above), so the card lands at exactly the same
-            // absolute position on screen as Home's does and feels like the same card carrying
-            // through both screens. A fixed dp guess lived here before — it was calibrated once
-            // and had no way to track Home's header height actually changing (a connection-error
-            // line wrapping, a longer name, font scale), so it silently drifted out of alignment.
-            Spacer(modifier = Modifier.height(with(density) { (homeHeaderHeightPx - headerRowHeightPx).coerceAtLeast(0f).toDp() }))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp, start = 22.dp, end = 22.dp)
-                    .aspectRatio(0.8f)
-                    .clip(cardShape)
-                    .background(Color.Black),
-            ) {
-                // Plain, instant swap — no fade. A Crossfade here was tried (twice: first keyed
-                // on a boolean that re-read viewModel.capturedFile live inside the lambda, which
-                // crashed the app on retake — both the outgoing and incoming slots saw the same
-                // already-null value and both tried to mount LiveCameraStage at once, and two
-                // AndroidViews can't share CameraSession's one singleton PreviewView; then keyed
-                // on the File? itself instead, which fixed the crash but meant an instant-preview
-                // snapshot silently getting replaced by the real photo triggered a second fade
-                // through this Box's black background, reading as a flicker) and explicitly
-                // rejected both times — no animation, no intermediate frame, just the real photo
-                // the moment it's ready.
-                if (captured != null) {
-                    CapturedPreview(viewModel = viewModel, file = captured)
-                } else {
-                    LiveCameraStage()
-                }
-            }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
-            ) {
-                Crossfade(targetState = captured != null, animationSpec = tween(220), label = "cameraControlsStage") { isReviewing ->
-                    if (isReviewing) {
-                        PreviewControls(viewModel = viewModel, onSent = onSent)
-                    } else {
-                        CaptureControls(
+                    if (captured != null) {
+                        SaveToMemoriesButton(
                             viewModel = viewModel,
-                            onPickFromGallery = {
-                                viewModel.onGalleryClick {
-                                    galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                }
-                            },
+                            modifier = Modifier.align(Alignment.CenterEnd),
                         )
                     }
                 }
+            }
 
-                if (viewModel.errorMessage != null) {
-                    Text(
-                        text = viewModel.errorMessage.orEmpty(),
-                        fontFamily = PublicSansFontFamily,
-                        fontSize = 12.sp,
-                        color = colors.glow2,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 14.dp, start = 24.dp, end = 24.dp),
-                    )
+            // Bounds the card+controls pair to the real remaining space below the header —
+            // screenSize, minus the real measured status bar inset, minus this screen's own real
+            // measured header height, minus the dock's real reserve (LocalNavDockHeight, the same
+            // value HomeScreen's own topFoldMaxHeightDp subtracts) — rather than the entire rest
+            // of this Column, which is what actually caused the card to land far lower than
+            // Home's own: without the dock subtraction, this "remaining space" ran all the way to
+            // the true bottom of the screen (the dock is invisible on this page, but still real
+            // estate HomeScreen's own version of this same math excludes). Gated on both real
+            // measurements being in yet, same as HomeScreen, to avoid a wrong-then-corrected flash.
+            if (screenSize != Size.Zero && headerHeightPx > 0f) {
+                val statusBarPx = WindowInsets.statusBars.getTop(density)
+                val navDockHeightPx = with(density) { LocalNavDockHeight.current.toPx() }
+                val topFoldMaxHeightDp = with(density) {
+                    (screenSize.height - statusBarPx - headerHeightPx - navDockHeightPx).toDp()
+                }
+                Column(modifier = Modifier.fillMaxWidth().heightIn(max = topFoldMaxHeightDp)) {
+                    // Home has a SharePromptRow between its header and its card; this screen has
+                    // nothing there. That one row was the entire reason Camera's card sat higher
+                    // than Home's even though both already reserved a matching header height —
+                    // so reserve it here too, the same invisible-twin way the header itself is
+                    // handled above rather than by copying a dp number that would silently drift.
+                    Box(modifier = Modifier.alpha(0f)) { SharePromptHeightTwin() }
+
+                    // Fixed gap, then the card — mirroring HomeScreen's own fold exactly. Both
+                    // screens previously split their leftover space with weight(1f) spacers, which
+                    // made every gap device-dependent (large on a tall phone, collapsed on a short
+                    // one) and put the two screens' cards at different heights whenever their
+                    // leftover differed. A constant on both sides is what actually pins the card to
+                    // the same absolute position on each.
+                    Spacer(modifier = Modifier.height(FEATURED_CARD_TOP_GAP))
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .align(Alignment.CenterHorizontally)
+                            .padding(start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING)
+                            .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
+                            .clip(cardShape)
+                            .background(Color.Black),
+                    ) {
+                        // Plain, instant swap — no fade. A Crossfade here was tried (twice: first
+                        // keyed on a boolean that re-read viewModel.capturedFile live inside the
+                        // lambda, which crashed the app on retake — both the outgoing and incoming
+                        // slots saw the same already-null value and both tried to mount
+                        // LiveCameraStage at once, and two AndroidViews can't share CameraSession's
+                        // one singleton PreviewView; then keyed on the File? itself instead, which
+                        // fixed the crash but meant an instant-preview snapshot silently getting
+                        // replaced by the real photo triggered a second fade through this Box's
+                        // black background, reading as a flicker) and explicitly rejected both
+                        // times — no animation, no intermediate frame, just the real photo the
+                        // moment it's ready.
+                        if (captured != null) {
+                            CapturedPreview(viewModel = viewModel, file = captured)
+                        } else {
+                            LiveCameraStage()
+                        }
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        // Same gap Home puts between its card and the avatar row directly beneath
+                        // it, so the element following the card starts at a matching offset on
+                        // both screens rather than each picking its own number.
+                        modifier = Modifier.fillMaxWidth().padding(top = AVATAR_ROW_TOP_GAP),
+                    ) {
+                        Crossfade(targetState = captured != null, animationSpec = tween(220), label = "cameraControlsStage") { isReviewing ->
+                            if (isReviewing) {
+                                PreviewControls(viewModel = viewModel, onSent = onSent)
+                            } else {
+                                CaptureControls(
+                                    viewModel = viewModel,
+                                    onPickFromGallery = {
+                                        viewModel.onGalleryClick {
+                                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

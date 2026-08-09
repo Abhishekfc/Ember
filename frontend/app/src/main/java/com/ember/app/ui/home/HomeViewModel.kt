@@ -6,11 +6,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ember.app.data.ALL_FRIENDS_LIMIT
+import com.ember.app.data.FriendRepository
 import com.ember.app.data.PhotoRepository
 import com.ember.app.data.UserRepository
 import com.ember.app.data.local.LocalListCache
 import com.ember.app.data.local.TokenStore
 import com.ember.app.data.remote.dto.FeedItem
+import com.ember.app.data.remote.dto.FriendSummaryDto
 import com.ember.app.data.remote.dto.MemoryPhotoDto
 import com.ember.app.data.remote.dto.UserProfileDto
 import kotlinx.coroutines.flow.first
@@ -24,9 +27,9 @@ import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-/** How far back "previous month" navigation is allowed to go — a plain sanity backstop (not a
- * data-aware limit; see [HomeViewModel.canGoToPreviousMonth]) so an account with zero photos
- * ever can't be clicked back through decades of guaranteed-empty months. */
+/** How far back [HomeViewModel.loadMemories] fetches when the account's real creation date isn't
+ * known yet — a plain sanity backstop, not a data-aware limit, so a brand-new account isn't left
+ * waiting on that profile fetch just to load its own (empty) history. */
 private const val MEMORIES_HISTORY_LIMIT_YEARS = 5L
 
 // Must match PhotoService.PHOTO_GRACE_PERIOD_HOURS on the backend — see [dropExpiredPhotos] for
@@ -76,6 +79,11 @@ class HomeViewModel(
     private val repository: PhotoRepository,
     private val tokenStore: TokenStore,
     private val userRepository: UserRepository,
+    // Same shared instance (and its own 30s TTL cache) Camera's recipient picker and the Friends
+    // tab already read through — reused here rather than fetched independently, purely to look up
+    // each feed friend's own real profile photo for the avatar row below the card (see
+    // FriendAvatarRow's own call site) instead of duplicating that data or the network call.
+    private val friendRepository: FriendRepository,
     private val localCache: LocalListCache,
     initialCache: InitialHomeCache = InitialHomeCache(),
     // Lets the widget piggyback on the feed loads the app is already doing, rather than
@@ -94,6 +102,13 @@ class HomeViewModel(
     var feedItems by mutableStateOf(dropExpiredPhotos(initialCache.feedItems))
         private set
     var syncedFeedItems by mutableStateOf(dropExpiredPhotos(initialCache.feedItems))
+        private set
+
+    // Purely for FriendAvatarRow's own profile-photo lookup by friendId (see its call site) —
+    // FeedItem itself deliberately doesn't carry this (a friend's real profile photo, versus what
+    // they've actually sent, doesn't belong on a *feed* row). Loaded once via the shared
+    // FriendRepository cache, same as Camera/Friends already do, not refetched on every recompose.
+    var friends by mutableStateOf<List<FriendSummaryDto>>(emptyList())
         private set
 
     // Set once the very first real fetch (not the synchronous cache hydration at construction)
@@ -115,121 +130,31 @@ class HomeViewModel(
             return syncedFeedItems.any { item -> item.photos.any { it.photoId !in knownPhotoIds } }
         }
 
-    /** One calendar month's worth of this user's own sent photos, keyed by month — backs the
-     * Memories grid, which now shows exactly one month at a time (see [selectedMonth]) rather
-     * than an ever-growing scroll through every month at once. Populated lazily: a month is only
-     * ever fetched the first time it's navigated to, then kept here for the rest of the session
-     * so navigating back to an already-visited month is instant, no refetch. Seeded from
-     * [initialCache] by re-grouping its (unpartitioned) cached photos by their own real month,
-     * not dumped wholesale into the current month's bucket — that cache holds whatever the old
-     * single-page fetch last returned, which could span more than one month. */
-    private val memoriesByMonth = mutableStateMapOf<YearMonth, List<MemoryPhotoDto>>().apply {
-        initialCache.memories
-            .mapNotNull { memory ->
-                runCatching { Instant.parse(memory.createdAt).atZone(ZoneId.systemDefault()).toLocalDate() }
-                    .getOrNull()
-                    ?.let { YearMonth.from(it) to memory }
-            }
-            .groupBy({ it.first }, { it.second })
-            .forEach { (month, items) -> put(month, items) }
-    }
-
-    /** Which month the Memories grid currently shows — always starts on the real current month
-     * (never persisted/restored to wherever the user last left off), matching how Home itself
-     * always opens on "now" rather than resuming mid-browse. */
-    var selectedMonth by mutableStateOf(YearMonth.now())
+    /** Every saved Memories photo this account has, newest first — one flat list covering the
+     * account's whole history rather than one calendar month at a time (see [loadMemories]'s own
+     * doc comment for why). Seeded synchronously from [initialCache] so the grid has something to
+     * show before the real fetch lands. */
+    var memories by mutableStateOf(initialCache.memories.sortedByDescending { it.createdAt })
         private set
 
-    /** [selectedMonth]'s photos, or empty while that month hasn't loaded yet (see
-     * [isLoadingSelectedMonth]). The Memories grid always renders this as a complete calendar —
-     * every day of [selectedMonth], empty placeholders included — never just the days that
-     * happen to have a photo, whether or not this is the real current month. */
-    val memories: List<MemoryPhotoDto>
-        get() = memoriesByMonth[selectedMonth] ?: emptyList()
-
-    /** True only while fetching whichever month is currently [selectedMonth] — a month already
-     * in [memoriesByMonth] never sets this, so navigating back to an already-visited month never
-     * flashes a spinner over content that's already there. */
-    var isLoadingSelectedMonth by mutableStateOf(false)
+    /** True only while the very first fetch (or a just-sent-photo refresh) is in flight — see
+     * [loadMemories]. */
+    var isLoadingMemories by mutableStateOf(false)
         private set
 
-    private val monthsCurrentlyLoading = mutableSetOf<YearMonth>()
-
-    /** The month this account was created — the real, correct limit for how far back "previous
-     * month" should go (there's nothing to show before an account existed). Null until the
-     * profile fetch in [init] lands; [canGoToPreviousMonth] falls back to a plain sanity backstop
-     * for that brief window (or if the fetch never succeeds) rather than blocking navigation on
-     * it entirely. */
+    /** The month this account was created — the real start of the range [loadMemories] fetches;
+     * there's nothing to show before it. Null until the profile fetch in [init] lands, in which
+     * case a plain time-based sanity backstop ([MEMORIES_HISTORY_LIMIT_YEARS]) is used instead so
+     * a brand-new account isn't left waiting on that fetch just to load its own (empty) history. */
     private var accountCreatedMonth by mutableStateOf(initialCache.profile?.createdAt?.toYearMonthOrNull())
 
-    /** Never allowed past the real current month — there's nothing to browse in the future. */
-    val canGoToNextMonth: Boolean
-        get() = selectedMonth < YearMonth.now()
-
-    /** Bounded by [accountCreatedMonth] once known — there's genuinely nothing before the month
-     * this account was created, so that's the real, correct limit rather than a guess. Falls back
-     * to a plain time-based sanity backstop ([MEMORIES_HISTORY_LIMIT_YEARS]) only until that
-     * profile fetch lands (or on the off chance it never does), so a zero-photo account can't be
-     * clicked back through decades of guaranteed-empty months in the meantime. */
-    val canGoToPreviousMonth: Boolean
-        get() {
-            val joined = accountCreatedMonth
-            return if (joined != null) selectedMonth > joined else selectedMonth > YearMonth.now().minusYears(MEMORIES_HISTORY_LIMIT_YEARS)
-        }
-
-    fun goToNextMonth() {
-        if (!canGoToNextMonth) return
-        selectedMonth = selectedMonth.plusMonths(1)
-        ensureMonthLoaded(selectedMonth)
-    }
-
-    fun goToPreviousMonth() {
-        if (!canGoToPreviousMonth) return
-        selectedMonth = selectedMonth.minusMonths(1)
-        ensureMonthLoaded(selectedMonth)
-    }
-
-    /** Fetches [month] if it isn't already cached (or already in flight) — the network round
-     * trip that both [goToPreviousMonth]/[goToNextMonth] and the initial [loadMemories] rely on.
-     * Silent on failure, same reasoning as the old loadMoreMemories: a failed background fetch
-     * shouldn't blank whatever's already showing or throw a scary error over it — it just means
-     * that month stays empty (indistinguishable from "really has no photos") until the user
-     * navigates there again. */
-    private fun ensureMonthLoaded(month: YearMonth) {
-        if (month in memoriesByMonth || month in monthsCurrentlyLoading) return
-        monthsCurrentlyLoading += month
-        if (selectedMonth == month) isLoadingSelectedMonth = true
-        viewModelScope.launch {
-            val zone = ZoneId.systemDefault()
-            val start = month.atDay(1).atStartOfDay(zone).toInstant()
-            val end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant()
-            repository.getMemoriesForRange(start, end).onSuccess { items ->
-                memoriesByMonth[month] = items
-                // Only the real current month is what a cold start (before any real fetch has
-                // landed) should show instantly — see InitialHomeCache's own doc comment for why
-                // that hydration has to be synchronous, at construction, rather than awaited here.
-                if (month == YearMonth.now()) {
-                    localCache.write(LocalListCache.KEY_MEMORIES, items)
-                }
-            }
-            monthsCurrentlyLoading -= month
-            if (selectedMonth == month) isLoadingSelectedMonth = false
-        }
-    }
-
     /** Deletes a saved Memories photo for real (see PhotoService.delete on the backend — this
-     * isn't a soft "unsave", the storage is actually freed). Removes it from whichever cached
-     * month it belongs to on success, so the grid reflects it immediately without a full
-     * re-fetch; a failure leaves the cache untouched, matching the same "don't blank what's
-     * already showing" reasoning [ensureMonthLoaded] uses. */
+     * isn't a soft "unsave", the storage is actually freed). Removes it from the in-memory list on
+     * success so the grid reflects it immediately without a full re-fetch; a failure leaves the
+     * list untouched. */
     suspend fun deleteMemoryPhoto(photoId: String): Result<Unit> =
         repository.deletePhoto(photoId).onSuccess {
-            memoriesByMonth.keys.toList().forEach { month ->
-                val current = memoriesByMonth[month] ?: return@forEach
-                if (current.any { it.photoId == photoId }) {
-                    memoriesByMonth[month] = current.filterNot { it.photoId == photoId }
-                }
-            }
+            memories = memories.filterNot { it.photoId == photoId }
         }
 
     /** The signed-in user's display name, for the greeting header. Saved at login, so it can
@@ -386,6 +311,7 @@ class HomeViewModel(
         // the real, fresh fetch, same as it would be on any other load.
         loadFeed()
         loadMemories()
+        viewModelScope.launch { friendRepository.getFriends(limit = ALL_FRIENDS_LIMIT).onSuccess { friends = it.items } }
         viewModelScope.launch { userName = tokenStore.displayName.first() }
         viewModelScope.launch {
             userRepository.getMyProfile().onSuccess { profile ->
@@ -439,30 +365,29 @@ class HomeViewModel(
 
     private var isLoadingMemoriesRefresh = false
 
-    /** Called at init, and again right after a successful send (see MainActivity's `onSent`) so
-     * a just-sent photo shows up in the grid immediately rather than waiting for the next time
-     * Memories happens to be reopened. Always jumps back to the real current month and
-     * force-refetches it — a fresh send or reopen should show the latest state from the top, not
-     * silently stay on whatever past month was last being browsed. Every other cached month is
-     * untouched: a send can only ever add a photo to the current month. */
+    /** Called at init, and again right after a successful send (see MainActivity's `onSent`) so a
+     * just-sent photo shows up in the grid immediately rather than waiting for the next time
+     * Memories happens to be reopened. Always re-fetches the account's *entire* history in one
+     * range — Memories is a single continuous grid now (grouped by recency, see
+     * MemoriesScreen.kt's own section-building logic), not something paged one calendar month at
+     * a time, so there's no separate "which month" bookkeeping left to preserve across a refresh. */
     fun loadMemories() {
         // init and a just-sent photo's onSent callback can both fire close together — without
         // this, the slower of two overlapping calls could win and overwrite the newer one.
         if (isLoadingMemoriesRefresh) return
-        val month = YearMonth.now()
-        selectedMonth = month
         viewModelScope.launch {
             isLoadingMemoriesRefresh = true
-            isLoadingSelectedMonth = true
+            isLoadingMemories = true
             val zone = ZoneId.systemDefault()
-            val start = month.atDay(1).atStartOfDay(zone).toInstant()
-            val end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant()
-            repository.getMemoriesForRange(start, end).onSuccess { items ->
-                memoriesByMonth[month] = items
-                localCache.write(LocalListCache.KEY_MEMORIES, items)
+            val startMonth = accountCreatedMonth ?: YearMonth.now().minusYears(MEMORIES_HISTORY_LIMIT_YEARS)
+            val start = startMonth.atDay(1).atStartOfDay(zone).toInstant()
+            repository.getMemoriesForRange(start, Instant.now()).onSuccess { items ->
+                val sorted = items.sortedByDescending { it.createdAt }
+                memories = sorted
+                localCache.write(LocalListCache.KEY_MEMORIES, sorted)
             }
             isLoadingMemoriesRefresh = false
-            isLoadingSelectedMonth = false
+            isLoadingMemories = false
         }
     }
 

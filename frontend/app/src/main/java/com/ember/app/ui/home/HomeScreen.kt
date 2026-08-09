@@ -26,17 +26,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -56,6 +58,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.CircularProgressIndicator
@@ -94,20 +99,19 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
@@ -131,18 +135,6 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** How far the user needs to scroll before the nav dock's Home icon has fully morphed into the
- * Memories one. Lives here (`internal`, not `private`) rather than in MainActivity, since it's
- * really describing this screen's own Memories section, not the dock itself. */
-internal const val MEMORIES_REVEAL_SCROLL_DP = 220
-
-/** How far into the top-fold/Memories dead zone (as a fraction of its own total size) a scroll
- * has to land before it commits forward to Memories, rather than snapping back to the top — see
- * the LaunchedEffect using this in HomeScreen for the full dead-zone explanation. Small on
- * purpose: a light scroll should be enough to reveal Memories, not a scroll that covers most of
- * the gap. Raise this (toward 1f) to require a more deliberate scroll instead. */
-private const val MEMORIES_SNAP_TRIGGER_FRACTION = 0.15f
-
 /** How long the very last photo in the whole carousel dwells before it's marked seen on its
  * own — see the LaunchedEffect using this in HomeScreen's carousel branch for why this one
  * specific page needs a fallback the rest of the carousel doesn't. */
@@ -155,17 +147,27 @@ private const val LAST_PHOTO_DWELL_MARK_SEEN_MS = 3000L
  * take effect at all). 1f leaves the whole offset open, so the spinner stays fully visible. */
 private const val PULL_REFRESH_RESTING_FRACTION = 1f
 
+/** Measures this content at its own real, natural size and paints it there — but reports zero
+ * height to whatever is arranging it, so an optional status line built this way visually floats
+ * over the background/whatever comes right after it instead of pushing that content down while
+ * it's showing (and back up the instant it's gone). Exists specifically so the featured card's own
+ * position never depends on whether any of these lines happens to be visible right now — no
+ * separate reserved height for them at all, on either this screen or CameraScreen's own matching
+ * header (which no longer needs to account for any of these lines, having never rendered them
+ * to begin with). */
+private fun Modifier.overlayNoHeight(): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    layout(placeable.width, 0) { placeable.placeRelative(0, 0) }
+}
+
 /** Home's own page — greeting header, then whichever of loading / error / empty / the featured
- * carousel applies, with the Memories grid embedded further down the same scroll (below the
- * avatar row when there's a feed, below the empty-state message when there isn't) rather than a
- * swipe away on its own page. [isPhotoFocused]/[onToggleFocus]/[onDismissFocus] are hoisted all
- * the way up to MainActivity now, not owned here — the shared nav dock (also hoisted there, since
- * Home, Friends, Camera, Activity and Settings are all pages of one outer swipeable pager) needs
+ * carousel applies. Memories is a separate tab of its own now (see [MemoriesTabScreen]), not
+ * embedded in this screen's scroll. [isPhotoFocused]/[onToggleFocus]/[onDismissFocus] are hoisted
+ * all the way up to MainActivity, not owned here — the shared nav dock (also hoisted there, since
+ * Home, Memories, Friends, Camera and Settings are all pages of one outer swipeable pager) needs
  * to blur in step with this screen's own tap-to-focus, and it sits outside whatever any individual
- * page is doing internally. [scrollState] is hoisted the same way, for the same reason: the nav
- * dock's Home icon morphs based on how far into this screen's Memories section the user has
- * scrolled (see MainActivity's homeIconProgress), and the dock can't read a ScrollState this
- * composable owned privately. */
+ * page is doing internally. [scrollState] is hoisted the same way, so pull-to-refresh can still
+ * register even though a plain Column here would otherwise fit its content in one screen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -173,6 +175,12 @@ fun HomeScreen(
     onCameraClick: () -> Unit,
     onAddFriendClick: () -> Unit,
     onProfileClick: () -> Unit,
+    // Activity moved out of the bottom nav dock into a bell icon right here, next to the profile
+    // avatar — see NavDestination.ACTIVITY's own doc comment for why. activityBadgeCount is the
+    // exact same "events since last viewed" count MainActivity already computes for the dock's
+    // own badge before this move; this button just renders it in its new spot.
+    onActivityClick: () -> Unit,
+    activityBadgeCount: Int,
     hazeState: HazeState,
     isPhotoFocused: Boolean,
     onToggleFocus: () -> Unit,
@@ -183,11 +191,12 @@ fun HomeScreen(
     // HomeViewModel.onHomeSessionStart for why this specifically is what's allowed to reveal
     // background-synced content into the visible feed.
     isActive: Boolean = true,
-    // Reports headerHeightPx (below) up to MainActivity every time it's actually measured, so
-    // CameraScreen's own header can size its own spacer against Home's *real* header height
-    // instead of a separate guessed constant — see CameraScreen's own call site for why that
-    // guess kept drifting out of sync with this screen's real layout.
-    onHeaderHeightChanged: (Float) -> Unit = {},
+    // Whether this account has actually sent anyone a photo recently (see MainActivity's own call
+    // site: this reads CameraViewModel.lastSentPhotoUrl, the exact same "has an active, unsent
+    // outbox photo" signal the Camera tab's own outbox button uses) — entirely independent of
+    // this screen's own feed state on purpose. Sharing your own moment and viewing friends' don't
+    // gate each other; this is only ever used to pick the sharing prompt's own two lines of text.
+    hasSharedRecently: Boolean = false,
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
@@ -200,19 +209,16 @@ fun HomeScreen(
     // already makes.
     var headerHeightPx by remember { mutableStateOf(0f) }
 
-    // Real window-space Y positions of the scrollable column itself and of wherever the Memories
-    // section currently starts — used only to compute memoriesTopOffsetPx below (see the
-    // LaunchedEffect that reads it, further down), which is how far the page needs to scroll for
-    // Memories to sit flush with the top of the screen. Both live in window space (not "position
-    // within the column") specifically so the math stays correct without depending on exactly how
-    // Modifier.verticalScroll positions its content internally.
-    var scrollColumnWindowY by remember { mutableStateOf(0f) }
-    var memoriesTopWindowY by remember { mutableStateOf(0f) }
-
     // HomeBrandHeader's own real height — just that row, not the combined block headerHeightPx
     // above tracks — used only to park the pull-to-refresh spinner directly beneath it (see the
     // indicator's own modifier further down).
     var brandHeaderHeightPx by remember { mutableStateOf(0f) }
+
+    // SharePromptRow's own real height — Camera has no equivalent row before its own card, so
+    // subtracting this from the card+avatar-row fold's own available height (see its own call
+    // site further down) is what keeps the card landing at the same absolute screen position on
+    // both screens, instead of Home's card sitting lower just because this row exists above it.
+    var sharePromptHeightPx by remember { mutableStateOf(0f) }
 
     // Whichever photo the featured card is currently showing — hoisted up here (rather than kept
     // local to the carousel branch below) so AmbientPhotoBackdrop, rendered from this composable's
@@ -229,94 +235,22 @@ fun HomeScreen(
         if (isActive) viewModel.onHomeSessionStart()
     }
 
-    // 0 = Memories grid fully invisible (top of Home), 1 = fully visible — only the grid itself
-    // fades with this, never the "Memories" heading above it, which stays a plain always-visible
-    // part of the page. A lambda, not a plain val: scrollState.value changes every frame of a
-    // scroll, and reading it directly here (rather than lazily inside the graphicsLayer that
-    // actually uses it) would force this whole composable to recompose on every one of those
-    // frames instead of just cheaply redrawing.
-    val memoriesRevealScrollPx = with(LocalDensity.current) { MEMORIES_REVEAL_SCROLL_DP.dp.toPx() }
-    val memoriesRevealProgress: () -> Float = { (scrollState.value / memoriesRevealScrollPx).coerceIn(0f, 1f) }
-
     // derivedStateOf, not a plain `scrollState.value == 0` read — scrollState.value changes every
     // frame of a scroll, but this derived boolean only actually changes twice (crossing 0 in
     // either direction), so whatever reads it only recomposes on those two occasions instead of
-    // every scrolled pixel. Same reasoning as memoriesRevealProgress being a lambda above.
+    // every scrolled pixel. Still used to gate the featured card's own auto-advance/tap-to-focus
+    // (see its own call site) even without Memories to scroll into any more — a pull-to-refresh
+    // drag is enough on its own to justify not auto-advancing mid-gesture.
     val isHomeAtDefaultScrollPosition by remember { derivedStateOf { scrollState.value == 0 } }
 
-    // Where the current drag/fling started — captured fresh every time one begins (the
-    // isScrollInProgress == true branch below), so the correction after it ends can judge "how
-    // far did this specific gesture actually move" rather than "how far is the final position
-    // from zero." That distinction is what a fixed distance-from-zero threshold got backwards:
-    // scrolling up just a little from deep inside Memories still leaves the *position* well past
-    // a from-zero threshold, so it kept reading as "commit forward" and pulling back into
-    // Memories — the "have to scroll up a lot" this fixes. Measuring from the drag's own start
-    // makes a small movement in *either* direction equally easy to commit, symmetrically.
-    var memoriesDragStartPx by remember { mutableStateOf(0f) }
-    LaunchedEffect(scrollState.isScrollInProgress) {
-        if (scrollState.isScrollInProgress) {
-            memoriesDragStartPx = scrollState.value.toFloat()
-            return@LaunchedEffect
-        }
-        val memoriesTopOffsetPx = scrollState.value + (memoriesTopWindowY - scrollColumnWindowY)
-        val current = scrollState.value.toFloat()
-        // maxValue itself, not just "less than memoriesTopOffsetPx" — resting anywhere at or past
-        // the true bottom of the page must never be touched by this, full stop, regardless of
-        // what memoriesTopOffsetPx happens to compute to. That's the one guarantee this needs;
-        // the dead-zone correction below only matters well before the bottom is ever reached.
-        val atOrPastBottom = current >= scrollState.maxValue.toFloat()
-        if (!atOrPastBottom && current > 0f && current < memoriesTopOffsetPx && memoriesTopOffsetPx > 0f) {
-            val movedFraction = (current - memoriesDragStartPx) / memoriesTopOffsetPx
-            val target = when {
-                movedFraction > MEMORIES_SNAP_TRIGGER_FRACTION -> memoriesTopOffsetPx
-                movedFraction < -MEMORIES_SNAP_TRIGGER_FRACTION -> 0f
-                // Didn't move enough either way to count as deliberate — settle back to whichever
-                // side this specific drag actually started from, not just "the nearer one," so a
-                // gesture that barely moves reads as "nothing happened" rather than a random pick.
-                else -> if (memoriesDragStartPx > memoriesTopOffsetPx / 2f) memoriesTopOffsetPx else 0f
-            }
-            // A plain ease-out tween, not the default spring animateScrollTo otherwise uses — a
-            // spring's overshoot/settle reads as bouncy for a correction like this; easing
-            // straight into rest (fast at first, slowing as it arrives) is what actually looks
-            // like a smooth flick rather than a snap.
-            scrollState.animateScrollTo(
-                target.roundToInt().coerceIn(0, scrollState.maxValue),
-                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-            )
-        }
-    }
-
-    // True while Memories' own day-photo viewer (DayFeaturedOverlay, rendered below at this
-    // screen's own top-level Box) is open — wired via onFocusChanged below so it can blur this
-    // screen's own header/avatar row in lockstep, the same way isPhotoFocused already does for
-    // Home's own featured card.
-    var isMemoriesFocused by remember { mutableStateOf(false) }
-
-    // Hoisted up from MemoriesGridContent so DayFeaturedOverlay can be rendered from THIS
-    // composable's own outer Box (fillMaxSize of the true screen) instead of from inside Home's
-    // scrollable Column, where a "centered against the full screen" overlay was positioning
-    // itself against a container that's never actually bounded to the real screen size (see
-    // DayFocusState's own doc comment).
-    val dayFocusState = rememberDayFocusState()
-
-    // Local copy of the same animation, driven by the hoisted boolean — stays in lockstep with
-    // MainActivity's own chromeBlur (which blurs the shared nav dock) since both react to the
-    // exact same state transition in the same recomposition, just kept as two instances so this
-    // screen doesn't need the animated Dp threaded in as its own parameter.
-    val chromeBlur by rememberFocusBlur(isPhotoFocused || isMemoriesFocused)
+    // Local copy of the same animation MainActivity's own chromeBlur (which blurs the shared nav
+    // dock) drives, kept as two instances so this screen doesn't need the animated Dp threaded in
+    // as its own parameter — both react to the same isPhotoFocused transition in the same
+    // recomposition, so they never actually drift out of lockstep with each other.
+    val chromeBlur by rememberFocusBlur(isPhotoFocused)
     // Fully hides the same chrome chromeBlur recedes — see rememberFocusFade's own doc comment
     // for why blur alone isn't enough once AmbientPhotoBackdrop is in the picture too.
-    val chromeFade by rememberFocusFade(isPhotoFocused || isMemoriesFocused)
-
-    // Home's own featured card must stay sharp while it's the thing actually in focus, but
-    // should recede like everything else once Memories' day-card is what's focused instead —
-    // otherwise it sat there perfectly crisp, sandwiched between an already-blurred header above
-    // and an already-blurred avatar row below it.
-    val cardBlurWhenMemoriesFocused by rememberFocusBlur(isMemoriesFocused)
-    // Companion fade — without this, whatever part of Home's own card is scrolled into view
-    // behind an open Memories day-card stayed a solid (merely blurred, never hidden) rectangle,
-    // the exact same bleed-through chromeFade already fixes for the header/avatar row/grid.
-    val cardFadeWhenMemoriesFocused by rememberFocusFade(isMemoriesFocused)
+    val chromeFade by rememberFocusFade(isPhotoFocused)
 
     Box(
         modifier = Modifier
@@ -324,13 +258,11 @@ fun HomeScreen(
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize)),
     ) {
-    // Sits behind everything else in this Box, only actually visible once a photo is tapped —
-    // either Home's own featured card, or a Memories day-card (which reports its own settled
-    // photo up via DayFeaturedOverlay's onCurrentPhotoChanged below) — replacing the flat
-    // background above with a wash matching whatever's currently focused.
+    // Sits behind everything else in this Box, only actually visible once Home's own featured
+    // card is tapped — replacing the flat background above with a wash matching that photo.
     AmbientPhotoBackdrop(
         photoUrl = currentPhotoUrl,
-        visible = isPhotoFocused || isMemoriesFocused,
+        visible = isPhotoFocused,
         modifier = Modifier.fillMaxSize(),
     )
 
@@ -419,11 +351,16 @@ fun HomeScreen(
                 CircularProgressIndicator(
                     color = Color.White,
                     strokeWidth = 2.dp,
+                    // Below the content in draw order (PullToRefreshBox otherwise paints the
+                    // indicator over the content, so it visibly overlapped the header/card
+                    // instead of looking tucked behind the page) — with this, it only shows in
+                    // the gap the content's own translationY reveals as it's pulled down.
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = statusBarDp + brandHeaderHeightDp + 14.dp)
                         .size(26.dp)
-                        .graphicsLayer { alpha = pullOffsetFraction.coerceIn(0f, 1f) },
+                        .graphicsLayer { alpha = pullOffsetFraction.coerceIn(0f, 1f) }
+                        .zIndex(-1f),
                 )
             }
         },
@@ -432,7 +369,6 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .onGloballyPositioned { scrollColumnWindowY = it.positionInWindow().y }
                 .hazeSource(hazeState)
                 .statusBarsPadding()
                 // Disabled while either kind of focus is active — background content the user
@@ -440,7 +376,7 @@ fun HomeScreen(
                 // behind FocusShield, or blurred behind Memories' own day-card) never needed to
                 // keep scrolling underneath it either, and letting it scroll is what let a swipe
                 // that ran out of photos in Memories' viewer leak into scrolling the grid behind it.
-                .verticalScroll(scrollState, enabled = !isPhotoFocused && !isMemoriesFocused),
+                .verticalScroll(scrollState, enabled = !isPhotoFocused),
         ) {
             // Header + greeting blur as one contiguous block instead of three separately
             // blurred pieces — blurring each element on its own left visible hard-edged
@@ -449,15 +385,7 @@ fun HomeScreen(
             FocusShield(active = isPhotoFocused, onDismiss = onDismissFocus) {
             Column(
                 modifier = Modifier
-                    .onGloballyPositioned {
-                        headerHeightPx = it.size.height.toFloat()
-                        // Camera reads this to line its own card up with Home's — always the real,
-                        // live measurement, forwarded unconditionally. Safe because the status
-                        // block below is one structure for every state (see its own comment):
-                        // same two lines, same fonts, same paddings, both pinned to one line, so
-                        // this height doesn't change just because the feed happens to be empty.
-                        onHeaderHeightChanged(headerHeightPx)
-                    }
+                    .onGloballyPositioned { headerHeightPx = it.size.height.toFloat() }
                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                     .graphicsLayer { alpha = chromeFade },
             ) {
@@ -470,6 +398,8 @@ fun HomeScreen(
                     userName = viewModel.userName,
                     profilePhotoUrl = viewModel.profilePhotoUrl,
                     onProfileClick = onProfileClick,
+                    onActivityClick = onActivityClick,
+                    activityBadgeCount = activityBadgeCount,
                     modifier = Modifier.onGloballyPositioned { brandHeaderHeightPx = it.size.height.toFloat() },
                 )
 
@@ -482,124 +412,38 @@ fun HomeScreen(
                     // the spinner.
                     modifier = Modifier.graphicsLayer { translationY = pullOffsetFraction * PULL_REFRESH_CONTENT_OFFSET_DP.dp.toPx() },
                 ) {
-                    // The opening line is a live status, not a greeting — it says something true
-                    // about the app's actual state right now (who's waiting to be seen) instead of
-                    // the generic "Good evening, Name" every dashboard app defaults to. The personal
-                    // touch moves to a small subline instead of carrying the whole header.
-                    //
-                    // Hierarchy, not just placement, is why hasConnectionError takes over this exact
-                    // slot rather than adding a third line below it: "You're all caught up" is a
-                    // freshness claim this app can no longer back up once a sync has actually failed
-                    // — showing it right next to a connection warning read as the app contradicting
-                    // itself in the same breath. Whichever fact is currently true gets the hero
-                    // treatment; the other one doesn't get a smaller, hedged mention alongside it.
-                    //
-                    // "You're all caught up" is de-emphasized by fading it to partial opacity —
-                    // deliberately the *only* thing that differs from the other two states (same
-                    // font, size, weight, color, tracking). Font size, weight and color were all
-                    // tried here first and each changed this Text's own measured height or made it
-                    // read as a mismatched element; opacity is a paint-time effect that can't touch
-                    // layout at all, so the featured card below never shifts position when this
-                    // line's content changes — which a 19sp/25sp size swap previously caused,
-                    // reading as a laggy jump the instant the last unseen photo got viewed.
-                    // animateFloatAsState is what makes that fade itself smooth rather than an
-                    // instant snap between the two opacities.
-                    val unseenCount = viewModel.feedItems.count { viewModel.hasUnseenPhoto(it) }
+                    // Deliberately minimal — no greeting, name, or date here any more. A real
+                    // connectivity failure is still worth a functional message (with its own retry
+                    // affordance) right in the brand row's own spot — not a greeting/status this
+                    // line's minimalism is about removing, but something actionable the user
+                    // otherwise has no way to know happened. The "X new photos" count itself now
+                    // lives just above the featured card instead (see its own call site further
+                    // down) — right next to the thing it's actually describing, rather than up
+                    // here under a wordmark it has nothing to do with.
+                    // overlayNoHeight(), not a conditional composable and not even a reserved-
+                    // but-faded line — this floats over whatever's underneath it (the top of the
+                    // fold/card region below) rather than claiming any layout space of its own, so
+                    // a connection failure starting or ending never moves anything else on this
+                    // screen, and CameraScreen's own header twin doesn't need to account for it at
+                    // all (it never did contribute real height for Camera to match in the first
+                    // place).
                     val hasConnectionError = viewModel.errorMessage != null
-                    // Deliberately excludes the empty-feed case: the de-emphasis below is meant for
-                    // a real "nothing new right now" status, not for the plain greeting an account
-                    // with no friends yet gets instead — fading that would just make the one line
-                    // on an otherwise sparse screen look washed out.
-                    val isCaughtUp = !hasConnectionError && unseenCount == 0 && viewModel.feedItems.isNotEmpty()
-                    val headlineAlpha by animateFloatAsState(
-                        targetValue = if (isCaughtUp) 0.6f else 1f,
-                        animationSpec = tween(320, easing = FastOutSlowInEasing),
-                        label = "headlineAlpha",
+                    val connectionErrorAlpha by animateFloatAsState(
+                        targetValue = if (hasConnectionError) 1f else 0f,
+                        animationSpec = tween(220),
+                        label = "connectionErrorAlpha",
                     )
-                    // ONE header structure for every state — never a second, differently-shaped
-                    // block for the empty state. Both lines below always exist, always with the
-                    // exact same font/size/weight/padding; only the *words* change. That's what
-                    // actually keeps this header's height identical whether or not the feed has
-                    // anything in it, which matters well beyond this screen: Camera sizes its own
-                    // card spacer from this header's measured height (see onHeaderHeightChanged),
-                    // so a taller/shorter header here visibly moved Camera's card for a reason
-                    // that had nothing to do with Camera. An earlier attempt gave the empty state
-                    // its own block (bigger display-font greeting, a divider) and tried to force
-                    // the heights to agree afterward — first by only forwarding the measurement
-                    // from one of them, then by pinning a min-height off the other's measured
-                    // size. Both were patches over a self-inflicted difference; not having two
-                    // different blocks in the first place is the actual fix.
                     Text(
-                        text = buildAnnotatedString {
-                            if (hasConnectionError) {
-                                append("Couldn't connect")
-                            } else if (viewModel.feedItems.isEmpty()) {
-                                // Nobody to have a status *about* yet — a plain time-of-day
-                                // greeting (HomeViewModel.greeting) is the honest thing to say,
-                                // rather than a freshness claim ("all caught up") about an empty
-                                // feed. The empty-state card below carries the real message.
-                                append(viewModel.greeting)
-                            } else if (unseenCount > 0) {
-                                // The count is highlighted with the theme's own glow accent; the
-                                // rest of the sentence stays plain, full-strength cream — not
-                                // muted/dimmed. Muting "photo is glowing for you" was tried first
-                                // and made the actual exciting part of the message read as dull
-                                // grey text; a real, warm accent on the number itself is what a
-                                // count actually deserves anyway. In the default Ember theme glow
-                                // happens to equal cream, so the number just reads as plain
-                                // cream there too — never worse than before, and a real highlight
-                                // in every theme where the two tokens differ (Ember New, etc.).
-                                withStyle(SpanStyle(color = colors.glow)) { append("$unseenCount") }
-                                append(if (unseenCount == 1) " photo is" else " photos are")
-                                append(" glowing for you")
-                            } else {
-                                append("You're all caught up")
-                            }
-                        },
-                        // Plain UI font, not typography.display — same reasoning as the Memories
-                        // label: this is a live status line, not a hero/name moment, and a simple
-                        // sans reads cleaner and stays consistent across every theme instead of
-                        // switching character (serif/script) depending which one's active. Only
-                        // the font itself changes here — size, weight and tracking are untouched,
-                        // after an earlier attempt that changed several of this line's properties
-                        // at once ended up reading as a different, mismatched element rather than
-                        // a deliberate restyle.
+                        text = "Couldn't connect · Tap to retry",
                         fontFamily = PublicSansFontFamily,
-                        fontSize = 25.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.3).sp,
-                        color = colors.cream,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .padding(top = 14.dp, start = 22.dp, end = 22.dp)
-                            .graphicsLayer { alpha = headlineAlpha },
-                    )
-                    // "Tap to retry" folds into this line rather than the hero line above — the hero
-                    // line already runs long enough on its own ("Couldn't connect") that adding retry
-                    // text there wrapped to two lines on narrower/smaller screens, eating extra header
-                    // height. This line has room for it.
-                    Text(
-                        text = buildAnnotatedString {
-                            if (!hasConnectionError && viewModel.feedItems.isEmpty()) {
-                                append("Find your closest friends and start sharing moments.")
-                            } else {
-                                append(viewModel.userName?.substringBefore(" ")?.let { "Hey $it · ${viewModel.dateText}" } ?: viewModel.dateText)
-                                if (hasConnectionError) {
-                                    append("  ·  ")
-                                    withStyle(SpanStyle(color = colors.glow)) { append("Tap to retry") }
-                                }
-                            }
-                        },
-                        fontFamily = typography.body,
-                        fontSize = 12.5.sp,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Medium,
                         color = colors.muted,
-                        // Pinned to one line for the same reason the headline above is: a wrap
-                        // here would silently make the whole header taller in one state only,
-                        // which is exactly the class of difference this structure exists to
-                        // prevent.
                         maxLines = 1,
                         modifier = Modifier
-                            .padding(top = 5.dp, start = 22.dp, end = 22.dp)
+                            .overlayNoHeight()
+                            .padding(top = 10.dp, start = 22.dp, end = 22.dp)
+                            .graphicsLayer { alpha = connectionErrorAlpha }
                             .let { if (hasConnectionError) it.clickable { viewModel.loadFeed() } else it },
                     )
                 }
@@ -614,6 +458,26 @@ fun HomeScreen(
             // the featured card and everything below it moves down together with them as one
             // unit while HomeBrandHeader alone stays put.
             Column(modifier = Modifier.graphicsLayer { translationY = pullOffsetFraction * PULL_REFRESH_CONTENT_OFFSET_DP.dp.toPx() }) {
+
+            // Outside the when{} below, so it renders in every state rather than only alongside a
+            // real feed. That matches what this row is actually about (see its own doc comment:
+            // the viewer's OWN moment, never gated by whether anyone else has shared) and, just as
+            // importantly, it means the card beneath it starts from the same offset in every
+            // branch — with this inside the feed branch only, the empty state's card sat higher
+            // than the real one, and CameraScreen had no single Home position to match against.
+            val unseenCount = viewModel.feedItems.count { viewModel.hasUnseenPhoto(it) }
+            SharePromptRow(
+                hasSharedRecently = hasSharedRecently,
+                unseenCount = unseenCount,
+                onCameraClick = onCameraClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { sharePromptHeightPx = it.size.height.toFloat() }
+                    .padding(top = 12.dp, start = 22.dp, end = 22.dp)
+                    .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
+                    .graphicsLayer { alpha = chromeFade },
+            )
+
             when {
                 // !hasCompletedFirstSync is what keeps this scoped to "we've never gotten a real
                 // answer yet" (first-ever open, nothing cached) — without it, refreshing an
@@ -675,43 +539,33 @@ fun HomeScreen(
                     // both start at zero for one frame, and placing content inside a zero-height
                     // box would put the card at the very top anyway, then visibly jump down once
                     // the real measurements land.
-                    if (screenSize != Size.Zero && headerHeightPx > 0f) {
+                    if (screenSize != Size.Zero && headerHeightPx > 0f && sharePromptHeightPx > 0f) {
                         val density = LocalDensity.current
                         val statusBarPx = WindowInsets.statusBars.getTop(density)
                         val navDockHeightPx = with(density) { LocalNavDockHeight.current.toPx() }
+                        // Subtracts the share prompt too, exactly like the real-feed branch's own
+                        // topFoldMaxHeightDp — that row now sits above every branch, so leaving it
+                        // out here would size this fold as if it weren't there and drop the card
+                        // lower than the real one.
                         val remainingHeightDp = with(density) {
-                            (screenSize.height - statusBarPx - headerHeightPx - navDockHeightPx).toDp()
+                            (screenSize.height - statusBarPx - headerHeightPx - sharePromptHeightPx - navDockHeightPx).toDp()
                         }
-                        Box(
-                            modifier = Modifier.fillMaxWidth().height(remainingHeightDp),
-                            contentAlignment = Alignment.TopCenter,
+                        Column(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = remainingHeightDp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
+                            // The same constant the real card uses, rather than this branch's own
+                            // separate number — that mismatch is what put the empty state's card
+                            // at a different height from the real one.
+                            Spacer(modifier = Modifier.height(FEATURED_CARD_TOP_GAP))
+
                             HomeEmptyStateCard(
                                 onAddFriendClick = onAddFriendClick,
-                                modifier = Modifier.padding(top = 28.dp, start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING),
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .padding(start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING),
                             )
                         }
-
-                        // Same scroll-triggered reveal the real-feed branch uses
-                        // (memoriesRevealProgress), NOT the always-visible { 1f } an earlier
-                        // version of this branch needed: back then the empty state was a couple of
-                        // lines of text, so there was nothing tall enough above Memories to scroll
-                        // past and the reveal threshold could never be reached, leaving it
-                        // invisible forever. The card above now fills the whole remaining viewport
-                        // height, so scrolling behaves exactly as it does with a real feed —
-                        // hidden at rest, fading in as you swipe up.
-                        HomeMemoriesSection(
-                            viewModel = viewModel,
-                            onCameraClick = onCameraClick,
-                            dayFocusState = dayFocusState,
-                            chromeBlur = chromeBlur,
-                            chromeFade = chromeFade,
-                            revealProgress = memoriesRevealProgress,
-                            onMemoriesFocusChanged = { isMemoriesFocused = it },
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .onGloballyPositioned { memoriesTopWindowY = it.positionInWindow().y },
-                        )
                     }
                 }
 
@@ -867,31 +721,29 @@ fun HomeScreen(
                     // trade-off, skip rendering this section entirely until both real
                     // measurements are in — it appears once, already at its correct final size,
                     // instead of appearing wrong and then correcting itself.
-                    if (screenSize != Size.Zero && headerHeightPx > 0f) {
+                    if (screenSize != Size.Zero && headerHeightPx > 0f && sharePromptHeightPx > 0f) {
                     val topFoldMaxHeightDp = with(density) {
-                        (screenSize.height - statusBarPx - headerHeightPx - navDockHeightPx).toDp()
+                        (screenSize.height - statusBarPx - headerHeightPx - sharePromptHeightPx - navDockHeightPx).toDp()
                     }
+                    // heightIn(max = ...) bounds this whole region to the real remaining space
+                    // (screenSize, minus the status bar, minus the header's own real measured
+                    // height, minus this share prompt's own real measured height, minus the
+                    // dock's reserve).
+                    //
+                    // Every gap in here is a plain constant and the CARD is the one flexible
+                    // element (weight(1f, fill = false)) — the exact inverse of the earlier
+                    // version, which pinned the card to its natural aspect-ratio height and let
+                    // two weight(1f) spacers soak up whatever was left. That older shape is what
+                    // made this screen device-dependent in both of the ways reported: the gaps
+                    // themselves grew on a tall phone and collapsed to zero on a short one, and
+                    // once the fixed card was taller than the fold could hold there was nothing
+                    // left to give, so the avatar row got pushed under the dock. Flipping which
+                    // element flexes fixes both at once — spacing is now identical on every
+                    // device, and the card simply renders a little smaller when a screen is too
+                    // short to give it its full aspect-ratio height, which is the one thing here
+                    // that can shrink without anything colliding.
                     Column(modifier = Modifier.fillMaxWidth().heightIn(max = topFoldMaxHeightDp)) {
-                        AnimatedVisibility(
-                            visible = viewModel.hasNewFeedAvailable,
-                            enter = fadeIn(tween(200)),
-                            exit = fadeOut(tween(150)),
-                        ) {
-                            Text(
-                                text = buildAnnotatedString {
-                                    withStyle(SpanStyle(color = colors.glow)) { append("New memories") }
-                                    append(" available")
-                                },
-                                fontFamily = typography.body,
-                                fontSize = 12.5.sp,
-                                color = colors.muted,
-                                modifier = Modifier
-                                    .padding(top = 5.dp, start = 22.dp, end = 22.dp)
-                                    .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                                    .graphicsLayer { alpha = chromeFade }
-                                    .clickable { viewModel.revealNewFeed() },
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(FEATURED_CARD_TOP_GAP))
 
                         FeaturedPhotoCard(
                             entries = entries,
@@ -900,26 +752,18 @@ fun HomeScreen(
                             isAtDefaultScrollPosition = isHomeAtDefaultScrollPosition,
                             // Only actually toggles focus when Home is scrolled all the way to its
                             // default resting position — without this, tapping the card while it's
-                            // only half-visible (scrolled partway down into Memories) still blurred
-                            // the whole screen, which made no sense for a tap that mostly landed on
-                            // Memories content, not the card itself.
+                            // only half-visible (scrolled a little for the pull-to-refresh gesture)
+                            // still blurred the whole screen for a tap that didn't really land on it.
                             onToggleFocus = { if (scrollState.value == 0) onToggleFocus() },
+                            // The fold's only flexible child. fill = false matters: it caps the
+                            // card at the space actually left over without forcing it to consume
+                            // all of it, so on a normal-height phone the card still takes exactly
+                            // its natural aspect-ratio height and looks unchanged — the cap only
+                            // ever bites on a screen too short to fit that.
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 18.dp, start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING)
-                                // weight(fill = false) alone is what makes this genuinely
-                                // responsive to any screen size: Compose measures the avatar row
-                                // below (a non-weighted sibling) at its real natural height first,
-                                // then gives this card exactly whatever's left within
-                                // topFoldMaxHeightDp above — never more, so it can never push the
-                                // avatar row into the nav dock, on any device. A heightIn(min = ...)
-                                // floor used to sit here too, which defeated that guarantee on any
-                                // screen short enough that the real remaining space was less than
-                                // the floor — forcing an overflow instead of a smaller card, which
-                                // is exactly the cramped/broken layout this was reported on.
                                 .weight(1f, fill = false)
-                                .blur(cardBlurWhenMemoriesFocused, BlurredEdgeTreatment.Unbounded)
-                                .graphicsLayer { alpha = cardFadeWhenMemoriesFocused },
+                                .align(Alignment.CenterHorizontally)
+                                .padding(start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING),
                         )
 
                         FocusShield(active = isPhotoFocused, onDismiss = onDismissFocus) {
@@ -942,7 +786,7 @@ fun HomeScreen(
                             onAddFriendClick = onAddFriendClick,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 20.dp, bottom = 12.dp)
+                                .padding(top = AVATAR_ROW_TOP_GAP, bottom = AVATAR_ROW_BOTTOM_GAP)
                                 .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                                 .graphicsLayer { alpha = chromeFade },
                         )
@@ -950,117 +794,14 @@ fun HomeScreen(
                     }
                     }
 
-                    // Memories starts right where the feed ends — on the page, in the normal
-                    // scroll flow, landing in the gap just above the nav dock at rest, with a
-                    // little breathing room below the avatar row (matching the ~20dp rhythm used
-                    // between every other section on this screen) rather than sitting flush
-                    // against it. Both the label and the grid stay invisible at rest, fading in
-                    // together only once the user actually scrolls up (memoriesRevealProgress).
-                    HomeMemoriesSection(
-                        viewModel = viewModel,
-                        onCameraClick = onCameraClick,
-                        dayFocusState = dayFocusState,
-                        chromeBlur = chromeBlur,
-                        chromeFade = chromeFade,
-                        revealProgress = memoriesRevealProgress,
-                        onMemoriesFocusChanged = { isMemoriesFocused = it },
-                        modifier = Modifier
-                            .padding(top = 2.dp)
-                            .onGloballyPositioned { memoriesTopWindowY = it.positionInWindow().y },
-                    )
                 }
             }
             }
         }
         }
-
-    // Rendered from THIS screen's own outer Box (fillMaxSize of the true measured screen size,
-    // via screenSize above) rather than from inside the scrollable Column above — see
-    // DayFocusState's doc comment for why centering the overlay against the real screen requires
-    // living outside that unbounded-height scroll container.
-    dayFocusState.target?.let { target ->
-        DayFeaturedOverlay(
-            target = target,
-            screenSize = screenSize,
-            progress = dayFocusState.progress.value,
-            onDismiss = { dayFocusState.isOpen = false },
-            onCurrentPhotoChanged = { currentPhotoUrl = it },
-            onDeletePhoto = { photoId -> viewModel.deleteMemoryPhoto(photoId) },
-        )
-    }
     }
 }
 
-/** The "Memories" label + grid, bundled as one unit — [HomeScreen] renders this at two different
- * points in its status `when` (an empty feed vs. a real one), and keeping it as a single
- * reusable composable instead of two separately-maintained call sites is what stops their
- * modifiers/params from quietly drifting apart from each other, the way the old duplicated
- * version already had (blur applied inconsistently between the two). [revealProgress] controls
- * the fade-in — pass `{ 1f }` wherever this section should just be visible immediately (nothing
- * above it to scroll past first), or the real scroll-driven lambda (`memoriesRevealProgress`)
- * wherever that fade-as-you-scroll-up behavior is what's wanted. */
-@Composable
-private fun HomeMemoriesSection(
-    viewModel: HomeViewModel,
-    onCameraClick: () -> Unit,
-    dayFocusState: DayFocusState,
-    chromeBlur: Dp,
-    chromeFade: Float,
-    revealProgress: () -> Float,
-    onMemoriesFocusChanged: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier) {
-        MemoriesSectionLabel(
-            modifier = Modifier
-                .padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 16.dp)
-                .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                .graphicsLayer { alpha = revealProgress() * chromeFade },
-        )
-        MemoriesGridContent(
-            memories = viewModel.memories,
-            selectedMonth = viewModel.selectedMonth,
-            onCameraClick = onCameraClick,
-            focusState = dayFocusState,
-            onFocusChanged = onMemoriesFocusChanged,
-            onPreviousMonth = { viewModel.goToPreviousMonth() },
-            onNextMonth = { viewModel.goToNextMonth() },
-            canGoToPreviousMonth = viewModel.canGoToPreviousMonth,
-            canGoToNextMonth = viewModel.canGoToNextMonth,
-            isLoadingMonth = viewModel.isLoadingSelectedMonth,
-            modifier = Modifier
-                .fillMaxWidth()
-                .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                .graphicsLayer { alpha = revealProgress() * chromeFade }
-                .padding(bottom = LocalNavDockHeight.current),
-        )
-    }
-}
-
-/** "Memories" section label — centered, plain UI font, no discoverability affordance beside it
- * (a bobbing chevron used to sit here; removed since the label itself, centered like every other
- * section title in the app, already reads as a heading rather than something that needs a hint
- * to be noticed). */
-@Composable
-private fun MemoriesSectionLabel(modifier: Modifier = Modifier) {
-    val colors = EmberTheme.colors
-
-    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        // Plain UI font, not typography.display — that face is a decorative, per-theme character
-        // face (serif/script depending on theme) meant for the odd hero moment (the "Emigo"
-        // wordmark, a name on a profile), not a section label. A section label reads as cleaner
-        // and more legible in the same simple sans every messaging/social app (WhatsApp,
-        // Instagram, Snapchat) uses for its own UI chrome, same as the rest of this app's own
-        // body/button text already does via PublicSansFontFamily.
-        Text(
-            text = "Memories",
-            fontFamily = PublicSansFontFamily,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.cream,
-        )
-    }
-}
 
 /** Wraps [content] with an invisible overlay while [active] — the overlay sits in front and
  * covers it completely, so nothing nested inside (avatar taps, nav buttons, the profile chip,
@@ -1104,7 +845,7 @@ private fun FocusShield(
  * at all rather than an unblurred photo sitting behind everything, which would look like a bug
  * rather than a missing enhancement. */
 @Composable
-private fun AmbientPhotoBackdrop(photoUrl: String?, visible: Boolean, modifier: Modifier = Modifier) {
+internal fun AmbientPhotoBackdrop(photoUrl: String?, visible: Boolean, modifier: Modifier = Modifier) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
 
     val backdropAlpha by animateFloatAsState(
@@ -1163,13 +904,17 @@ private fun HomeBrandHeader(
     userName: String?,
     profilePhotoUrl: String?,
     onProfileClick: () -> Unit,
+    onActivityClick: () -> Unit,
+    activityBadgeCount: Int,
     modifier: Modifier = Modifier,
 ) {
     val colors = EmberTheme.colors
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 12.dp, start = 22.dp, end = 22.dp),
+            // top = 0.dp — sits flush right against the status bar (via the parent's own
+            // statusBarsPadding()), no extra gap above it.
+            .padding(top = 0.dp, start = 22.dp, end = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -1183,61 +928,130 @@ private fun HomeBrandHeader(
             // instead.
             color = colors.cream,
         )
-        ProfileChip(name = userName, photoUrl = profilePhotoUrl, onClick = onProfileClick)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ActivityBellButton(badgeCount = activityBadgeCount, onClick = onActivityClick)
+            ProfileIconButton(
+                onClick = onProfileClick,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
     }
+}
+
+/** Activity, moved here from its old bottom-nav-dock slot (see NavDestination.ACTIVITY's own doc
+ * comment) — the same "bell next to your own avatar" spot notifications sit in on most apps,
+ * rather than a full tab of its own. A small panel-toned circle behind the glyph now (not a bare
+ * icon any more) — deliberately matches [ProfileIconButton] right next to it, so the pair of
+ * top-right controls reads as one consistent unit. The numbered badge keeps the exact same pill
+ * BottomNavDock's own badge already uses, on top of (not instead of) that background. */
+@Composable
+private fun ActivityBellButton(badgeCount: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = EmberTheme.colors
+
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        // 44.dp, the same as the outer touch-target Box — the background circle now fills it
+        // completely rather than sitting inset within it, so the icon reads bigger without the
+        // outer Box (and therefore this Row's own measured height) growing at all.
+        Box(
+            modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.panel),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Notifications, contentDescription = "Activity", tint = colors.cream, modifier = Modifier.size(24.dp))
+        }
+        AnimatedVisibility(
+            visible = badgeCount > 0,
+            modifier = Modifier.align(Alignment.TopEnd).offset(x = (-2).dp, y = 4.dp),
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(150)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.glow)
+                    .padding(horizontal = 3.5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (badgeCount > 99) "99+" else badgeCount.toString(),
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.accentText,
+                )
+            }
+        }
+    }
+}
+
+/** A static structural twin of the real header block above ([HomeBrandHeader] alone — the
+ * "Couldn't connect" line beneath it and the unseen-count banners further down both float over
+ * their own surroundings via [overlayNoHeight] now rather than claiming any real layout space, so
+ * neither one is part of what this twin needs to reproduce any more) that
+ * [com.ember.app.ui.camera.CameraScreen] renders invisibly so its own card can reserve exactly the
+ * same vertical space Home's header occupies, without depending on a value only Home's own render
+ * can produce. That live cross-screen dependency (this screen reporting its measured height up to
+ * MainActivity, Camera reading it back down) was the actual bug behind the card visibly landing
+ * too high the first time the app opened (Camera is the app's own opening page — nothing had
+ * reported a real height yet, so the read-back value started at zero) and then jumping down the
+ * first time Home was ever visited (the real measurement finally arrived). Rendering this twin
+ * locally inside Camera's own composition sidesteps the dependency entirely rather than patching
+ * around its timing. */
+@Composable
+internal fun HomeHeaderHeightTwin() {
+    HomeBrandHeader(
+        userName = null,
+        profilePhotoUrl = null,
+        onProfileClick = {},
+        onActivityClick = {},
+        activityBadgeCount = 0,
+    )
+}
+
+/** The same idea as [HomeHeaderHeightTwin], for the row below it: Home has a [SharePromptRow]
+ * between its header and its featured card, and CameraScreen has nothing in that position. That
+ * difference alone is what made Camera's card sit higher than Home's despite both reserving an
+ * identical header height — so Camera renders this invisibly to reserve the missing space and put
+ * its own card at the exact same absolute position Home's lands at.
+ *
+ * Built from the real composable with placeholder values, and carrying the same padding its real
+ * call site in [HomeScreen] uses, so it can't drift out of sync the way a hand-copied dp constant
+ * would the first time that row's type or spacing is touched. */
+@Composable
+internal fun SharePromptHeightTwin() {
+    SharePromptRow(
+        hasSharedRecently = false,
+        unseenCount = 0,
+        onCameraClick = {},
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp, start = 22.dp, end = 22.dp),
+    )
 }
 
 /** Small circular chip in the header showing the signed-in user's own profile photo (falling
  * back to their initial if they haven't set one), with an ember-orange presence dot. */
 @Composable
-internal fun ProfileChip(name: String?, photoUrl: String?, onClick: () -> Unit) {
+// A plain profile glyph, not the account's own photo — deliberately matches ActivityBellButton
+// right next to it (same 44dp touch target, same 36dp panel-toned background circle, same icon
+// size/tint) rather than a photo avatar that reads as a visually different kind of control.
+internal fun ProfileIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
-    val typography = EmberTheme.typography
 
-    // 48dp, not 40dp — Android's own minimum recommended touch target (48x48dp); the old size
-    // was noticeably under that for the one control that opens your own profile.
-    Box(modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClick)) {
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                // colors.border is a translucent white/black hairline token meant for stroke
-                // outlines, not a fill — reused here at higher alpha it read as a washed-out grey
-                // blob instead of a themed avatar backing. Plain colors.panel is the correct fill:
-                // it already resolves to the right dark-charcoal-or-bright-cream tone per theme.
-                .background(colors.panel),
+            modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.panel),
             contentAlignment = Alignment.Center,
         ) {
-            if (photoUrl != null) {
-                val painter = rememberAsyncImagePainter(model = photoUrl)
-                val painterState by painter.state.collectAsState()
-                val isLoading = when (painterState) {
-                    is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> true
-                    else -> false
-                }
-                if (isLoading) {
-                    val pulseAlpha by rememberSkeletonPulse(periodMillis = 900)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = pulseAlpha }
-                            .background(colors.panel),
-                    )
-                }
-                Image(
-                    painter = painter,
-                    contentDescription = "Your profile photo",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                )
-            } else {
-                Text(
-                    text = name?.firstOrNull()?.uppercase() ?: "•",
-                    fontFamily = typography.display,
-                    fontSize = 19.sp,
-                    color = colors.cream,
-                )
-            }
+            Icon(Icons.Filled.Person, contentDescription = "Your profile", tint = colors.cream, modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -1248,11 +1062,13 @@ internal fun ProfileChip(name: String?, photoUrl: String?, onClick: () -> Unit) 
 /** The slot each avatar occupies. The avatar itself still grows/shrinks within it to mark the
  * active friend (see avatarSize below) — this is just the fixed box that keeps the row's own
  * layout steady while that animates. */
-private const val AVATAR_DIAMETER_DP = 82
+private const val AVATAR_DIAMETER_DP = 92
 
 /** The non-active avatars' diameter — they animate down to this, and back up to
- * [AVATAR_DIAMETER_DP] when they become the active one. */
-private const val AVATAR_INACTIVE_DIAMETER_DP = 78
+ * [AVATAR_DIAMETER_DP] when they become the active one. The two are deliberately close: the gap
+ * between them is what marks the active friend, and a larger one turns a subtle emphasis into the
+ * row visibly jolting on every swipe. */
+private const val AVATAR_INACTIVE_DIAMETER_DP = 86
 
 /** The ring band and the gap between it and the photo. Equal by design — see their use site. */
 private const val AVATAR_RING_WIDTH_DP = 3.0f
@@ -1260,8 +1076,9 @@ private const val AVATAR_RING_GAP_DP = 3.0f
 
 /** Must match the real width of each avatar column below — smoothCenterOn derives its scroll
  * target from this, so a value that disagrees with the actual layout centers every avatar
- * slightly off (this was 72 while the column has always measured 84). */
-private const val AVATAR_ITEM_WIDTH_DP = 88
+ * slightly off (this was 72 while the column has always measured 84). Tracks
+ * [AVATAR_DIAMETER_DP] with a small margin, so it has to move whenever that does. */
+private const val AVATAR_ITEM_WIDTH_DP = 98
 private const val AVATAR_SPACING_DP = 4
 
 /** A fully custom smooth-scroll to center [targetIndex], replacing `LazyListState
@@ -1361,11 +1178,99 @@ private const val AUTO_ADVANCE_FADE_MS = 900
  * swipe away from actually being seen. */
 private const val FEATURED_CARD_LOOKAHEAD_PAGES = 1
 
+/** A small, personal prompt about the *viewer's own* moment — deliberately unrelated to
+ * everything else on this screen (friends' photos, unseen counts, streaks, greetings). One
+ * unified tappable row, not a separate line-of-text-plus-button: a status headline, a distinct
+ * status subtext underneath it (each line says something the other doesn't — no repeating "share
+ * your moment" twice in slightly different words), and a trailing chevron for affordance. No
+ * leading icon here on purpose — the nav dock's own shutter button, visible on this same screen,
+ * is already the camera glyph; a second one here would just repeat it. [hasSharedRecently] only
+ * ever changes which two lines show; it never gates or is gated by whether this account can see
+ * friends' own moments below it (see this screen's own call site for where that value actually
+ * comes from). [unseenCount], when non-zero, takes over the status line rather than adding one —
+ * see that line's own comment for why it deliberately has no space of its own. Crossfade, not
+ * each line's own fade-in/out, is what keeps the transition between the two states feeling like
+ * one quiet change rather than two lines separately blinking. */
+@Composable
+private fun SharePromptRow(
+    hasSharedRecently: Boolean,
+    unseenCount: Int,
+    onCameraClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = EmberTheme.colors
+    Crossfade(targetState = hasSharedRecently, label = "sharePromptCrossfade", modifier = modifier) { shared ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onCameraClick,
+                ),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                // Status first, as a quiet eyebrow — the wordmark directly above this is a 34sp
+                // script display face, so leading with a second strong line was what made the two
+                // read as one clumsy stack rather than a hierarchy. A small, wide-tracked,
+                // low-contrast line here creates a real step down from the wordmark before the
+                // action line steps back up, which is what actually separates them visually.
+                //
+                // This same line carries the unseen-photo count when there is one, tinted with
+                // the theme's own accent so it reads as the live/interesting state rather than
+                // more static label copy. Its own Crossfade (not the outer one, which only knows
+                // about `shared`) is what animates between the two, so a photo arriving swaps the
+                // text smoothly in place instead of popping — and because it reuses a line that
+                // is always present, the count costs no extra vertical space and can never shift
+                // or overlap the card below.
+                val statusLabel = when {
+                    unseenCount > 0 -> "$unseenCount ${if (unseenCount == 1) "MOMENT" else "MOMENTS"} GLOWING FOR YOU"
+                    shared -> "SHARED TODAY"
+                    else -> "NOT SHARED YET"
+                }
+                Crossfade(targetState = statusLabel, animationSpec = tween(260), label = "sharePromptStatus") { label ->
+                    Text(
+                        text = label,
+                        fontFamily = PublicSansFontFamily,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 1.4.sp,
+                        color = if (unseenCount > 0) colors.glow else colors.mutedDim,
+                        maxLines = 1,
+                    )
+                }
+                // The action, and the only full-strength line in this block. Medium at 18sp, not
+                // SemiBold at 16 — SemiBold is this app's button-label weight (see the nav dock
+                // and every pill control), so using it on a standalone line made it read as a
+                // mislaid button rather than a line of copy. Size carries the emphasis instead of
+                // weight, with slightly tight tracking to match the wordmark's own.
+                Text(
+                    text = if (shared) "Share another moment" else "Share your moment",
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = (-0.3).sp,
+                    color = colors.cream,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = colors.muted,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
 /** The large featured card — one continuous pager across every friend's photos (see
  * [buildHomeCarousel]), so swiping past someone's last photo lands on the next friend's first
  * and back past a first photo lands on the previous friend's last, without any special-casing:
- * it's all just paging through one flattened list. Memories lives further down the same screen's
- * scroll now (see [MemoriesGridContent] in [HomeScreen]), rather than one more page in this pager. */
+ * it's all just paging through one flattened list. Memories is its own bottom-nav tab (see
+ * [MemoriesTabScreen]), not part of this screen at all any more. */
 @Composable
 private fun FeaturedPhotoCard(
     entries: List<HomeCarouselEntry>,
@@ -1432,8 +1337,14 @@ private fun FeaturedPhotoCard(
     }
 
     BoxWithConstraints(
+        // Deliberately NOT fillMaxWidth() before aspectRatio. fillMaxWidth pins minWidth to
+        // maxWidth, which leaves aspectRatio no room to satisfy a bounded max *height* — it can
+        // only ever derive height from width, so on a screen too short for that height the card
+        // overflowed its parent instead of fitting. Without it, aspectRatio derives from width
+        // when that fits (every normal-height phone — identical result to before) and falls back
+        // to deriving width from the available height when it doesn't, which is what lets the
+        // card shrink proportionally on a short screen rather than pushing the avatar row out.
         modifier = modifier
-            .fillMaxWidth()
             .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
             .nestedScroll(cardNestedScrollBoundary)
             .clip(cardShape)
@@ -1623,14 +1534,6 @@ private fun FeaturedPhotoCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
-                    Text(
-                        text = current.displayName,
-                        fontFamily = typography.display,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-0.2).sp,
-                        color = Color(0xFFFBF8F3),
-                    )
                     // A photo still in its 24-hour grace period gets a small countdown instead of
                     // the usual relative-time text — the newest photo needs no explanation (it's
                     // just "there"), but a photo that's actually about to disappear should say so,
@@ -1664,21 +1567,23 @@ private fun FeaturedPhotoCard(
                         )
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Rounded.LocalFireDepartment,
-                        contentDescription = "Streak",
-                        tint = colors.glow,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = "${current.streak}",
-                        fontFamily = typography.body,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                        modifier = Modifier.padding(start = 5.dp),
-                    )
+                if (current.streak >= 1) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Rounded.LocalFireDepartment,
+                            contentDescription = "Streak",
+                            tint = colors.glow,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "${current.streak}",
+                            fontFamily = typography.body,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            modifier = Modifier.padding(start = 5.dp),
+                        )
+                    }
                 }
             }
         }
@@ -1902,6 +1807,11 @@ private fun FriendAvatarRow(
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
+    // FeedItem itself carries no profile-photo field (see HomeViewModel.friends' own doc comment
+    // for why) — this is the one lookup every avatar below reads from instead.
+    val profilePhotoByFriendId = remember(viewModel.friends) {
+        viewModel.friends.associateBy({ it.friendId }, { it.profilePhotoUrl })
+    }
 
     LazyRow(
         state = listState,
@@ -1969,34 +1879,55 @@ private fun FriendAvatarRow(
                                 .clip(CircleShape)
                                 .clickable { onAvatarClick(item.friendId) },
                         ) {
-                            // Same treatment as the featured card's own photo (see its call
-                            // site's own doc comment) — a plain AsyncImage paints nothing while
-                            // loading, leaving this ring's flat colors.panel background showing
-                            // through with no indication anything's happening. Tracking the
-                            // painter's state directly lets this pulse the same way
-                            // SkeletonAvatar already does for the whole-screen loading state,
-                            // just for this one avatar's own in-flight request.
-                            val avatarPainter = rememberAsyncImagePainter(model = item.photos.last().photoUrl)
-                            val avatarPainterState by avatarPainter.state.collectAsState()
-                            val isAvatarLoading = when (avatarPainterState) {
-                                is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> true
-                                else -> false
-                            }
-                            if (isAvatarLoading) {
-                                val avatarPulseAlpha by rememberSkeletonPulse(periodMillis = 900)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer { alpha = avatarPulseAlpha }
-                                        .background(colors.panel),
+                            // This friend's own account profile photo — not item.photos.last(),
+                            // their most recently *sent* content photo. Showing whatever they just
+                            // shared here (a screenshot, a receipt, anything) made this ring change
+                            // identity along with their feed instead of staying a stable "this is
+                            // them" marker, which is what a friends list's own avatar should be.
+                            val profilePhotoUrl = profilePhotoByFriendId[item.friendId]
+                            if (profilePhotoUrl != null) {
+                                // Same treatment as the featured card's own photo (see its call
+                                // site's own doc comment) — a plain AsyncImage paints nothing while
+                                // loading, leaving this ring's flat colors.panel background showing
+                                // through with no indication anything's happening. Tracking the
+                                // painter's state directly lets this pulse the same way
+                                // SkeletonAvatar already does for the whole-screen loading state,
+                                // just for this one avatar's own in-flight request.
+                                val avatarPainter = rememberAsyncImagePainter(model = profilePhotoUrl)
+                                val avatarPainterState by avatarPainter.state.collectAsState()
+                                val isAvatarLoading = when (avatarPainterState) {
+                                    is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> true
+                                    else -> false
+                                }
+                                if (isAvatarLoading) {
+                                    val avatarPulseAlpha by rememberSkeletonPulse(periodMillis = 900)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .graphicsLayer { alpha = avatarPulseAlpha }
+                                            .background(colors.panel),
+                                    )
+                                }
+                                Image(
+                                    painter = avatarPainter,
+                                    contentDescription = item.displayName,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
                                 )
+                            } else {
+                                // No profile photo set — same "first initial" fallback every other
+                                // avatar-less spot in this app (ProfileIconButton, RecipientAvatarStack)
+                                // already uses, rather than silently falling back to their content
+                                // photo again.
+                                Box(modifier = Modifier.fillMaxSize().background(colors.panel), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = item.displayName.firstOrNull()?.uppercase() ?: "•",
+                                        fontFamily = typography.display,
+                                        fontSize = 19.sp,
+                                        color = colors.cream,
+                                    )
+                                }
                             }
-                            Image(
-                                painter = avatarPainter,
-                                contentDescription = item.displayName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().clip(CircleShape),
-                            )
                         }
                     }
                 }

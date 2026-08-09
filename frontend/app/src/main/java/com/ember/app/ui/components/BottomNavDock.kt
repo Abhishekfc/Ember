@@ -22,8 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.filled.Settings
@@ -39,15 +37,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ember.app.R
 import com.ember.app.ui.theme.EmberAppTheme
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -74,17 +72,24 @@ internal val FALLBACK_NAV_DOCK_HEIGHT_DP = 140.dp
  * Memories grid padding + top-fold height clamp, Memories' day-card centering). */
 val LocalNavDockHeight = compositionLocalOf { FALLBACK_NAV_DOCK_HEIGHT_DP }
 
+// Activity is deliberately NOT one of these any more — it moved to a bell icon in Home's own
+// header, next to the profile avatar (the same slot notifications sit in on most apps), and is
+// reached as a pushed NestedScreen (see MainActivity) exactly like Theme/Profile/Settings' own
+// sub-screens, not a swipeable pager page with a corresponding dock tab. These four are the only
+// destinations that still are.
 enum class NavDestination(val label: String) {
+    MEMORIES("Memories"),
     HOME("Home"),
     FRIENDS("Friends"),
-    ACTIVITY("Activity"),
     SETTINGS("Settings"),
 }
 
 /**
- * A minimal glassmorphism nav pill: Home, Friends, Camera, Activity, Settings in a single row
+ * A minimal glassmorphism nav pill: Memories, Home, Camera, Friends, Settings in a single row
  * with even spacing between every element. Real backdrop blur via [hazeState]. Theme is
- * deliberately not a nav destination — it's reachable only from within Settings.
+ * deliberately not a nav destination — it's reachable only from within Settings. Activity isn't
+ * drawn here either — see [NavDestination.ACTIVITY]'s own doc comment for where it actually
+ * lives now.
  *
  * IMPORTANT: [hazeState]'s `hazeSource` must be scoped to the scrolling content ONLY (e.g. the
  * screen's Column/LazyColumn), never to a shared ancestor Box that also contains this dock —
@@ -98,25 +103,9 @@ fun BottomNavDock(
     onCameraClick: () -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
-    // 0 = plain Home icon, 1 = fully morphed into the Memories/image icon — driven live by how
-    // far Home has been scrolled into its own inline Memories section, not an independent
-    // animation, so the icon tracks the scroll itself rather than snapping once it settles.
-    // Every other screen just leaves this at the default (0), showing a plain Home icon same
-    // as before.
-    //
-    // A provider, not a plain Float — the caller's scroll position changes every frame of a
-    // drag, and reading it directly at the call site would make THIS COMPOSABLE's whole
-    // recomposition scope depend on it, forcing the entire dock (plus whatever shares its
-    // recomposition scope one level up, alongside the pager itself) to recompose 60 times a
-    // second during every scroll. Reading it lazily inside HomeMemoriesNavItem's graphicsLayer
-    // (a draw-phase callback) keeps that to a cheap per-frame redraw of two small icons instead.
-    homeIconProgress: () -> Float = { 0f },
-    // Numbered badge for both — how many pending incoming friend requests, and how many activity
-    // events have happened since that tab was last actually viewed — see MainActivity's own doc
-    // comments on where each of these is computed; this composable just renders whatever it's
-    // handed.
+    // How many pending incoming friend requests — see MainActivity's own doc comment on where
+    // this is computed; this composable just renders whatever it's handed.
     friendsBadgeCount: Int = 0,
-    activityBadgeCount: Int = 0,
     // Reports this Box's own real laid-out height — after navigationBarsPadding() and this
     // Box's own bottom inset are both applied — so callers can feed it into LocalNavDockHeight
     // instead of a guessed dp constant. Fires once per real layout pass, essentially only once
@@ -132,14 +121,19 @@ fun BottomNavDock(
         // a modifier placed after padding in the chain only observes the already-shrunk content
         // size, not the padding that was applied around it. Placed last (a real bug, since
         // fixed), it silently reported just the inner Row's own height (~74dp), missing the
-        // system nav-bar inset and this Box's own 26dp bottom padding entirely — a far smaller
-        // number than the fixed dp guess it was meant to replace, which is exactly what made
-        // content on Home/Settings/Memories start overlapping the dock instead of clearing it.
+        // system nav-bar inset and this Box's own bottom padding entirely — a far smaller number
+        // than the fixed dp guess it was meant to replace, which is exactly what made content on
+        // Home/Settings/Memories start overlapping the dock instead of clearing it.
         modifier = modifier
             .onSizeChanged { onHeightMeasured(with(density) { it.height.toDp() }) }
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 24.dp, end = 24.dp, bottom = 26.dp),
+            // As small as looks safe above the real system inset navigationBarsPadding() already
+            // reserves (gesture bar / 3-button nav / home indicator, whatever that device
+            // actually has) — a bare 0dp here would sit the dock flush against that system chrome
+            // with no breathing room at all, which reads as cramped/mistaken-for-overlap rather
+            // than intentional; this is the minimum gap that still reads as deliberate spacing.
+            .padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
     ) {
         Row(
             modifier = Modifier
@@ -177,11 +171,24 @@ fun BottomNavDock(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            HomeMemoriesNavItem(active, homeIconProgress, onNavigate)
-            NavItem(NavDestination.FRIENDS, Icons.Filled.People, active, onNavigate, badgeCount = friendsBadgeCount)
+            NavItem(NavDestination.MEMORIES, active, onNavigate) { tint ->
+                Icon(Icons.Filled.CalendarMonth, contentDescription = NavDestination.MEMORIES.label, tint = tint, modifier = Modifier.size(23.dp))
+            }
+            NavItem(NavDestination.HOME, active, onNavigate) { tint ->
+                Icon(
+                    painter = painterResource(R.drawable.ic_layers_2),
+                    contentDescription = NavDestination.HOME.label,
+                    tint = tint,
+                    modifier = Modifier.size(23.dp),
+                )
+            }
             CameraButton(onCameraClick)
-            NavItem(NavDestination.ACTIVITY, Icons.Filled.Notifications, active, onNavigate, badgeCount = activityBadgeCount)
-            NavItem(NavDestination.SETTINGS, Icons.Filled.Settings, active, onNavigate)
+            NavItem(NavDestination.FRIENDS, active, onNavigate, badgeCount = friendsBadgeCount) { tint ->
+                Icon(Icons.Filled.People, contentDescription = NavDestination.FRIENDS.label, tint = tint, modifier = Modifier.size(23.dp))
+            }
+            NavItem(NavDestination.SETTINGS, active, onNavigate) { tint ->
+                Icon(Icons.Filled.Settings, contentDescription = NavDestination.SETTINGS.label, tint = tint, modifier = Modifier.size(23.dp))
+            }
         }
     }
 }
@@ -214,61 +221,24 @@ private fun CameraButton(onCameraClick: () -> Unit) {
     }
 }
 
-/** The Home slot specifically: Memories lives inline inside Home's own scrollable content now
- * (see HomeScreen), so this icon morphs between a house and a calendar glyph as [progress] moves
- * from 0 (top of Home) to 1 (scrolled into Memories) — two crossfaded icons rather than a hard
- * swap, so the icon tracks the live scroll the same way the content itself does, not a snap once
- * it settles. Calendar, not a generic image/gallery icon, since Memories itself is a month grid
- * of days, not a plain photo library. */
-@Composable
-private fun HomeMemoriesNavItem(
-    active: NavDestination,
-    progress: () -> Float,
-    onNavigate: (NavDestination) -> Unit,
-) {
-    val colors = EmberTheme.colors
-    val isActive = active == NavDestination.HOME
-
-    val tint by animateColorAsState(
-        targetValue = if (isActive) colors.cream else colors.muted,
-        animationSpec = tween(200),
-        label = "homeMemoriesNavItemTint",
-    )
-
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigate(NavDestination.HOME) },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Home,
-            contentDescription = "Home",
-            tint = tint,
-            modifier = Modifier.size(23.dp).graphicsLayer { alpha = 1f - progress() },
-        )
-        Icon(
-            imageVector = Icons.Filled.CalendarMonth,
-            contentDescription = "Memories",
-            tint = tint,
-            modifier = Modifier.size(23.dp).graphicsLayer { alpha = progress() },
-        )
-    }
-}
-
 /** No background wash behind the active icon — that would be a second, competing accent on top
  * of the camera button's gradient. Every icon is always the solid/filled glyph now (bolder,
  * heavier-looking than the old outlined-vs-filled pairing) — the active state reads through
  * color and contrast alone: full-strength `cream` versus `muted`, the same neutral pairing the
- * rest of the app already uses for primary-vs-secondary text. */
+ * rest of the app already uses for primary-vs-secondary text.
+ *
+ * [icon] is a slot, not an [ImageVector] parameter — some nav items draw a plain Material glyph
+ * (Friends, Settings), others a custom hand-converted vector drawable (Home's own icon), and this
+ * one shape needs to serve both without either caller working around a type it doesn't have. The
+ * slot is handed the already-animated [tint] so every icon, whatever its source, gets the exact
+ * same active/inactive color treatment for free rather than each call site reimplementing it. */
 @Composable
 private fun NavItem(
     destination: NavDestination,
-    icon: ImageVector,
     active: NavDestination,
     onNavigate: (NavDestination) -> Unit,
     badgeCount: Int = 0,
+    icon: @Composable (tint: Color) -> Unit,
 ) {
     val colors = EmberTheme.colors
     val isActive = destination == active
@@ -292,12 +262,7 @@ private fun NavItem(
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNavigate(destination) },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = destination.label,
-            tint = tint,
-            modifier = Modifier.size(23.dp),
-        )
+        icon(tint)
         // Fades in/out rather than just popping into existence — this badge's count is only ever
         // known after a cache read or network fetch resolves (see FriendsViewModel/
         // ActivityViewModel), so it can genuinely appear a beat after the icon itself is already

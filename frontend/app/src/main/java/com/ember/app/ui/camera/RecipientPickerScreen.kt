@@ -130,20 +130,6 @@ fun RecipientPickerScreen(
             }
         }
 
-        // Surfaces a failed create/delete (see RecipientPickerViewModel) — both can now fail for
-        // real, over the network, unlike back when these lists were purely on-device. Shown
-        // regardless of whether the creation bar is open, since a delete failure (long-press on a
-        // badge) can happen independently of it.
-        if (viewModel.errorMessage != null) {
-            Text(
-                text = viewModel.errorMessage.orEmpty(),
-                fontFamily = PublicSansFontFamily,
-                fontSize = 11.sp,
-                color = colors.glow2,
-                modifier = Modifier.padding(top = 6.dp, start = 4.dp),
-            )
-        }
-
         Box(modifier = Modifier.weight(1f).padding(top = 18.dp)) {
             when {
                 // Gated on friends being empty too — a cached list from a previous session
