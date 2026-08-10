@@ -43,10 +43,17 @@ class NetworkModule(context: Context) {
 
     // Must run after authInterceptor so chain.request() here reflects the Authorization header
     // it just added — that's how we tell "token rejected" apart from "no token to begin with".
+    //
+    // users/me/password is excluded even though it's authenticated (always carries a token) —
+    // it has its own legitimate 401 (IncorrectPasswordException, wrong *current* password), which
+    // isn't a rejected/expired session at all. Without this exclusion, typing the current password
+    // wrong signed the whole app out instead of showing an inline error in the dialog, since this
+    // interceptor couldn't tell that 401 apart from a real token rejection.
     private val sessionExpiryInterceptor = okhttp3.Interceptor { chain ->
         val request = chain.request()
         val response = chain.proceed(request)
-        if (response.code == 401 && request.header("Authorization") != null) {
+        val isChangePassword = request.url.encodedPath.endsWith("/users/me/password")
+        if (response.code == 401 && request.header("Authorization") != null && !isChangePassword) {
             _sessionExpired.tryEmit(Unit)
         }
         response

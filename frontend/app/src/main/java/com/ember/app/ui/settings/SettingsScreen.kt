@@ -184,7 +184,7 @@ fun SettingsScreen(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = colors.cream,
-                    modifier = Modifier.padding(start = 14.dp).weight(1f),
+                    modifier = Modifier.weight(1f),
                 )
                 // Switch's default touch target (48dp) is taller than this row's own content —
                 // stripped to its intrinsic size so it doesn't force the row taller than its
@@ -308,8 +308,10 @@ private fun FlatSettingsRow(
     }
 }
 
+/** Shared with MyProfileScreen (`internal`, not `private`) — same section-header treatment
+ * rather than a second near-identical composable defined there. */
 @Composable
-private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+internal fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
     Text(
         text = text,

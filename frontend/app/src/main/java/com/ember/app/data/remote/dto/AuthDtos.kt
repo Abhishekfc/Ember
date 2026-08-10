@@ -19,6 +19,12 @@ data class LoginRequest(
 )
 
 @Serializable
+data class ChangePasswordRequestDto(
+    val currentPassword: String,
+    val newPassword: String,
+)
+
+@Serializable
 data class AuthResponse(
     val token: String,
     val userId: String,

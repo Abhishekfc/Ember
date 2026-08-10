@@ -88,7 +88,6 @@ fun TabScreenScaffold(
         Column(modifier = Modifier.fillMaxSize().hazeSource(hazeState).statusBarsPadding()) {
             TabScreenHeader(
                 title = title,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp),
                 trailing = trailing,
             )
 

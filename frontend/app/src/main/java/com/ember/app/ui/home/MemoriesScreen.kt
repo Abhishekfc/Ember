@@ -745,7 +745,6 @@ fun MemoriesTabScreen(
             TabScreenHeader(
                 title = "Memories",
                 modifier = Modifier
-                    .padding(horizontal = 20.dp)
                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                     .graphicsLayer { alpha = chromeFade },
             )

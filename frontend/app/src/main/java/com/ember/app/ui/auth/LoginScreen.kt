@@ -41,6 +41,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -75,7 +76,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
@@ -126,6 +126,21 @@ fun LoginScreen(
                 AuthStep.REGISTER_PASSWORD -> RegisterPasswordStep(viewModel)
                 AuthStep.REGISTER_NAME -> RegisterNameStep(viewModel)
                 AuthStep.REGISTER_USERNAME -> RegisterUsernameStep(viewModel)
+                AuthStep.REGISTER_WIDGET -> {
+                    val widgetContext = LocalContext.current
+                    WidgetSetupStep(
+                        // Asks the launcher to pin the widget directly where that's supported
+                        // (Android 8+ and a launcher that opted in, which most have). Where it
+                        // isn't, there's nothing to fall back to that would actually work — the
+                        // system offers no way to open the widget picker on an app's behalf — so
+                        // this moves on and leaves the walkthrough as the route, rather than
+                        // firing an intent that would dead-end or crash.
+                        onAddWidget = {
+                            requestPinEmberWidget(widgetContext)
+                            viewModel.onWidgetStepDone()
+                        },
+                    )
+                }
                 AuthStep.REGISTER_SHARING -> RegisterSharingStep(viewModel, onAuthenticated)
             }
         }
@@ -173,12 +188,10 @@ private fun LoginStep(viewModel: LoginViewModel, onAuthenticated: () -> Unit) {
             imeAction = ImeAction.Next,
             modifier = Modifier.padding(top = 24.dp).focusRequester(emailFocus),
         )
-        AuthTextField(
+        AuthPasswordField(
             value = viewModel.password,
             onValueChange = viewModel::onPasswordChange,
             placeholder = "Password",
-            keyboardType = KeyboardType.Text,
-            visualTransformation = PasswordVisualTransformation(),
             imeAction = ImeAction.Done,
             onImeAction = { viewModel.submitLogin(onAuthenticated) },
             modifier = Modifier.padding(top = 10.dp),
@@ -256,11 +269,10 @@ private fun RegisterPasswordStep(viewModel: LoginViewModel) {
 
     AuthStepScaffold(onBack = viewModel::goBack) {
         Text(text = "Create a password", fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
-        AuthTextField(
+        AuthPasswordField(
             value = viewModel.password,
             onValueChange = viewModel::onPasswordChange,
             placeholder = "Password",
-            visualTransformation = PasswordVisualTransformation(),
             imeAction = ImeAction.Done,
             onImeAction = viewModel::submitRegister,
             modifier = Modifier.padding(top = 24.dp).focusRequester(focusRequester),
@@ -308,7 +320,7 @@ private fun RegisterNameStep(viewModel: LoginViewModel) {
         AuthTextField(
             value = viewModel.lastName,
             onValueChange = viewModel::onLastNameChange,
-            placeholder = "Last name",
+            placeholder = "Last name (optional)",
             imeAction = ImeAction.Done,
             onImeAction = viewModel::submitName,
             modifier = Modifier.padding(top = 10.dp),
@@ -532,133 +544,142 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
         )
     }
 
+    // Three zones, not one long scrolling column: a fixed back button, a scrollable middle that
+    // absorbs however tall the invite content ends up being on a given device, and a fixed
+    // bottom action that's always on screen regardless. The old version put everything —
+    // including the "skip" action — in one scrollable Column, so on any device short enough (or
+    // with enough installed share targets) that the content ran past the viewport, the only way
+    // to finish signing up was to discover you needed to scroll for it.
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp)
-            .verticalScroll(rememberScrollState()),
+            .navigationBarsPadding(),
     ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp, start = 24.dp, end = 24.dp)) {
             AuthBackButton(onClick = viewModel::goBack)
         }
 
-        // Same display face, size and weight every other step of this flow uses for its heading,
-        // so arriving here doesn't look like a different app.
-        Text(
-            text = "Add your first friend",
-            fontFamily = AuthPalette.display,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.cream,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
-        )
-        Text(
-            text = "Invite someone to get started",
-            fontFamily = PublicSansFontFamily,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = colors.muted,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        )
-
-        SectionLabel(text = "INVITE FROM", modifier = Modifier.padding(top = 32.dp, bottom = 16.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
         ) {
-            quickTargets.forEach { target ->
-                QuickInviteButton(
-                    target = target,
-                    onClick = { shareInvite(context, inviteMessage, target.packageName) },
-                )
+            // Same display face, size and weight every other step of this flow uses for its
+            // heading, so arriving here doesn't look like a different app.
+            Text(
+                text = "Add your first friend",
+                fontFamily = AuthPalette.display,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.cream,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+            )
+            Text(
+                text = "Invite someone to get started",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.muted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+
+            SectionLabel(text = "INVITE FROM", modifier = Modifier.padding(top = 32.dp, bottom = 16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                quickTargets.forEach { target ->
+                    QuickInviteButton(
+                        target = target,
+                        onClick = { shareInvite(context, inviteMessage, target.packageName) },
+                    )
+                }
             }
+
+            SectionLabel(text = "SHARE YOUR EMBER LINK", modifier = Modifier.padding(top = 34.dp, bottom = 6.dp))
+
+            InviteListRow(
+                title = "Copy link",
+                subtitle = "Share your invite anywhere",
+                packageName = null,
+                fallbackIcon = Icons.Rounded.Link,
+                onClick = { clipboard.setText(AnnotatedString(inviteMessage)) },
+            )
+            InviteListRow(
+                title = "WhatsApp",
+                subtitle = "Invite via WhatsApp",
+                packageName = "com.whatsapp",
+                fallbackIcon = Icons.Filled.Chat,
+                onClick = { shareInvite(context, inviteMessage, "com.whatsapp") },
+            )
+            InviteListRow(
+                title = "Instagram DM",
+                subtitle = "Copies your invite, opens your inbox",
+                packageName = "com.instagram.android",
+                fallbackIcon = Icons.Filled.PhotoCamera,
+                onClick = {
+                    clipboard.setText(AnnotatedString(inviteMessage))
+                    openInstagram(context, "instagram://direct-inbox", inviteMessage)
+                },
+            )
+            InviteListRow(
+                title = "Instagram Story",
+                subtitle = "Copies your invite, opens the camera",
+                packageName = "com.instagram.android",
+                fallbackIcon = Icons.Filled.PhotoCamera,
+                onClick = {
+                    clipboard.setText(AnnotatedString(inviteMessage))
+                    openInstagram(context, "instagram://story-camera", inviteMessage)
+                },
+            )
+            InviteListRow(
+                title = "Telegram",
+                subtitle = "Invite via Telegram",
+                packageName = "org.telegram.messenger",
+                fallbackIcon = Icons.AutoMirrored.Filled.Send,
+                onClick = { shareInvite(context, inviteMessage, "org.telegram.messenger") },
+            )
+            InviteListRow(
+                title = "Messages",
+                subtitle = "Invite via SMS",
+                packageName = null,
+                fallbackIcon = Icons.Filled.Sms,
+                onClick = { shareInvite(context, inviteMessage, null) },
+            )
+
+            // Bottom padding here, not just on the fixed footer below, so the last invite row
+            // never sits flush against the footer's own top edge when the list is long enough to
+            // actually reach it.
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
-        SectionLabel(text = "SHARE YOUR EMBER LINK", modifier = Modifier.padding(top = 34.dp, bottom = 6.dp))
+        // Fixed footer, outside the scroll — always visible no matter how tall the content above
+        // is or how short the device's screen is. A real button now, not text styled to look
+        // tappable, so it reads as an actual control rather than something easy to miss or mistake
+        // for a caption.
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+            AuthSecondaryButton(
+                text = "I'll do this later",
+                onClick = onAuthenticated,
+            )
 
-        InviteListRow(
-            title = "Copy link",
-            subtitle = "Share your invite anywhere",
-            packageName = null,
-            fallbackIcon = Icons.Rounded.Link,
-            onClick = { clipboard.setText(AnnotatedString(inviteMessage)) },
-        )
-        InviteListRow(
-            title = "WhatsApp",
-            subtitle = "Invite via WhatsApp",
-            packageName = "com.whatsapp",
-            fallbackIcon = Icons.Filled.Chat,
-            onClick = { shareInvite(context, inviteMessage, "com.whatsapp") },
-        )
-        InviteListRow(
-            title = "Instagram DM",
-            subtitle = "Copies your invite, opens your inbox",
-            packageName = "com.instagram.android",
-            fallbackIcon = Icons.Filled.PhotoCamera,
-            onClick = {
-                clipboard.setText(AnnotatedString(inviteMessage))
-                openInstagram(context, "instagram://direct-inbox", inviteMessage)
-            },
-        )
-        InviteListRow(
-            title = "Instagram Story",
-            subtitle = "Copies your invite, opens the camera",
-            packageName = "com.instagram.android",
-            fallbackIcon = Icons.Filled.PhotoCamera,
-            onClick = {
-                clipboard.setText(AnnotatedString(inviteMessage))
-                openInstagram(context, "instagram://story-camera", inviteMessage)
-            },
-        )
-        InviteListRow(
-            title = "Telegram",
-            subtitle = "Invite via Telegram",
-            packageName = "org.telegram.messenger",
-            fallbackIcon = Icons.AutoMirrored.Filled.Send,
-            onClick = { shareInvite(context, inviteMessage, "org.telegram.messenger") },
-        )
-        InviteListRow(
-            title = "Messages",
-            subtitle = "Invite via SMS",
-            packageName = null,
-            fallbackIcon = Icons.Filled.Sms,
-            onClick = { shareInvite(context, inviteMessage, null) },
-        )
-
-        // Never a gate — someone with nobody to invite yet still has to be able to finish signing
-        // up. Quiet text rather than a filled button, so the invites above stay the obvious thing
-        // to act on.
-        Text(
-            text = "I'll do this later",
-            fontFamily = PublicSansFontFamily,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.mutedDim,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 18.dp)
-                .clickable(onClick = onAuthenticated)
-                .padding(vertical = 12.dp),
-        )
-
-        // Deliberately quieter and lighter than the "I'll do this later" action above it — at the
-        // same weight and color the two read as a pair of buttons, and this one isn't tappable at
-        // all. Smaller, dimmer and un-bolded is what marks it as a closing line rather than a
-        // second thing to press.
-        Text(
-            text = "Real moments. Real people.",
-            fontFamily = PublicSansFontFamily,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Normal,
-            color = colors.mutedDim.copy(alpha = 0.55f),
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 22.dp),
-        )
+            // Deliberately quieter and lighter than the button above it, and not tappable at all
+            // — smaller, dimmer, un-bolded is what marks it as a closing line rather than a
+            // second thing to press.
+            Text(
+                text = "Real moments. Real people.",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Normal,
+                color = colors.mutedDim.copy(alpha = 0.55f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 18.dp),
+            )
+        }
     }
 }
 
@@ -770,5 +791,25 @@ private fun InviteIcon(
         ) {
             Icon(imageVector = fallbackIcon, contentDescription = null, tint = colors.glow, modifier = Modifier.size(glyphSize))
         }
+    }
+}
+
+/** Asks the launcher to pin Emigo's own widget, which is the one route an app has to add a
+ * widget without the user hunting through the picker themselves. Supported on Android 8+ and only
+ * by launchers that opted in — [AppWidgetManager.isRequestPinAppWidgetSupported] is the honest
+ * check, and where it's false there is genuinely nothing an app can do (the system exposes no way
+ * to open the widget picker on an app's behalf), so this returns quietly and the walkthrough on
+ * that same screen is the real path. Wrapped in runCatching because OEM launchers have been known
+ * to throw from this despite reporting support, and a crash here would take out onboarding
+ * itself over a step the user can complete by hand anyway. */
+private fun requestPinEmberWidget(context: android.content.Context) {
+    runCatching {
+        val manager = android.appwidget.AppWidgetManager.getInstance(context) ?: return
+        if (!manager.isRequestPinAppWidgetSupported) return
+        manager.requestPinAppWidget(
+            android.content.ComponentName(context, com.ember.app.widget.EmberWidgetReceiver::class.java),
+            null,
+            null,
+        )
     }
 }

@@ -111,6 +111,18 @@ class HomeViewModel(
     var friends by mutableStateOf<List<FriendSummaryDto>>(emptyList())
         private set
 
+    // Which of Home's two views (single-friend carousel vs. the Moments grid) is showing — lives
+    // here rather than as HomeScreen's own local Compose state so it survives swiping away to
+    // another tab and back. This ViewModel is hoisted in MainActivity and outlives that; the
+    // composable itself is torn down and rebuilt on every return visit, which is what silently
+    // reset the selection back to HOME every time before this moved here.
+    internal var homeViewMode by mutableStateOf(HomeViewMode.HOME)
+        private set
+
+    internal fun setHomeViewMode(mode: HomeViewMode) {
+        homeViewMode = mode
+    }
+
     // Set once the very first real fetch (not the synchronous cache hydration at construction)
     // completes — see loadFeed, which always promotes that one fetch regardless of isPullRefresh
     // since there's no established session yet to protect. Publicly readable (and a real Compose
@@ -311,6 +323,12 @@ class HomeViewModel(
         // the real, fresh fetch, same as it would be on any other load.
         loadFeed()
         loadMemories()
+        // Seeded from the same LocalListCache.KEY_FRIENDS entry FriendsViewModel already reads
+        // and writes — this ViewModel never wrote to it before, so on an offline cold start
+        // `friends` stayed empty for this whole session and FriendAvatarRow fell back to initials
+        // even though the Friends tab (reading the same key) still had real photos to show. No
+        // new cache needed: same key, same underlying DataStore file, just read here too.
+        viewModelScope.launch { localCache.read<FriendSummaryDto>(LocalListCache.KEY_FRIENDS)?.let { friends = it } }
         viewModelScope.launch { friendRepository.getFriends(limit = ALL_FRIENDS_LIMIT).onSuccess { friends = it.items } }
         viewModelScope.launch { userName = tokenStore.displayName.first() }
         viewModelScope.launch {

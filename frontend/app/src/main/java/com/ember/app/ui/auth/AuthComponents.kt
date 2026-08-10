@@ -28,13 +28,17 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +49,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -162,7 +167,8 @@ fun GoogleGlyph(modifier: Modifier = Modifier) {
 
 /** A single-line field with no icon and a larger type size than the rest of the app's forms —
  * each auth step asks exactly one question, so the field carries more visual weight than a
- * typical compact row would. */
+ * typical compact row would. [trailingIcon] is null by default (every existing field stays
+ * exactly as-is); a password field passes a show/hide toggle here — see [AuthPasswordField]. */
 @Composable
 fun AuthTextField(
     value: String,
@@ -173,36 +179,82 @@ fun AuthTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     imeAction: ImeAction = ImeAction.Done,
     onImeAction: () -> Unit = {},
+    trailingIcon: @Composable (() -> Unit)? = null,
 ) {
     val colors = AuthPalette
     val shape = RoundedCornerShape(16.dp)
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
             .background(colors.panel)
             .border(1.dp, colors.border, shape)
             .padding(horizontal = 18.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (value.isEmpty()) {
-            Text(text = placeholder, fontFamily = PublicSansFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.mutedDim)
+        Box(modifier = Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(text = placeholder, fontFamily = PublicSansFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.mutedDim)
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = TextStyle(fontFamily = PublicSansFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.cream),
+                cursorBrush = SolidColor(colors.glow),
+                visualTransformation = visualTransformation,
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+                keyboardActions = KeyboardActions(
+                    onNext = { onImeAction() },
+                    onDone = { onImeAction() },
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            textStyle = TextStyle(fontFamily = PublicSansFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.cream),
-            cursorBrush = SolidColor(colors.glow),
-            visualTransformation = visualTransformation,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-            keyboardActions = KeyboardActions(
-                onNext = { onImeAction() },
-                onDone = { onImeAction() },
-            ),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (trailingIcon != null) {
+            trailingIcon()
+        }
     }
+}
+
+/** [AuthTextField] specialized for a password: owns its own show/hide state and swaps
+ * [PasswordVisualTransformation] for a plain one, with an eye-icon toggle — the standard
+ * password-field pattern every major app uses, which this flow was missing entirely (typing a
+ * password here had no way to double check what was typed). */
+@Composable
+fun AuthPasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    imeAction: ImeAction = ImeAction.Done,
+    onImeAction: () -> Unit = {},
+) {
+    val colors = AuthPalette
+    var visible by remember { mutableStateOf(false) }
+
+    AuthTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = placeholder,
+        keyboardType = KeyboardType.Password,
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        imeAction = imeAction,
+        onImeAction = onImeAction,
+        modifier = modifier,
+        trailingIcon = {
+            Icon(
+                imageVector = if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                contentDescription = if (visible) "Hide password" else "Show password",
+                tint = colors.mutedDim,
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .size(20.dp)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { visible = !visible },
+            )
+        },
+    )
 }
 
 /** Consistent circular back affordance, top-left, every non-entry step of the flow uses. */

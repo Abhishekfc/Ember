@@ -87,15 +87,20 @@ fun FriendsScreen(
         title = "Friends",
         hazeState = hazeState,
         trailing = {
-            // Plain tinted glyph, no background circle — same treatment every other icon in
-            // the app now uses, not a colored bubble competing with the title. Sized generously;
-            // TabScreenHeader clamps this to the title text's own real height on its own, so
-            // this can ask for more room than actually fits without pushing the row taller.
+            // Same panel-toned circle, same 44dp size, as Home's header icons (ActivityBellButton
+            // / ProfileIconButton). TabScreenHeader now sizes its whole row to whichever is
+            // taller, the title text or this trailing control, so the row itself grows to fit
+            // this at its real 44dp rather than squishing or overflowing it.
             Box(
-                modifier = Modifier.size(34.dp).clickable(onClick = onFindPeopleClick),
+                modifier = Modifier.size(44.dp).clickable(onClick = onFindPeopleClick),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.PersonAdd, contentDescription = "Find people", tint = colors.cream, modifier = Modifier.size(26.dp))
+                Box(
+                    modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.panel),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.PersonAdd, contentDescription = "Find people", tint = colors.cream, modifier = Modifier.size(24.dp))
+                }
             }
         },
         // Strictly the manual pull gesture — not isLoading, which is also true for the automatic

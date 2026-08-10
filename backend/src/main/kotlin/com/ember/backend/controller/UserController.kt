@@ -1,9 +1,11 @@
 package com.ember.backend.controller
 
+import com.ember.backend.dto.ChangePasswordRequest
 import com.ember.backend.dto.UpdateProfileRequest
 import com.ember.backend.dto.UsernameAvailability
 import com.ember.backend.dto.UserProfile
 import com.ember.backend.security.AuthenticatedUser
+import com.ember.backend.service.AuthService
 import com.ember.backend.service.UserService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -22,7 +24,10 @@ import org.springframework.web.multipart.MultipartFile
 
 @RestController
 @RequestMapping("/users/me")
-class UserController(private val userService: UserService) {
+class UserController(
+    private val userService: UserService,
+    private val authService: AuthService,
+) {
 
     @GetMapping
     fun getProfile(@AuthenticationPrincipal me: AuthenticatedUser): UserProfile =
@@ -45,6 +50,15 @@ class UserController(private val userService: UserService) {
         @AuthenticationPrincipal me: AuthenticatedUser,
         @RequestPart("file") file: MultipartFile,
     ): UserProfile = userService.updateProfilePhoto(me.id, file)
+
+    @PostMapping("/password")
+    fun changePassword(
+        @AuthenticationPrincipal me: AuthenticatedUser,
+        @Valid @RequestBody request: ChangePasswordRequest,
+    ): ResponseEntity<Void> {
+        authService.changePassword(me.id, request)
+        return ResponseEntity.noContent().build()
+    }
 
     // No re-auth (password re-entry) required here — the client already gates this behind its
     // own "type DELETE to confirm" dialog, and the request itself is already authenticated by
