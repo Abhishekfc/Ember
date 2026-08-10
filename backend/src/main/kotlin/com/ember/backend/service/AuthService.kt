@@ -1,10 +1,13 @@
 package com.ember.backend.service
 
 import com.ember.backend.dto.AuthResponse
+import com.ember.backend.dto.ChangePasswordRequest
 import com.ember.backend.dto.LoginRequest
 import com.ember.backend.dto.RegisterRequest
 import com.ember.backend.exception.EmailAlreadyRegisteredException
+import com.ember.backend.exception.IncorrectPasswordException
 import com.ember.backend.exception.InvalidCredentialsException
+import com.ember.backend.exception.ResourceNotFoundException
 import com.ember.backend.exception.UsernameAlreadyTakenException
 import com.ember.backend.model.User
 import com.ember.backend.repository.UserRepository
@@ -13,6 +16,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 @Service
 class AuthService(
@@ -80,6 +84,20 @@ class AuthService(
             displayName = user.displayName,
             username = user.username,
         )
+    }
+
+    // Doesn't reissue a token — the existing access token stays valid for its own remaining
+    // 7-day lifetime regardless of the password change, same as every other profile edit
+    // (display name, username) already leaves the session untouched.
+    @Transactional
+    fun changePassword(userId: UUID, request: ChangePasswordRequest) {
+        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
+        if (!passwordEncoder.matches(request.currentPassword, user.passwordHash)) {
+            throw IncorrectPasswordException()
+        }
+        user.passwordHash = passwordEncoder.encode(request.newPassword)
+        userRepository.save(user)
+        logger.info("Password changed: userId={}", userId)
     }
 
     private companion object {

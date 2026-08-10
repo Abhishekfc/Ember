@@ -53,6 +53,15 @@ class MyProfileViewModel(
     var nameError by mutableStateOf<String?>(null)
         private set
 
+    // Bumped every time nameError is set to a fresh failure (not on clear) — the toast's own
+    // auto-dismiss LaunchedEffect keys off this instead of the error string itself. Two failures
+    // in a row can carry the exact same message ("Name can't be empty" twice), and Compose's
+    // snapshot state skips notifying observers when a new value structurally equals the old one —
+    // keying on the string alone meant a second identical failure inside the first toast's 2.6s
+    // window silently failed to restart the dismiss timer or replay the toast.
+    var nameErrorNonce by mutableStateOf(0)
+        private set
+
     // Username popup
     var usernameDraft by mutableStateOf("")
         private set
@@ -62,7 +71,29 @@ class MyProfileViewModel(
         private set
     var usernameError by mutableStateOf<String?>(null)
         private set
+    // See nameErrorNonce's doc comment — same reasoning, same fix.
+    var usernameErrorNonce by mutableStateOf(0)
+        private set
     private var usernameCheckJob: Job? = null
+
+    // Password popup — three plain drafts, validated client-side (new/confirm match, new is at
+    // least 8 characters, matching the backend's own @Size(min=8) on ChangePasswordRequest)
+    // before ever calling the network, so a typo is caught instantly rather than round-tripping.
+    var currentPasswordDraft by mutableStateOf("")
+        private set
+    var newPasswordDraft by mutableStateOf("")
+        private set
+    var confirmPasswordDraft by mutableStateOf("")
+        private set
+    var isSavingPassword by mutableStateOf(false)
+        private set
+    var passwordError by mutableStateOf<String?>(null)
+        private set
+    // See nameErrorNonce's doc comment — same reasoning, same fix. This is the field most likely
+    // to actually hit the collision: retrying the same wrong current password produces the exact
+    // same message every time.
+    var passwordErrorNonce by mutableStateOf(0)
+        private set
 
     init {
         loadProfile()
@@ -100,6 +131,12 @@ class MyProfileViewModel(
         }
     }
 
+    /** Only ever called by the toast's own auto-dismiss timer (see DialogTopToast's call sites) —
+     * clearing on the next keystroke is already handled by onNameDraftChange above. */
+    fun clearNameError() {
+        nameError = null
+    }
+
     fun openNameEditor() {
         nameDraft = profile?.displayName.orEmpty()
         nameError = null
@@ -114,6 +151,7 @@ class MyProfileViewModel(
         val trimmed = nameDraft.trim()
         if (trimmed.isEmpty()) {
             nameError = "Name can't be empty"
+            nameErrorNonce++
             return
         }
         if (trimmed == profile?.displayName) {
@@ -128,10 +166,17 @@ class MyProfileViewModel(
                     applyProfile(it)
                     onSaved()
                 },
-                onFailure = { nameError = it.message ?: "Couldn't save your name" },
+                onFailure = {
+                    nameError = it.message ?: "Couldn't save your name"
+                    nameErrorNonce++
+                },
             )
             isSavingName = false
         }
+    }
+
+    fun clearUsernameError() {
+        usernameError = null
     }
 
     fun openUsernameEditor() {
@@ -177,10 +222,12 @@ class MyProfileViewModel(
         val canSave = usernameDraft == current || usernameCheck is UsernameCheckState.Available
         if (usernameDraft.length < 3) {
             usernameError = "Username must be at least 3 characters"
+            usernameErrorNonce++
             return
         }
         if (!canSave) {
             usernameError = "Pick an available username first"
+            usernameErrorNonce++
             return
         }
         if (usernameDraft == current) {
@@ -195,9 +242,68 @@ class MyProfileViewModel(
                     applyProfile(it)
                     onSaved()
                 },
-                onFailure = { usernameError = it.message ?: "Couldn't save your username" },
+                onFailure = {
+                    usernameError = it.message ?: "Couldn't save your username"
+                    usernameErrorNonce++
+                },
             )
             isSavingUsername = false
+        }
+    }
+
+    fun clearPasswordError() {
+        passwordError = null
+    }
+
+    fun openPasswordEditor() {
+        currentPasswordDraft = ""
+        newPasswordDraft = ""
+        confirmPasswordDraft = ""
+        passwordError = null
+    }
+
+    fun onCurrentPasswordDraftChange(value: String) {
+        currentPasswordDraft = value
+        passwordError = null
+    }
+
+    fun onNewPasswordDraftChange(value: String) {
+        newPasswordDraft = value
+        passwordError = null
+    }
+
+    fun onConfirmPasswordDraftChange(value: String) {
+        confirmPasswordDraft = value
+        passwordError = null
+    }
+
+    fun savePassword(onSaved: () -> Unit) {
+        if (currentPasswordDraft.isEmpty()) {
+            passwordError = "Enter your current password"
+            passwordErrorNonce++
+            return
+        }
+        if (newPasswordDraft.length < 8) {
+            passwordError = "New password must be at least 8 characters"
+            passwordErrorNonce++
+            return
+        }
+        if (newPasswordDraft != confirmPasswordDraft) {
+            passwordError = "New passwords don't match"
+            passwordErrorNonce++
+            return
+        }
+        viewModelScope.launch {
+            isSavingPassword = true
+            passwordError = null
+            repository.changePassword(currentPasswordDraft, newPasswordDraft).fold(
+                onSuccess = { onSaved() },
+                onFailure = {
+                    passwordError = it.message ?: "Couldn't change your password"
+                    passwordErrorNonce++
+                },
+            )
+            isSavingPassword = false
         }
     }
 

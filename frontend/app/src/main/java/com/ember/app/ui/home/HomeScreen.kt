@@ -1,6 +1,8 @@
 package com.ember.app.ui.home
 
+import android.content.Context
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -48,6 +50,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -84,45 +89,58 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
 import com.ember.app.R
 import com.ember.app.data.remote.dto.FeedItem
 import com.ember.app.data.remote.dto.PhotoEntryDto
 import com.ember.app.ui.components.LocalNavDockHeight
 import com.ember.app.ui.components.PULL_REFRESH_CONTENT_OFFSET_DP
 import com.ember.app.ui.theme.CourgetteFontFamily
+import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
+import com.ember.app.ui.theme.EmberTypography
 import com.ember.app.ui.theme.PublicSansFontFamily
+import com.ember.app.ui.theme.ThemeKey
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import java.time.Instant
@@ -214,11 +232,33 @@ fun HomeScreen(
     // indicator's own modifier further down).
     var brandHeaderHeightPx by remember { mutableStateOf(0f) }
 
-    // SharePromptRow's own real height — Camera has no equivalent row before its own card, so
-    // subtracting this from the card+avatar-row fold's own available height (see its own call
+    // HomeViewModeToggleRow's own real height — Camera has no equivalent row before its own card,
+    // so subtracting this from the card+avatar-row fold's own available height (see its own call
     // site further down) is what keeps the card landing at the same absolute screen position on
     // both screens, instead of Home's card sitting lower just because this row exists above it.
     var sharePromptHeightPx by remember { mutableStateOf(0f) }
+
+    // Which of Home's two views is showing — read from the ViewModel (see HomeViewMode's own doc
+    // comment for why local Compose state here isn't enough to survive navigating away and back).
+    val homeViewMode = viewModel.homeViewMode
+
+    // A tapped Moments grid card, grown into its own featured overlay — see MomentFocusState's
+    // own doc comment for why this stays a separate, locally-hoisted state rather than reusing
+    // isPhotoFocused (that one is HOME's own carousel-focus state, hoisted all the way to
+    // MainActivity because the shared nav dock needs to blur in step with it; this one only ever
+    // affects what's rendered inside this composable, so it has no reason to live any higher).
+    val momentFocusState = remember { MomentFocusState() }
+    LaunchedEffect(momentFocusState.isOpen) {
+        if (momentFocusState.isOpen) {
+            momentFocusState.progress.animateTo(1f, animationSpec = tween(320, easing = FastOutSlowInEasing))
+        } else {
+            momentFocusState.progress.animateTo(0f, animationSpec = tween(220, easing = FastOutSlowInEasing))
+            momentFocusState.target = null
+        }
+    }
+    // Swiping back (or pressing back) while a moment is open closes it, the same way tapping
+    // outside it does — not fall through to the system and back out of the app.
+    BackHandler(enabled = momentFocusState.isOpen) { momentFocusState.isOpen = false }
 
     // Whichever photo the featured card is currently showing — hoisted up here (rather than kept
     // local to the carousel branch below) so AmbientPhotoBackdrop, rendered from this composable's
@@ -460,20 +500,24 @@ fun HomeScreen(
             Column(modifier = Modifier.graphicsLayer { translationY = pullOffsetFraction * PULL_REFRESH_CONTENT_OFFSET_DP.dp.toPx() }) {
 
             // Outside the when{} below, so it renders in every state rather than only alongside a
-            // real feed. That matches what this row is actually about (see its own doc comment:
-            // the viewer's OWN moment, never gated by whether anyone else has shared) and, just as
-            // importantly, it means the card beneath it starts from the same offset in every
-            // branch — with this inside the feed branch only, the empty state's card sat higher
+            // real feed — it means the card beneath it starts from the same offset in every
+            // branch, with this inside the feed branch only, the empty state's card sat higher
             // than the real one, and CameraScreen had no single Home position to match against.
-            val unseenCount = viewModel.feedItems.count { viewModel.hasUnseenPhoto(it) }
-            SharePromptRow(
-                hasSharedRecently = hasSharedRecently,
-                unseenCount = unseenCount,
-                onCameraClick = onCameraClick,
+            // Switching to MOMENTS only actually changes anything inside the real-feed branch
+            // below; the other branches (loading/error/empty) render the same regardless of mode.
+            HomeViewModeToggleRow(
+                mode = homeViewMode,
+                onModeChange = { viewModel.setHomeViewMode(it) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { sharePromptHeightPx = it.size.height.toFloat() }
-                    .padding(top = 12.dp, start = 22.dp, end = 22.dp)
+                    // top = 20.dp, not 12 — this row sat 18dp below the header but 27dp above the
+                    // card (FEATURED_CARD_TOP_GAP), a lopsided gap that read as "stuck to the
+                    // header" rather than sitting evenly between the two things it separates.
+                    // Still a touch less than the card's own gap, since the header is the
+                    // stronger anchor of the two, but close enough now to actually read as
+                    // centered in its own slot.
+                    .padding(top = 20.dp, start = 22.dp, end = 22.dp)
                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                     .graphicsLayer { alpha = chromeFade },
             )
@@ -559,12 +603,30 @@ fun HomeScreen(
                             // at a different height from the real one.
                             Spacer(modifier = Modifier.height(FEATURED_CARD_TOP_GAP))
 
-                            HomeEmptyStateCard(
-                                onAddFriendClick = onAddFriendClick,
-                                modifier = Modifier
-                                    .weight(1f, fill = false)
-                                    .padding(start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING),
-                            )
+                            if (homeViewMode == HomeViewMode.MOMENTS) {
+                                MomentsEmptyState(
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .padding(start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING),
+                                )
+                            } else {
+                                HomeEmptyStateCard(
+                                    onAddFriendClick = onAddFriendClick,
+                                    // The card's own caption carries this rather than a second
+                                    // block of text underneath it: with friends already added,
+                                    // "once you're connected" is describing something that has
+                                    // already happened, which is what made the screen read as if
+                                    // adding a friend had changed nothing.
+                                    caption = if (viewModel.friends.isNotEmpty()) {
+                                        "Nothing shared yet. Their photos land here the moment they post, or you can send the first one."
+                                    } else {
+                                        "Once you're connected, their photos show up right here."
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .padding(start = FEATURED_CARD_SIDE_PADDING, end = FEATURED_CARD_SIDE_PADDING),
+                                )
+                            }
                         }
                     }
                 }
@@ -742,6 +804,47 @@ fun HomeScreen(
                     // device, and the card simply renders a little smaller when a screen is too
                     // short to give it its full aspect-ratio height, which is the one thing here
                     // that can shrink without anything colliding.
+                    if (homeViewMode == HomeViewMode.MOMENTS) {
+                        val momentsGridBlur by rememberFocusBlur(momentFocusState.isOpen)
+                        val momentsGridFade by rememberFocusFade(momentFocusState.isOpen)
+                        // Its own scrollable region, not bounded the same way the carousel's fold
+                        // is — a grid can hold more friends than fit on screen at once, where the
+                        // carousel fold is deliberately capped to never need to scroll.
+                        MomentsGrid(
+                            feedItems = viewModel.feedItems,
+                            onCardClick = { item, bounds ->
+                                // Newest-first, matching the grid tile's own thumbnail (its last
+                                // photo) — landing on page 0 opens exactly the photo that was
+                                // tapped, then continuing into older photos on swipe.
+                                val orderedPhotos = item.photos.asReversed()
+                                momentFocusState.target = MomentFocusTarget(
+                                    friendId = item.friendId,
+                                    displayName = item.displayName,
+                                    photos = orderedPhotos,
+                                    initialPage = 0,
+                                    originBounds = bounds,
+                                )
+                                momentFocusState.isOpen = true
+                            },
+                            focusedFriendId = momentFocusState.target?.friendId,
+                            focusProgress = momentFocusState.progress.value,
+                            modifier = Modifier
+                                .height(topFoldMaxHeightDp)
+                                .blur(momentsGridBlur, BlurredEdgeTreatment.Unbounded)
+                                .graphicsLayer { alpha = momentsGridFade },
+                            // top = FEATURED_CARD_TOP_GAP, not a separately-guessed smaller
+                            // value — that's the exact gap HOME mode's own Column puts above the
+                            // featured card (see its Spacer just below), and this grid needs the
+                            // same one so it starts at the same place the card does instead of
+                            // sitting closer to the pills above it.
+                            contentPadding = PaddingValues(
+                                start = 22.dp,
+                                end = 22.dp,
+                                top = FEATURED_CARD_TOP_GAP,
+                                bottom = 4.dp,
+                            ),
+                        )
+                    } else {
                     Column(modifier = Modifier.fillMaxWidth().heightIn(max = topFoldMaxHeightDp)) {
                         Spacer(modifier = Modifier.height(FEATURED_CARD_TOP_GAP))
 
@@ -750,6 +853,7 @@ fun HomeScreen(
                             pagerState = pagerState,
                             isFocused = isPhotoFocused,
                             isAtDefaultScrollPosition = isHomeAtDefaultScrollPosition,
+                            isActive = isActive,
                             // Only actually toggles focus when Home is scrolled all the way to its
                             // default resting position — without this, tapping the card while it's
                             // only half-visible (scrolled a little for the pull-to-refresh gesture)
@@ -793,12 +897,42 @@ fun HomeScreen(
                         }
                     }
                     }
+                    }
 
                 }
             }
             }
         }
         }
+
+    // Rendered from this screen's own true full-screen Box, same reasoning as Memories' own
+    // overlay: a container nested inside a scrollable column measures with an unbounded height,
+    // so "centered against the full device screen" from in there would be meaningless.
+    momentFocusState.target?.let { target ->
+        val overlayDensity = LocalDensity.current
+        // The exact same top offset HOME mode's own FeaturedPhotoCard sits at — statusBar, then
+        // the real measured header, then the real measured toggle row, then the fixed gap above
+        // the card — rather than centering this overlay in the leftover screen space the way
+        // Memories' own version does. Centering was what made it land somewhere else entirely:
+        // Home's card isn't actually centered in its fold, it's pinned to the top of it by a
+        // fixed Spacer, so a centered destination here could never match it. Computed from the
+        // same real measurements the fold itself uses, so it can't drift out of sync with where
+        // the real card actually is.
+        val sidePaddingPx = with(overlayDensity) { FEATURED_CARD_SIDE_PADDING.toPx() }
+        val topGapPx = with(overlayDensity) { FEATURED_CARD_TOP_GAP.toPx() }
+        val statusBarPx = WindowInsets.statusBars.getTop(overlayDensity).toFloat()
+        val cardWidthPx = (screenSize.width - sidePaddingPx * 2).coerceAtLeast(1f)
+        val cardHeightPx = cardWidthPx / FEATURED_CARD_ASPECT_RATIO
+        val destTop = statusBarPx + headerHeightPx + sharePromptHeightPx + topGapPx
+        val destRect = Rect(sidePaddingPx, destTop, sidePaddingPx + cardWidthPx, destTop + cardHeightPx)
+
+        MomentFeaturedOverlay(
+            target = target,
+            destRect = destRect,
+            progress = momentFocusState.progress.value,
+            onDismiss = { momentFocusState.isOpen = false },
+        )
+    }
     }
 }
 
@@ -1013,21 +1147,20 @@ internal fun HomeHeaderHeightTwin() {
     )
 }
 
-/** The same idea as [HomeHeaderHeightTwin], for the row below it: Home has a [SharePromptRow]
- * between its header and its featured card, and CameraScreen has nothing in that position. That
- * difference alone is what made Camera's card sit higher than Home's despite both reserving an
- * identical header height — so Camera renders this invisibly to reserve the missing space and put
- * its own card at the exact same absolute position Home's lands at.
+/** The same idea as [HomeHeaderHeightTwin], for the row below it: Home has a
+ * [HomeViewModeToggleRow] between its header and its featured card, and CameraScreen has nothing
+ * in that position. That difference alone is what made Camera's card sit higher than Home's
+ * despite both reserving an identical header height — so Camera renders this invisibly to reserve
+ * the missing space and put its own card at the exact same absolute position Home's lands at.
  *
  * Built from the real composable with placeholder values, and carrying the same padding its real
  * call site in [HomeScreen] uses, so it can't drift out of sync the way a hand-copied dp constant
  * would the first time that row's type or spacing is touched. */
 @Composable
-internal fun SharePromptHeightTwin() {
-    SharePromptRow(
-        hasSharedRecently = false,
-        unseenCount = 0,
-        onCameraClick = {},
+internal fun HomeViewModeToggleHeightTwin() {
+    HomeViewModeToggleRow(
+        mode = HomeViewMode.HOME,
+        onModeChange = {},
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp, start = 22.dp, end = 22.dp),
     )
 }
@@ -1062,13 +1195,13 @@ internal fun ProfileIconButton(onClick: () -> Unit, modifier: Modifier = Modifie
 /** The slot each avatar occupies. The avatar itself still grows/shrinks within it to mark the
  * active friend (see avatarSize below) — this is just the fixed box that keeps the row's own
  * layout steady while that animates. */
-private const val AVATAR_DIAMETER_DP = 92
+private const val AVATAR_DIAMETER_DP = 90
 
 /** The non-active avatars' diameter — they animate down to this, and back up to
  * [AVATAR_DIAMETER_DP] when they become the active one. The two are deliberately close: the gap
  * between them is what marks the active friend, and a larger one turns a subtle emphasis into the
  * row visibly jolting on every swipe. */
-private const val AVATAR_INACTIVE_DIAMETER_DP = 86
+private const val AVATAR_INACTIVE_DIAMETER_DP = 84
 
 /** The ring band and the gap between it and the photo. Equal by design — see their use site. */
 private const val AVATAR_RING_WIDTH_DP = 3.0f
@@ -1078,7 +1211,11 @@ private const val AVATAR_RING_GAP_DP = 3.0f
  * target from this, so a value that disagrees with the actual layout centers every avatar
  * slightly off (this was 72 while the column has always measured 84). Tracks
  * [AVATAR_DIAMETER_DP] with a small margin, so it has to move whenever that does. */
-private const val AVATAR_ITEM_WIDTH_DP = 98
+private const val AVATAR_ITEM_WIDTH_DP = 96
+
+/** The horizontal gap between avatars — was a cramped 4dp originally, tightly packing every
+ * circle against its neighbor with no breathing room; 10dp then read as too loose, 6 still a
+ * bit much. */
 private const val AVATAR_SPACING_DP = 4
 
 /** A fully custom smooth-scroll to center [targetIndex], replacing `LazyListState
@@ -1178,89 +1315,476 @@ private const val AUTO_ADVANCE_FADE_MS = 900
  * swipe away from actually being seen. */
 private const val FEATURED_CARD_LOOKAHEAD_PAGES = 1
 
-/** A small, personal prompt about the *viewer's own* moment — deliberately unrelated to
- * everything else on this screen (friends' photos, unseen counts, streaks, greetings). One
- * unified tappable row, not a separate line-of-text-plus-button: a status headline, a distinct
- * status subtext underneath it (each line says something the other doesn't — no repeating "share
- * your moment" twice in slightly different words), and a trailing chevron for affordance. No
- * leading icon here on purpose — the nav dock's own shutter button, visible on this same screen,
- * is already the camera glyph; a second one here would just repeat it. [hasSharedRecently] only
- * ever changes which two lines show; it never gates or is gated by whether this account can see
- * friends' own moments below it (see this screen's own call site for where that value actually
- * comes from). [unseenCount], when non-zero, takes over the status line rather than adding one —
- * see that line's own comment for why it deliberately has no space of its own. Crossfade, not
- * each line's own fade-in/out, is what keeps the transition between the two states feeling like
- * one quiet change rather than two lines separately blinking. */
+/** Home's two views: the single-friend carousel (with the avatar row below it, today's default),
+ * or a grid showing every friend's own card at once. Switched via [HomeViewModeToggleRow]. Lives
+ * on [HomeViewModel] (see its own `homeViewMode` property), not as local Compose state here —
+ * this composable is torn down and rebuilt every time the pager scrolls Home out of view and back
+ * (unlike the ViewModel, which is hoisted in MainActivity and survives that), so a plain
+ * `remember` reset back to HOME on every return visit. */
+internal enum class HomeViewMode { HOME, MOMENTS }
+
+/** Two independent pill controls, not a single connected segmented control — each one owns its
+ * own selected/unselected look (filled neutral chip vs. plain outline) rather than one track with
+ * a sliding indicator. A fixed identical width for both, rather than each sizing to its own
+ * label's natural width — "Moments" is a longer word than "Home", and letting them size
+ * independently made the two visibly different sizes, which read as one primary and one
+ * secondary control rather than two equal options. Sits in the exact slot the old share-prompt
+ * row used to occupy — see [HomeViewModeToggleHeightTwin] for why CameraScreen still reserves an
+ * identical amount of space here even though it renders neither pill itself. */
 @Composable
-private fun SharePromptRow(
-    hasSharedRecently: Boolean,
-    unseenCount: Int,
-    onCameraClick: () -> Unit,
+private fun HomeViewModeToggleRow(
+    mode: HomeViewMode,
+    onModeChange: (HomeViewMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+    ) {
+        HomeViewModePill(
+            label = "Home",
+            selected = mode == HomeViewMode.HOME,
+            onClick = { onModeChange(HomeViewMode.HOME) },
+        )
+        HomeViewModePill(
+            label = "Moments",
+            selected = mode == HomeViewMode.MOMENTS,
+            onClick = { onModeChange(HomeViewMode.MOMENTS) },
+        )
+    }
+}
+
+/** No icon, by design — text alone at a confident weight/size carries this rather than needing a
+ * glyph to reinforce it. No theme accent color either — selected is a filled neutral chip
+ * (panel, the same tone the featured card's own dot-row/badges sit against), unselected a plain
+ * outline; the distinction is fill vs. outline and cream vs. muted text, not a color swap. */
+@Composable
+private fun HomeViewModePill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
-    Crossfade(targetState = hasSharedRecently, label = "sharePromptCrossfade", modifier = modifier) { shared ->
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+    Box(
+        modifier = modifier
+            .width(118.dp)
+            .clip(EmberRadii.buttonShape)
+            .then(
+                if (selected) {
+                    Modifier.background(colors.panel)
+                } else {
+                    Modifier.border(1.dp, colors.border, EmberRadii.buttonShape)
+                },
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            // 11.dp, not 9 — a touch more substantial/confident without changing the pill's
+            // width or color, the two things already settled on.
+            .padding(vertical = 11.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontFamily = PublicSansFontFamily,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.1).sp,
+            color = if (selected) colors.cream else colors.muted,
+        )
+    }
+}
+
+/** A grid alternative to the single-friend carousel — one card per friend, their latest photo
+ * plus name, two per row. Tapping a card is a shortcut into HOME mode already centered on that
+ * friend, the same way tapping the featured card grows it — see [MomentFocusState] and
+ * [MomentFeaturedOverlay] for that. */
+@Composable
+private fun MomentsGrid(
+    feedItems: List<FeedItem>,
+    onCardClick: (FeedItem, Rect) -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    // Which card, if any, the featured overlay is currently grown out of, and how far open it
+    // currently is (0 = fully closed/overlay gone, 1 = fully open). See MomentGridCard's own
+    // comment for why this specific card's own label needs to know this.
+    focusedFriendId: String? = null,
+    focusProgress: Float = 0f,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = modifier.fillMaxSize(),
+        contentPadding = contentPadding,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        gridItems(feedItems, key = { it.friendId }) { item ->
+            MomentGridCard(
+                displayName = item.displayName,
+                photoUrl = item.photos.lastOrNull()?.photoUrl,
+                onClick = { bounds -> onCardClick(item, bounds) },
+                // Inverse of the overlay's own opening progress, and ONLY for the one card the
+                // overlay actually grew out of — every other card is unaffected (revealAlpha
+                // defaults to 1, its normal resting state).
+                revealAlpha = if (item.friendId == focusedFriendId) 1f - focusProgress else 1f,
+            )
+        }
+    }
+}
+
+/** A quieter echo of the featured card's own recipe (rounded corners, bottom scrim, white name
+ * label) at a much smaller size — reads as clearly related to it rather than a different kind of
+ * tile, which matters since tapping one grows it into that same card (see [MomentFeaturedOverlay]).
+ * elevatedPanel (not plain panel) behind the image for the same reason the featured card uses it:
+ * this is the one surface on this grid, and it should visibly outrank the flat background behind
+ * it. Reports its own real on-screen bounds on tap (the same [boundsInRoot] technique the Memories
+ * grid's own tiles use) — the origin the featured overlay grows out of.
+ *
+ * [revealAlpha] is what actually fixes the "name pops in instantly" report: this tile sits
+ * underneath the featured overlay the whole time it's open (the overlay has an opaque background
+ * and, at every point during the transform, fully covers this tile's own position), so this
+ * tile's own label was always sitting at full opacity, just hidden — invisible until the exact
+ * frame the overlay is removed, at which point it's suddenly the only thing there, at full
+ * strength already. There is no way to cross-fade something that was never becoming visible
+ * gradually in the first place; the fix is to make this tile's own label actually fade in across
+ * that same handoff, driven by the exact same progress value the overlay's own fade-out uses (see
+ * the call site in MomentsGrid), so the two mathematically meet in the middle instead of one
+ * cutting off before the other has faded in at all. */
+@Composable
+private fun MomentGridCard(
+    displayName: String,
+    photoUrl: String?,
+    onClick: (Rect) -> Unit,
+    modifier: Modifier = Modifier,
+    revealAlpha: Float = 1f,
+) {
+    val colors = EmberTheme.colors
+    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    // No entrance fade here — every card shows immediately, full strength, the moment the grid
+    // itself appears (switching tabs into Moments). revealAlpha is the only thing that ever hides
+    // this label, and only for the one card an overlay is currently open on: that overlay draws
+    // its own copy of this exact label (see MomentCardContent) and cross-fades it, so leaving
+    // this one drawn underneath would just double it up behind an opaque card for no reason —
+    // and, at the moment the overlay is removed, hand back to a label that never moved while the
+    // overlay's copy had been scaling the whole time.
+    val labelAlpha = revealAlpha
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(0.8f)
+            .onGloballyPositioned { coordinates = it }
+            .clip(RoundedCornerShape(EmberRadii.card))
+            .background(colors.elevatedPanel)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { coordinates?.let { onClick(it.boundsInRoot()) } },
+            ),
+    ) {
+        if (photoUrl != null) {
+            AsyncImage(
+                model = photoUrl,
+                contentDescription = displayName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Box(
             modifier = Modifier
+                .align(Alignment.BottomStart)
                 .fillMaxWidth()
+                .alpha(labelAlpha)
+                .background(
+                    Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))),
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Text(
+                text = displayName,
+                fontFamily = PublicSansFontFamily,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/** A tapped Moments card, remembered together with the on-screen bounds of the grid tile that was
+ * tapped (the origin the featured overlay grows out of, and shrinks back into on dismiss), that
+ * friend's own photos newest-first, and which page to land on — always 0, since the grid tile
+ * already shows the newest photo and the overlay should open on exactly what was tapped. */
+private data class MomentFocusTarget(
+    val friendId: String,
+    val displayName: String,
+    val photos: List<PhotoEntryDto>,
+    val initialPage: Int,
+    val originBounds: Rect,
+)
+
+/** Same shape as Memories' own [MemoryFocusState] — a hoisted target plus an open flag plus a
+ * shared grow/shrink [Animatable], kept local to [HomeScreen] rather than promoted to a shared
+ * type, since the two focus targets carry different data (a whole memories history vs. one
+ * friend's own photos) and have no other reason to share a type. */
+private class MomentFocusState {
+    var target by mutableStateOf<MomentFocusTarget?>(null)
+    var isOpen by mutableStateOf(false)
+    val progress = Animatable(0f)
+}
+
+/** Just the photo. Deliberately only the image and nothing else: this is what goes *inside*
+ * [MomentFeaturedOverlay]'s pager, so anything rendered here slides horizontally with every
+ * swipe. The name and scrim belong to the card, not to an individual photo, so they live outside
+ * the pager (see [MomentCardLabels]) exactly the way Home's own [FeaturedPhotoCard] arranges
+ * them — having had them in here made the label and gradient slide away with each swipe. */
+@Composable
+private fun MomentPhotoImage(
+    displayName: String,
+    photo: PhotoEntryDto,
+    cardWidthPx: Float,
+    cardHeightPx: Float,
+    context: Context,
+    modifier: Modifier = Modifier,
+) {
+    AsyncImage(
+        // Pinned to the card's final settled pixel size rather than Coil's default (which
+        // follows the composable's own animating size and would re-request on every
+        // grow/shrink frame).
+        model = remember(photo.photoUrl, cardWidthPx, cardHeightPx) {
+            ImageRequest.Builder(context)
+                .data(photo.photoUrl)
+                .size(cardWidthPx.roundToInt(), cardHeightPx.roundToInt())
+                .build()
+        },
+        contentDescription = displayName,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.fillMaxSize(),
+    )
+}
+
+/** The card's scrim and name, rendered once over the pager rather than per-page. */
+@Composable
+private fun MomentCardLabels(
+    displayName: String,
+    photo: PhotoEntryDto,
+    // 1f = fully open, 0f = exactly grid-tile size/position.
+    progress: Float,
+    // How large this card currently is relative to its fully-open size (1f = fully open, ~0.47f
+    // at grid-tile size). The open-style label is scaled by this: the name is a fixed 24sp, so in
+    // a box shrinking to roughly half-width it stayed physically the same size while everything
+    // around it got smaller, reading as enormous by the end.
+    contentScale: Float,
+    typography: EmberTypography,
+    modifier: Modifier = Modifier,
+) {
+    // Both label treatments are rendered, cross-faded against each other, rather than one fading
+    // out to nothing. This is what actually removes the pop at the end of the shrink: the overlay
+    // is opaque, so the real grid tile underneath is completely hidden for the whole transition —
+    // its own label can't be seen arriving, and the instant the overlay is removed that label
+    // appears at full strength. Fading the open-style label to zero didn't help, because the two
+    // don't match anyway (24sp display font plus a time line, versus the tile's 14sp PublicSans
+    // name; different paddings; different gradients), so the swap was always visible. Ending the
+    // transition on a label that IS the tile's, pixel for pixel, makes removing the overlay a
+    // no-op instead of a change.
+    val openAlpha = progress
+    val tileAlpha = 1f - progress
+
+    Box(modifier = modifier.fillMaxSize()) {
+        // The open card's full-height scrim.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(openAlpha)
+                .background(
+                    Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.65f)),
+                ),
+        )
+
+        // The grid tile's own scrim — a short band hugging the bottom, deliberately not the same
+        // shape or opacity as the one above, which is exactly why it has to be cross-faded in
+        // rather than reusing the open card's.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .alpha(tileAlpha)
+                .background(
+                    Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))),
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            // Same size/font/weight/padding as MomentGridCard's own label, so at progress 0 this
+            // is indistinguishable from the tile the overlay is about to hand off to.
+            Text(
+                text = displayName,
+                fontFamily = PublicSansFontFamily,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 1,
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                // Anchored to the bottom-left corner it already sits in, so shrinking pulls it
+                // toward that corner (where the tile's own label lives) rather than toward the
+                // middle of the card. Placed before padding() so the padding scales with it too —
+                // otherwise the text would shrink while its inset from the edges stayed fixed,
+                // which looks just as wrong as not scaling at all.
+                .graphicsLayer {
+                    scaleX = contentScale
+                    scaleY = contentScale
+                    transformOrigin = TransformOrigin(0f, 1f)
+                }
+                .alpha(openAlpha)
+                .padding(start = 22.dp, end = 22.dp, bottom = 20.dp),
+        ) {
+            Text(
+                text = displayName,
+                fontFamily = typography.display,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 1,
+            )
+            Text(
+                text = formatRelativeTime(photo.createdAt),
+                fontFamily = typography.body,
+                fontSize = 12.5.sp,
+                color = Color.White.copy(alpha = 0.75f),
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+/** A friend's photo, grown out of the Moments grid tile that was tapped, into the exact same card
+ * recipe Home's own [FeaturedPhotoCard] and Memories' own `MemoryFeaturedOverlay` already use —
+ * same corner radius, same aspect ratio, same container-transform grow/shrink, same bottom-scrim
+ * name label. This is the "complete different viewing experience" Moments needed instead of
+ * bouncing back to HOME mode on every tap: opening a friend's moment now stays inside Moments,
+ * dismissing back into the grid tile it came from rather than switching pages. Deliberately reuses
+ * this app's one existing "grow a tile into a featured card" language rather than inventing a
+ * fourth look — that shared language is what makes each individual use of it read as premium
+ * rather than improvised. */
+@Composable
+private fun MomentFeaturedOverlay(
+    target: MomentFocusTarget,
+    destRect: Rect,
+    progress: Float,
+    onDismiss: () -> Unit,
+) {
+    val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
+    val context = LocalContext.current
+
+    // Landing on the tapped photo, but continuing into that friend's older photos on swipe rather
+    // than stopping dead at the one tile that was tapped.
+    val pagerState = rememberPagerState(initialPage = target.initialPage) { target.photos.size }
+    // Whichever photo the pager has actually settled on — the label sits outside the pager, so it
+    // reads this rather than being handed a page.
+    val currentPhoto = target.photos.getOrElse(pagerState.currentPage) { target.photos[target.initialPage] }
+
+    // Same reasoning as FeaturedPhotoCard's own boundary: this pager and the grid behind it are
+    // both potential recipients of a drag that runs out of pages to turn — without this, swiping
+    // past this friend's first/last photo lets that drag bubble down into the grid's own scroll.
+    val cardNestedScrollBoundary = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        val cardWidthPx = destRect.width
+        val cardHeightPx = destRect.height
+        val currentRect = lerp(target.originBounds, destRect, progress)
+        val cardCornerRadius = lerp(EmberRadii.card, FEATURED_CARD_CORNER_RADIUS, progress)
+        val cardShape = RoundedCornerShape(cardCornerRadius)
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f * progress))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onCameraClick,
+                    onClick = onDismiss,
+                ),
+        )
+
+        Box(
+            modifier = Modifier
+                // One measure-and-place pass in raw pixels, not a separate .offset{}+.size(dp) —
+                // rounding each independently is a much bigger fraction of the box's size right at
+                // the tile-sized end of the animation, and reads as a jitter there.
+                .layout { measurable, _ ->
+                    val widthPx = currentRect.width.roundToInt().coerceAtLeast(0)
+                    val heightPx = currentRect.height.roundToInt().coerceAtLeast(0)
+                    val placeable = measurable.measure(Constraints.fixed(widthPx, heightPx))
+                    layout(widthPx, heightPx) {
+                        placeable.placeRelative(currentRect.left.roundToInt(), currentRect.top.roundToInt())
+                    }
+                }
+                .nestedScroll(cardNestedScrollBoundary)
+                .clip(cardShape)
+                .background(colors.elevatedPanel)
+                // Tapping the open photo closes it, matching Home's own featured card.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
                 ),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                // Status first, as a quiet eyebrow — the wordmark directly above this is a 34sp
-                // script display face, so leading with a second strong line was what made the two
-                // read as one clumsy stack rather than a hierarchy. A small, wide-tracked,
-                // low-contrast line here creates a real step down from the wordmark before the
-                // action line steps back up, which is what actually separates them visually.
-                //
-                // This same line carries the unseen-photo count when there is one, tinted with
-                // the theme's own accent so it reads as the live/interesting state rather than
-                // more static label copy. Its own Crossfade (not the outer one, which only knows
-                // about `shared`) is what animates between the two, so a photo arriving swaps the
-                // text smoothly in place instead of popping — and because it reuses a line that
-                // is always present, the count costs no extra vertical space and can never shift
-                // or overlap the card below.
-                val statusLabel = when {
-                    unseenCount > 0 -> "$unseenCount ${if (unseenCount == 1) "MOMENT" else "MOMENTS"} GLOWING FOR YOU"
-                    shared -> "SHARED TODAY"
-                    else -> "NOT SHARED YET"
-                }
-                Crossfade(targetState = statusLabel, animationSpec = tween(260), label = "sharePromptStatus") { label ->
-                    Text(
-                        text = label,
-                        fontFamily = PublicSansFontFamily,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 1.4.sp,
-                        color = if (unseenCount > 0) colors.glow else colors.mutedDim,
-                        maxLines = 1,
-                    )
-                }
-                // The action, and the only full-strength line in this block. Medium at 18sp, not
-                // SemiBold at 16 — SemiBold is this app's button-label weight (see the nav dock
-                // and every pill control), so using it on a standalone line made it read as a
-                // mislaid button rather than a line of copy. Size carries the emphasis instead of
-                // weight, with slightly tight tracking to match the wordmark's own.
-                Text(
-                    text = if (shared) "Share another moment" else "Share your moment",
-                    fontFamily = PublicSansFontFamily,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = (-0.3).sp,
-                    color = colors.cream,
-                    maxLines = 1,
-                    modifier = Modifier.padding(top = 3.dp),
+            // How big the card currently is relative to fully-open — drives the label's own
+            // scale so the text physically shrinks along with the container instead of sitting
+            // inside it at a fixed 24sp (which is what made it look enormous by the end of the
+            // shrink, then snap to the tile's 14sp in a single frame).
+            val contentScale = if (destRect.width > 0f) currentRect.width / destRect.width else 1f
+
+
+            // The tapped grid tile always shows this friend's NEWEST photo (target.photos[0]) —
+            // if you swipe to an older one and then dismiss, the pager is still sitting on that
+            // older photo right up until the instant this whole overlay is removed, at which
+            // point the real tile underneath (always showing the newest) suddenly replaces it —
+            // a hard content swap, not a shrink. This crossfades to the newest photo's own
+            // image+scrim+label *during* the shrink instead, so by the time the box disappears it
+            // already looks identical to the tile it's handing off to. Only rendered at all once
+            // you've actually swiped away from the newest photo — most opens never touch this.
+            val isOnNewestPhoto = pagerState.currentPage == 0
+            val closingCrossfadeAlpha = if (isOnNewestPhoto) 0f else (1f - progress) * (1f - progress)
+
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                MomentPhotoImage(
+                    displayName = target.displayName,
+                    photo = target.photos[page],
+                    cardWidthPx = cardWidthPx,
+                    cardHeightPx = cardHeightPx,
+                    context = context,
                 )
             }
-            Icon(
-                Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = colors.muted,
-                modifier = Modifier.size(20.dp),
+
+            if (closingCrossfadeAlpha > 0f) {
+                MomentPhotoImage(
+                    displayName = target.displayName,
+                    photo = target.photos[0],
+                    cardWidthPx = cardWidthPx,
+                    cardHeightPx = cardHeightPx,
+                    context = context,
+                    modifier = Modifier.alpha(closingCrossfadeAlpha),
+                )
+            }
+
+            // Outside the pager — the name and scrim belong to the card, not to any one photo, so
+            // they stay put while the photos slide underneath them. Same arrangement Home's own
+            // FeaturedPhotoCard uses.
+            MomentCardLabels(
+                displayName = target.displayName,
+                photo = currentPhoto,
+                progress = progress,
+                contentScale = contentScale,
+                typography = typography,
             )
         }
     }
@@ -1277,6 +1801,9 @@ private fun FeaturedPhotoCard(
     pagerState: PagerState,
     isFocused: Boolean,
     isAtDefaultScrollPosition: Boolean,
+    // Whether Home is the page actually on screen right now — gates the auto-advance timer below,
+    // which otherwise keeps cycling this card while the user is on a different tab entirely.
+    isActive: Boolean,
     onToggleFocus: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1302,8 +1829,22 @@ private fun FeaturedPhotoCard(
     // self-cancellation problem.
     var outgoingPhotoUrl by remember { mutableStateOf<String?>(null) }
     val outgoingAlpha = remember { Animatable(0f) }
-    LaunchedEffect(entries.size, isFocused, isAtDefaultScrollPosition) {
-        if (entries.size <= 1 || isFocused || !isAtDefaultScrollPosition) return@LaunchedEffect
+
+    // isActive is in here, and in the guard below, for a reason that isn't obvious: without it
+    // this timer keeps running while Home isn't even the page on screen. Swipe to Friends, and
+    // four seconds later this quietly advances the card you're not looking at — and, worse, does
+    // it through a 900ms crossfade that paints the outgoing photo at full opacity. Come back
+    // mid-crossfade and you land on the previous photo dissolving into the current one, which is
+    // exactly the instant flicker-on-return this looked like. A card nobody can see has no reason
+    // to be advancing at all.
+    LaunchedEffect(entries.size, isFocused, isAtDefaultScrollPosition, isActive) {
+        if (entries.size <= 1 || isFocused || !isAtDefaultScrollPosition || !isActive) {
+            // Never leave a half-finished crossfade behind when this stops — otherwise the
+            // outgoing photo stays painted over the real one until some later advance clears it.
+            outgoingPhotoUrl = null
+            outgoingAlpha.snapTo(0f)
+            return@LaunchedEffect
+        }
         while (true) {
             val pageBeforeWait = pagerState.currentPage
             delay(AUTO_ADVANCE_INTERVAL_MS)
@@ -1603,8 +2144,81 @@ private fun FeaturedPhotoCard(
  * 45%-black wash on top of an already-dark night-time photo collage crushed it to near-black
  * everywhere; fading from fully transparent at the top to dark only where the text actually sits
  * is the same treatment [FeaturedPhotoCard]'s own bottom scrim already uses. */
+/** Moments with nothing in it yet. Shows the shape of what the grid will be, four empty cards
+ * in the same two-column layout with the same corners and surface the real ones use, so the pill
+ * visibly switches to a different view instead of repeating Home's card. The name strip is drawn
+ * on each placeholder too, since that is the part that makes them read as friend cards rather
+ * than generic boxes. */
 @Composable
-private fun HomeEmptyStateCard(onAddFriendClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun MomentsEmptyState(modifier: Modifier = Modifier) {
+    val colors = EmberTheme.colors
+    val typography = EmberTheme.typography
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            repeat(2) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    repeat(2) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(0.8f)
+                                .clip(RoundedCornerShape(EmberRadii.card))
+                                .background(colors.panel),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(12.dp)
+                                    .width(52.dp)
+                                    .height(9.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(colors.mutedDim.copy(alpha = 0.45f)),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = "A card for every friend",
+            fontFamily = typography.body,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.cream,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+        )
+        Text(
+            // Says what will be here, not what to do with it. The earlier version ended on "tap
+            // any card to open it full size", which is an instruction for cards that don't exist
+            // yet on the one screen where there is nothing to tap.
+            text = "Once your friends start sharing, their newest photo shows up here.",
+            fontFamily = typography.body,
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            color = colors.muted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 16.dp, end = 16.dp),
+        )
+    }
+}
+
+@Composable
+private fun HomeEmptyStateCard(
+    onAddFriendClick: () -> Unit,
+    caption: String,
+    modifier: Modifier = Modifier,
+) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     val cardShape = RoundedCornerShape(FEATURED_CARD_CORNER_RADIUS)
@@ -1672,7 +2286,7 @@ private fun HomeEmptyStateCard(onAddFriendClick: () -> Unit, modifier: Modifier 
             }
         }
         Text(
-            text = "Once you're connected, their photos show up right here.",
+            text = caption,
             fontFamily = typography.body,
             fontSize = 12.5.sp,
             color = colors.muted,
@@ -1856,12 +2470,22 @@ private fun FriendAvatarRow(
                         )
                         // Glow ring — layered on top, fading in/out via unseenAlpha instead of
                         // snapping, so "just became seen" reads as a settle rather than a flicker.
+                        // Citrus's own glow2/violet are both a muddy orange (see its theme
+                        // definition), so the usual multi-stop sweep just looked like a smeared
+                        // yellow-to-orange ring rather than a clean color — a plain solid yellow
+                        // reads better there than forcing that theme through the same gradient
+                        // every other theme's more distinct glow/glow2/violet trio actually suits.
+                        val streakRingBrush = if (EmberTheme.key == ThemeKey.CITRUS) {
+                            Brush.linearGradient(listOf(colors.glow, colors.glow))
+                        } else {
+                            Brush.sweepGradient(listOf(colors.glow, colors.glow2, colors.violet, colors.glow))
+                        }
                         Box(
                             modifier = Modifier
                                 .matchParentSize()
                                 .graphicsLayer { alpha = unseenAlpha }
                                 .clip(CircleShape)
-                                .background(Brush.sweepGradient(listOf(colors.glow, colors.glow2, colors.violet, colors.glow))),
+                                .background(streakRingBrush),
                         )
                         Box(
                             modifier = Modifier

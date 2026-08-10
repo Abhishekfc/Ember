@@ -101,8 +101,9 @@ fun OtherSettingsScreen(onClose: () -> Unit, onDeleteAccount: suspend () -> Resu
 
 // Same dark red already used for "Log out" on the main Settings screen, not the lighter coral
 // other confirm dialogs in the app use — two different destructive-red tones would read as
-// inconsistent.
-private val DeleteAccountDestructiveColor = Color(0xFFB3261E)
+// inconsistent. `internal`, not `private` — MyProfileScreen reuses this exact red for its
+// username-taken status pill rather than picking a second, differently-tuned red.
+internal val DeleteAccountDestructiveColor = Color(0xFFB3261E)
 private const val DELETE_CONFIRM_WORD = "delete"
 
 /** Gated on literally typing the word "delete" (case-insensitive), not just tapping a button —

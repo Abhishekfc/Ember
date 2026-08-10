@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -88,24 +89,37 @@ fun NestedScreenHeader(
  *
  * Tab headers have no mandatory element the way nested screens have a back button — a title-only
  * header (Activity, Settings) sizes itself to the title text's own natural height with nothing
- * forcing it taller. A `Box` sizes itself to its tallest child, so a [trailing] control taller
- * than that text would silently make its screen's whole header row taller than its siblings',
- * which is exactly the drift this previously caused for Friends' "+".
- *
- * [trailing] is placed with `matchParentSize()`, which measures it against this Box's already-
- * decided size instead of letting it contribute to that size — so the row's height comes from the
- * title alone, always, and [trailing] can ask for whatever size looks right (a generous touch
- * target, say) without ever pushing the row taller.
+ * forcing it taller. A `Box` sizes itself to its tallest child in one synchronous measure pass, so
+ * a [trailing] control taller than that text (Friends' add-friend circle, 44dp, taller than the
+ * title's own ~28dp line height) naturally grows the row to fit it — deliberately, not a bug: the
+ * row is always exactly as tall as its tallest real content, computed fresh every frame with no
+ * stored/remembered measurement, so there's no first-frame-vs-later-frame mismatch to cause a
+ * jump (see the note below on why an earlier, stateful version of this had exactly that problem).
+ * Title-only headers (no [trailing]) are completely unaffected either way.
  *
  * This deliberately replaced an earlier version that measured the title's real rendered height
- * into state and clamped [trailing] to it. That worked once settled, but the measurement is only
+ * into state and clamped [trailing] to it. That worked once settled, but the measurement was only
  * available on the *second* frame — on the first, [trailing] was unclamped and the header
  * rendered at the taller control's height, so every fresh composition of a screen with a
  * [trailing] (only Friends today) briefly laid its whole page out ~10dp lower, then snapped up
  * once the measurement landed. Returning from a nested screen is exactly such a fresh
- * composition, which is what made the Friends list visibly jump on every back-navigation.
- * `matchParentSize()` needs no measurement pass of its own, so there is no first frame that
- * disagrees with the rest.
+ * composition, which is what made the Friends list visibly jump on every back-navigation. Plain
+ * `Box` sizing has no such state to lag behind — it's correct on every frame, including the first.
+ *
+ * Horizontal inset (22dp) and the flush-under-status-bar top (0dp, no gap) match Home's own
+ * brand header (`HomeBrandHeader`) exactly, baked in here rather than left for each caller to
+ * reproduce, so every bottom-nav tab's header sits at the same size/position as Home's.
+ *
+ * Height is floored at 44dp (Home's own icon-row height) unconditionally, not just when a
+ * [trailing] control happens to be taller than the title — a screen with no [trailing] at all
+ * (Settings, Activity, Memories) would otherwise size its header to the shorter title-text-only
+ * height, so swiping from Friends (44dp, has a trailing icon) to any of those visibly changed the
+ * header's height mid-swipe. Every tab's header is now the same fixed height regardless of what
+ * it carries, which is what makes moving between tabs read as one continuous surface.
+ *
+ * Bottom padding trimmed to 12dp (was 20dp) — with the 44dp floor above, 20dp pushed the whole
+ * block to 64dp total, taller than a typical app's title bar (~56dp). 12dp lands there instead
+ * without touching the 44dp icon itself.
  */
 @Composable
 fun TabScreenHeader(
@@ -118,7 +132,8 @@ fun TabScreenHeader(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 20.dp),
+            .padding(start = 22.dp, end = 22.dp, top = 0.dp, bottom = 12.dp)
+            .heightIn(min = 44.dp),
     ) {
         Text(
             text = title,
@@ -130,7 +145,7 @@ fun TabScreenHeader(
         )
         if (trailing != null) {
             Box(
-                modifier = Modifier.matchParentSize(),
+                modifier = Modifier.align(Alignment.CenterEnd),
                 contentAlignment = Alignment.CenterEnd,
                 content = trailing,
             )

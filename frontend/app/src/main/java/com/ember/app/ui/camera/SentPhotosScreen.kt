@@ -102,7 +102,7 @@ fun SentPhotosScreen(
     ) {
         NestedScreenHeader(onBack = onBack, title = "Sent")
         Text(
-            text = "Photos you've sent in the last 24 hours — tap one to unsend it.",
+            text = "Photos you've sent in the last 24 hours. Tap one to unsend it.",
             fontFamily = PublicSansFontFamily,
             fontSize = 12.sp,
             color = colors.muted,

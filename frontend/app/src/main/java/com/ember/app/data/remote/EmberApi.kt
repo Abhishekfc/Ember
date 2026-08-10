@@ -5,6 +5,7 @@ import com.ember.app.data.remote.dto.ActivityLastSeenDto
 import com.ember.app.data.remote.dto.AddPhotoRecipientsBody
 import com.ember.app.data.remote.dto.AuthResponse
 import com.ember.app.data.remote.dto.BlockedUserDto
+import com.ember.app.data.remote.dto.ChangePasswordRequestDto
 import com.ember.app.data.remote.dto.CreateRecipientListBody
 import com.ember.app.data.remote.dto.DeviceTokenRequestDto
 import com.ember.app.data.remote.dto.FeedItem
@@ -161,6 +162,9 @@ interface EmberApi {
 
     @DELETE("users/me")
     suspend fun deleteAccount(): Response<Unit>
+
+    @POST("users/me/password")
+    suspend fun changePassword(@Body request: ChangePasswordRequestDto): Response<Unit>
 
     @GET("subscription/status")
     suspend fun getSubscriptionStatus(): Response<SubscriptionStatusDto>

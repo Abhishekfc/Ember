@@ -47,50 +47,62 @@ fun WelcomeStep(
     val colors = AuthPalette
     var screenSize by remember { mutableStateOf(Size.Zero) }
 
+    // Same fixed-footer shape RegisterSharingStep uses: a flexible, independently scrollable
+    // middle (the mockup + wordmark + tagline, whose combined height varies with font scale and
+    // device size) and the actual buttons pinned below it, outside that scroll — so "Create an
+    // account"/"Sign in" are always on screen instead of depending on there being enough room
+    // above the fold for the mockup and both lines of tagline to fit first.
     Column(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { screenSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(colors.background.asBrush(screenSize))
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 28.dp)
-            .padding(top = 88.dp, bottom = 48.dp),
+            .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top,
     ) {
-        // Not wrapped in StaggeredEntrance like everything else below — PhoneHomeMockup animates
-        // its own border in internally (see there), and wrapping it in another fade+slide on top
-        // of that compounded the two into a choppier, different-looking animation than either
-        // one alone. This is the one element on this screen with its own self-contained entrance.
-        PhoneHomeMockup(modifier = Modifier.fillMaxWidth(0.56f))
-        StaggeredEntrance(delayMillis = 80) {
-            Text(
-                text = "Emigo",
-                fontFamily = CourgetteFontFamily,
-                fontSize = 40.sp,
-                color = colors.cream,
-                modifier = Modifier.padding(top = 36.dp),
-            )
-        }
-        StaggeredEntrance(delayMillis = 150) {
-            Text(
-                text = "A private place for the moments only your\nclosest people get to see.",
-                fontFamily = AuthPalette.body,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 20.sp,
-                color = colors.muted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 10.dp),
-            )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 28.dp)
+                .padding(top = 88.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top,
+        ) {
+            // Not wrapped in StaggeredEntrance like everything else below — PhoneHomeMockup
+            // animates its own border in internally (see there), and wrapping it in another
+            // fade+slide on top of that compounded the two into a choppier, different-looking
+            // animation than either one alone. This is the one element on this screen with its
+            // own self-contained entrance.
+            PhoneHomeMockup(modifier = Modifier.fillMaxWidth(0.56f))
+            StaggeredEntrance(delayMillis = 80) {
+                Text(
+                    text = "Emigo",
+                    fontFamily = CourgetteFontFamily,
+                    fontSize = 40.sp,
+                    color = colors.cream,
+                    modifier = Modifier.padding(top = 36.dp),
+                )
+            }
+            StaggeredEntrance(delayMillis = 150) {
+                Text(
+                    text = "A private place for the moments only your\nclosest people get to see.",
+                    fontFamily = AuthPalette.body,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 20.sp,
+                    color = colors.muted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+            }
         }
 
         StaggeredEntrance(delayMillis = 220) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(top = 24.dp, bottom = 48.dp),
             ) {
                 // Narrower than a full-width button — at the mockup's own width, a full-bleed
                 // button looked disproportionately long next to everything above it.

@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,6 +51,88 @@ private val GRID_GAP = 10.dp
  * reads as "this one is the point, everything else is just the rest of your apps." */
 @Composable
 fun PhoneHomeMockup(modifier: Modifier = Modifier) {
+    AuthPhoneFrame(modifier = modifier) { cellSize, gap ->
+        val bigCardSize = cellSize * 2 + gap
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            repeat(GRID_ROWS) { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    repeat(GRID_COLUMNS) { col ->
+                        // The big card below overlaps rows 1-2, columns 2-3 (its own
+                        // offset/alignment) — skipping those cells here instead of drawing
+                        // them underneath is what stops their sharper (10dp) corners from
+                        // peeking out past the big card's own, more rounded (22dp) ones.
+                        if (row in 1..2 && col in 2..3) {
+                            Box(modifier = Modifier.size(cellSize))
+                            return@repeat
+                        }
+                        AuthPhoneAppIcon(cellSize)
+                    }
+                }
+            }
+        }
+
+        // Overlaps the grid rather than occupying its own cell — genuinely bigger than a
+        // regular icon, not just recolored, which is what makes it read as "the one that
+        // matters" instead of one more icon among sixteen. A real sample photo now,
+        // not a flat color block — this is meant to read as "a friend's actual photo,
+        // live on your home screen," which a solid color can only gesture at.
+        AuthPhoneWidget(
+            size = bigCardSize,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(y = cellSize + gap),
+        )
+    }
+}
+
+/** One placeholder app icon. Shared so every mockup's background grid is identical rather than
+ * each one re-deciding its own corner radius and tone.
+ *
+ * No per-cell border — sixteen individually bordered boxes were the actual cause of the choppy
+ * entrance animation (that many separate border draws every frame during the slide/fade-in adds
+ * up), not the animation itself. A flat fill reads clearly enough against the outlined phone
+ * shape around it. */
+@Composable
+internal fun AuthPhoneAppIcon(cellSize: Dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(cellSize)
+            .clip(RoundedCornerShape(10.dp))
+            .background(AuthPalette.panel),
+    )
+}
+
+/** Emigo's own widget as it appears on a home screen — the sample photo, ringed in the accent.
+ * Deliberately just the photo: no logo, no heart, no glyph of any kind on top of it. The whole
+ * point being made is "your friend's actual photo lives here", and any mark laid over it turns
+ * that into an advert for the app instead. */
+@Composable
+internal fun AuthPhoneWidget(size: Dp, modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(R.drawable.onboarding_widget_photo),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = modifier
+            .size(size)
+            .clip(RoundedCornerShape(22.dp))
+            .border(1.5.dp, AuthPalette.accentFill, RoundedCornerShape(22.dp)),
+    )
+}
+
+/**
+ * The phone silhouette itself — outline, tilt, grid metrics and home indicator — with no opinion
+ * about what goes on its screen. Extracted so the widget-setup walkthrough can draw its own
+ * illustrations inside the exact same device rather than a second, near-identical phone drawn
+ * from separately-chosen numbers that would drift apart the first time either was touched.
+ *
+ * [content] is handed the grid cell size and gap already derived from whatever width the frame
+ * ended up at, and runs in a [BoxScope] so illustrations can align things to the screen's edges.
+ */
+@Composable
+internal fun AuthPhoneFrame(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.(cellSize: Dp, gap: Dp) -> Unit,
+) {
     val colors = AuthPalette
     val outlineShape = RoundedCornerShape(40.dp)
 
@@ -77,60 +160,14 @@ fun PhoneHomeMockup(modifier: Modifier = Modifier) {
             .border(5.dp, colors.muted.copy(alpha = borderAlpha), outlineShape)
             .padding(18.dp),
     ) {
-        val gridWidth = maxWidth
-        val cellSize: Dp = (gridWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
-        val bigCardSize = cellSize * 2 + GRID_GAP
+        val cellSize: Dp = (maxWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
 
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Column(verticalArrangement = Arrangement.spacedBy(GRID_GAP)) {
-                    repeat(GRID_ROWS) { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(GRID_GAP)) {
-                            repeat(GRID_COLUMNS) { col ->
-                                // The big card below overlaps rows 1-2, columns 2-3 (its own
-                                // offset/alignment) — skipping those cells here instead of drawing
-                                // them underneath is what stops their sharper (10dp) corners from
-                                // peeking out past the big card's own, more rounded (22dp) ones.
-                                if (row in 1..2 && col in 2..3) {
-                                    Box(modifier = Modifier.size(cellSize))
-                                    return@repeat
-                                }
-                                // No per-cell border — sixteen individually bordered boxes were
-                                // the actual cause of the choppy entrance animation (that many
-                                // separate border draws every frame during the slide/fade-in adds
-                                // up), not the animation itself. A flat fill reads clearly enough
-                                // against the outlined phone shape around it.
-                                Box(
-                                    modifier = Modifier
-                                        .size(cellSize)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(colors.panel),
-                                )
-                            }
-                        }
-                    }
-                }
+            Box(modifier = Modifier.fillMaxWidth()) { content(cellSize, GRID_GAP) }
 
-                // Overlaps the grid rather than occupying its own cell — genuinely bigger than a
-                // regular icon, not just recolored, which is what makes it read as "the one that
-                // matters" instead of one more icon among sixteen. A real sample photo now,
-                // not a flat color block — this is meant to read as "a friend's actual photo,
-                // live on your home screen," which a solid color can only gesture at.
-                Image(
-                    painter = painterResource(R.drawable.onboarding_widget_photo),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(y = cellSize + GRID_GAP)
-                        .size(bigCardSize)
-                        .clip(RoundedCornerShape(22.dp))
-                        .border(1.5.dp, colors.accentFill, RoundedCornerShape(22.dp)),
-                )
-            }
 
             Box(
                 modifier = Modifier

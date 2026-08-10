@@ -66,5 +66,5 @@ internal val FEATURED_CARD_TOP_GAP = 28.dp
 /** The gaps around the friend avatar row beneath the card, kept as plain constants for the same
  * reason as [FEATURED_CARD_TOP_GAP] — every fixed element in that fold keeps its exact spacing on
  * every device, and only the card flexes. */
-internal val AVATAR_ROW_TOP_GAP = 34.dp
+internal val AVATAR_ROW_TOP_GAP = 20.dp
 internal val AVATAR_ROW_BOTTOM_GAP = 12.dp

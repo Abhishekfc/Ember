@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
  * that simply finishes the flow once satisfied. [goBack] allows stepping back through all of
  * these, all the way to [REGISTER_EMAIL]; since no account exists until [submitUsername]
  * succeeds, there's no "already registered" edge case to worry about on the way back down. */
-enum class AuthStep { WELCOME, LOGIN, REGISTER_EMAIL, REGISTER_PASSWORD, REGISTER_NAME, REGISTER_USERNAME, REGISTER_SHARING }
+enum class AuthStep { WELCOME, LOGIN, REGISTER_EMAIL, REGISTER_PASSWORD, REGISTER_NAME, REGISTER_USERNAME, REGISTER_WIDGET, REGISTER_SHARING }
 
 private const val MIN_PASSWORD_LENGTH = 8
 private const val USERNAME_DEBOUNCE_MS = 400L
@@ -48,6 +48,11 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
      * motion always matches which way someone would expect the flow to move in physical space. */
     var isMovingForward by mutableStateOf(true)
         private set
+
+    /** True once [AuthRepository.register] has actually succeeded. The steps after that point
+     * (widget, add-a-friend) are post-account, and the credentials that created it are no longer
+     * valid to resubmit — see [submitUsername] and [goBack]. */
+    private var accountCreated = false
 
     var email by mutableStateOf("")
         private set
@@ -107,11 +112,25 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
         step = next
     }
 
+    /** [AuthStep.REGISTER_WIDGET] onward. Public because that step is the one place in this flow
+     * that advances on a plain UI decision rather than on a network result or a validated field,
+     * so there's nothing for the ViewModel itself to check first. */
+    fun onWidgetStepDone() = goTo(AuthStep.REGISTER_SHARING)
+
     fun goBack() {
         isMovingForward = false
         errorMessage = null
         step = when (step) {
-            AuthStep.REGISTER_SHARING -> AuthStep.REGISTER_USERNAME
+            // Both of these come *after* register() has succeeded, so the account already
+            // exists. Stepping back past the widget step would land on the very screens that
+            // created it, where pressing continue re-submits a registration for an account
+            // that's already there — and, because password is deliberately cleared the moment
+            // register() succeeds (see submitUsername), re-submits it with an empty password.
+            // That surfaced as "password size must be between 8 and 72 characters" on the
+            // username screen, which is a genuinely baffling thing to be told while typing a
+            // username. The widget step is the floor for back navigation.
+            AuthStep.REGISTER_SHARING -> AuthStep.REGISTER_WIDGET
+            AuthStep.REGISTER_WIDGET -> AuthStep.REGISTER_WIDGET
             AuthStep.REGISTER_USERNAME -> AuthStep.REGISTER_NAME
             AuthStep.REGISTER_NAME -> AuthStep.REGISTER_PASSWORD
             AuthStep.REGISTER_PASSWORD -> AuthStep.REGISTER_EMAIL
@@ -161,6 +180,11 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
     }
 
     fun submitLogin(onSuccess: () -> Unit) {
+        // The button stays tappable while the request is in flight, so on a slow connection two
+        // taps means two login calls — and two [onSuccess] callbacks, i.e. navigating onward
+        // twice. Whichever request lost the race also gets to overwrite the outcome of the one
+        // that won, so a successful sign-in could still end up showing an error.
+        if (isLoading) return
         if (loginIdentifier.isBlank() || password.isBlank()) {
             errorMessage = "Please fill in every field"
             return
@@ -201,14 +225,16 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
         errorMessage = null
     }
 
+    // Last name is optional — displayName (below) already collapses a blank one down to just
+    // the first name cleanly, so there's nothing server-side that actually needs it.
     val isNameValid: Boolean
-        get() = firstName.isNotBlank() && lastName.isNotBlank()
+        get() = firstName.isNotBlank()
 
     /** Also just local validation, same as [submitRegister] — still nothing to save server-side
      * until a username is confirmed too. */
     fun submitName() {
         if (!isNameValid) {
-            errorMessage = "Please enter your first and last name"
+            errorMessage = "Please enter your first name"
             return
         }
         goTo(AuthStep.REGISTER_USERNAME)
@@ -250,6 +276,18 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
      * name, a confirmed-available username) is finally in hand, so this is the first and only
      * [AuthRepository.register] call in the whole flow. */
     fun submitUsername() {
+        // Belt and braces alongside goBack's own floor: register() must run exactly once per
+        // account. Any second call can only ever fail (the email is taken by the account this
+        // same flow just made, and the password has already been cleared), so it's an error
+        // state with no useful outcome — moving on is strictly better than reporting it.
+        if (accountCreated) {
+            goTo(AuthStep.REGISTER_WIDGET)
+            return
+        }
+        // A slow network makes the button tappable for as long as the request is in flight; two
+        // taps means two register() calls, the second of which fails as a duplicate and replaces
+        // the success with an error message for an account that was in fact created.
+        if (isLoading) return
         if (usernameDraft.length < 3) {
             errorMessage = "Username must be at least 3 characters"
             return
@@ -264,12 +302,16 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
             val displayName = "${firstName.trim()} ${lastName.trim()}".trim()
             repository.register(email.trim(), password, displayName, usernameDraft).fold(
                 onSuccess = {
+                    accountCreated = true
                     // Google Password Manager's "Save password?" prompt fires off the password
                     // field being non-empty when it disappears from the view tree (i.e. when this
                     // screen unmounts) — clearing it first, before that happens, leaves nothing
                     // for the save-prompt heuristic to act on.
                     password = ""
-                    goTo(AuthStep.REGISTER_SHARING)
+                    // The widget is what this app actually is, so it's explained before anyone
+                    // is asked to invite friends to it — the invite reads as worth sending once
+                    // you know what the other person is being invited to.
+                    goTo(AuthStep.REGISTER_WIDGET)
                 },
                 onFailure = { errorMessage = it.message ?: "Something went wrong" },
             )

@@ -22,6 +22,11 @@ data class LoginRequest(
     @field:NotBlank val password: String,
 )
 
+data class ChangePasswordRequest(
+    @field:NotBlank val currentPassword: String,
+    @field:Size(min = 8, max = 72) val newPassword: String,
+)
+
 data class AuthResponse(
     val token: String,
     val userId: UUID,

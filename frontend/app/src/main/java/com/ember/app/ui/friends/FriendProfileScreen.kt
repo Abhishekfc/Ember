@@ -485,7 +485,7 @@ private fun ReportUserDialog(
     EditDialogShell(title = if (reportSubmitted) "Report submitted" else "Report this account", onDismiss = onDismiss) {
         if (reportSubmitted) {
             Text(
-                text = "Thanks — we'll look into it.",
+                text = "Thanks, we'll look into it.",
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 color = colors.muted,

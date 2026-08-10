@@ -27,7 +27,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +61,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.FlashOff
+import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PushPin
@@ -128,7 +132,7 @@ import com.ember.app.ui.home.FEATURED_CARD_SIDE_PADDING
 import com.ember.app.ui.home.FEATURED_CARD_TOP_GAP
 import com.ember.app.ui.home.AVATAR_ROW_TOP_GAP
 import com.ember.app.ui.home.HomeHeaderHeightTwin
-import com.ember.app.ui.home.SharePromptHeightTwin
+import com.ember.app.ui.home.HomeViewModeToggleHeightTwin
 import com.ember.app.ui.theme.EmberRadii
 import com.ember.app.ui.theme.EmberTheme
 import com.ember.app.ui.theme.PublicSansFontFamily
@@ -297,12 +301,13 @@ fun CameraScreen(
                     (screenSize.height - statusBarPx - headerHeightPx - navDockHeightPx).toDp()
                 }
                 Column(modifier = Modifier.fillMaxWidth().heightIn(max = topFoldMaxHeightDp)) {
-                    // Home has a SharePromptRow between its header and its card; this screen has
-                    // nothing there. That one row was the entire reason Camera's card sat higher
-                    // than Home's even though both already reserved a matching header height —
-                    // so reserve it here too, the same invisible-twin way the header itself is
-                    // handled above rather than by copying a dp number that would silently drift.
-                    Box(modifier = Modifier.alpha(0f)) { SharePromptHeightTwin() }
+                    // Home has a HomeViewModeToggleRow between its header and its card; this
+                    // screen has nothing there. That one row was the entire reason Camera's card
+                    // sat higher than Home's even though both already reserved a matching header
+                    // height — so reserve it here too, the same invisible-twin way the header
+                    // itself is handled above rather than by copying a dp number that would
+                    // silently drift.
+                    Box(modifier = Modifier.alpha(0f)) { HomeViewModeToggleHeightTwin() }
 
                     // Fixed gap, then the card — mirroring HomeScreen's own fold exactly. Both
                     // screens previously split their leftover space with weight(1f) spacers, which
@@ -562,24 +567,35 @@ private fun LiveCameraStage() {
             AndroidView(
                 modifier = Modifier
                     .fillMaxSize()
-                    // detectTransformGestures' onGesture already fires continuously for the whole
-                    // pinch (not just once at the end), so reading cameraInfo.zoomState.value fresh
-                    // on every call — rather than tracking a separate locally-cached ratio — keeps
-                    // this in sync with whatever CameraX actually applied, including its own
-                    // clamping, instead of this drifting from the real hardware state over time.
+                    // Only ever consumes a genuine two-finger pinch — the old
+                    // detectTransformGestures reported (and consumed) pan even from a single
+                    // pointer, which swallowed every swipe meant for the outer tab pager the
+                    // instant it landed on the live camera. Waiting for a second pointer before
+                    // consuming anything means a one-finger swipe now falls through untouched to
+                    // the pager underneath, same as it already does on every other tab.
                     .pointerInput(Unit) {
-                        detectTransformGestures { _, _, gestureZoom, _ ->
-                            val camera = CameraSession.camera ?: return@detectTransformGestures
-                            val zoomState = camera.cameraInfo.zoomState.value ?: return@detectTransformGestures
-                            val newRatio = (zoomState.zoomRatio * gestureZoom)
-                                .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
-                            camera.cameraControl.setZoomRatio(newRatio)
-                            displayedZoomRatio = newRatio
-                            hideZoomIndicatorJob?.cancel()
-                            hideZoomIndicatorJob = coroutineScope.launch {
-                                delay(900)
-                                displayedZoomRatio = null
-                            }
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                                if (event.changes.size >= 2) {
+                                    val gestureZoom = event.calculateZoom()
+                                    val camera = CameraSession.camera
+                                    val zoomState = camera?.cameraInfo?.zoomState?.value
+                                    if (camera != null && zoomState != null) {
+                                        val newRatio = (zoomState.zoomRatio * gestureZoom)
+                                            .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                                        camera.cameraControl.setZoomRatio(newRatio)
+                                        displayedZoomRatio = newRatio
+                                        hideZoomIndicatorJob?.cancel()
+                                        hideZoomIndicatorJob = coroutineScope.launch {
+                                            delay(900)
+                                            displayedZoomRatio = null
+                                        }
+                                    }
+                                    event.changes.forEach { it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
                         }
                     },
                 factory = { previewView },
@@ -598,6 +614,33 @@ private fun LiveCameraStage() {
                         .background(Color.Black.copy(alpha = 0.35f))
                         .padding(horizontal = 14.dp, vertical = 7.dp),
                 )
+            }
+
+            // Front cameras don't carry a usable flash on this device (hasFlashUnit() alone
+            // wasn't reliable here). Gated on boundLensFacing, not lensFacing — lensFacing flips
+            // the instant the flip button is tapped, well before the rebind actually finishes,
+            // which made the icon vanish/appear a beat ahead of the preview itself switching
+            // cameras. boundLensFacing only updates once the new camera is actually bound, the
+            // same moment the preview swaps, so the two now change together.
+            if (CameraSession.boundLensFacing == CameraSelector.LENS_FACING_BACK) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = { CameraSession.toggleTorch() }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // Standard bolt glyph every camera app uses for flash, not a literal
+                    // flashlight shape.
+                    Icon(
+                        imageVector = if (CameraSession.torchEnabled) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
+                        contentDescription = if (CameraSession.torchEnabled) "Turn flash off" else "Turn flash on",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     } else {
@@ -654,6 +697,39 @@ private object CameraSession {
     var camera: Camera? = null
         private set
 
+    // Compose state mirroring which lens is actually *visible* right now, distinct from
+    // [lensFacing] above (flips the instant the flip button is tapped) and even from
+    // bindToLifecycle's own return (that call registers the new camera's pipeline, but the
+    // sensor still takes a real beat afterwards to warm up and deliver its first frame — setting
+    // this at bindToLifecycle-return time, tried first, still changed visibly before the
+    // viewfinder itself did). Set instead from previewStreamState (below) transitioning to
+    // STREAMING, which is CameraX's own signal that the new camera's frames have actually started
+    // painting the surface — the flash button gated on this changes in step with what's on
+    // screen instead of anticipating it.
+    var boundLensFacing by mutableStateOf<Int?>(null)
+        private set
+
+    // Which lens the most recent bind was *for* — previewStreamState's observer (attached once,
+    // below) reads this when a STREAMING transition lands, since the LiveData callback itself
+    // carries no information about which lens just finished starting up.
+    private var pendingLensFacing: Int? = null
+    private var streamStateObserverAttached = false
+
+    // Torch is its own on/off state, not read back from CameraX anywhere — enableTorch is
+    // fire-and-forget, so this is the only source of truth for what the button should show.
+    // Reset to off on every rebind (lens flip or a fresh bind) rather than carried over, since a
+    // just-bound camera always starts with its torch off and the previous camera's torch (if any)
+    // was already released along with it.
+    var torchEnabled by mutableStateOf(false)
+        private set
+
+    fun toggleTorch() {
+        val cam = camera ?: return
+        val next = !torchEnabled
+        cam.cameraControl.enableTorch(next)
+        torchEnabled = next
+    }
+
     // The live Preview use case, kept so its surface provider can be reattached without a full
     // rebind — see bindIfNeeded's early-return path for why that's the difference between a
     // working viewfinder and a black one.
@@ -687,19 +763,38 @@ private object CameraSession {
             preview?.surfaceProvider = view.surfaceProvider
             return
         }
+        ensureStreamStateObserver(view)
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
+            val targetLensFacing = lensFacing
             val previewUseCase = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
-            val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
+            val selector = CameraSelector.Builder().requireLensFacing(targetLensFacing).build()
             runCatching {
                 cameraProvider.unbindAll()
                 camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, previewUseCase, imageCapture)
                 preview = previewUseCase
-                boundForLensFacing = lensFacing
+                boundForLensFacing = targetLensFacing
+                pendingLensFacing = targetLensFacing
                 boundLifecycleOwner = WeakReference(lifecycleOwner)
+                torchEnabled = false
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    // Attached once (guarded by streamStateObserverAttached) rather than per-bind — observeForever
+    // needs no LifecycleOwner and this object already outlives any single composition, same as
+    // [previewView]/[camera] above, so one observer for the object's whole life is correct rather
+    // than accumulating a fresh one on every rebind.
+    private fun ensureStreamStateObserver(view: PreviewView) {
+        if (streamStateObserverAttached) return
+        streamStateObserverAttached = true
+        view.previewStreamState.observeForever { state ->
+            val pending = pendingLensFacing
+            if (state == PreviewView.StreamState.STREAMING && pending != null) {
+                boundLensFacing = pending
+            }
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 package com.ember.app.data
 
 import com.ember.app.data.remote.EmberApi
+import com.ember.app.data.remote.dto.ChangePasswordRequestDto
 import com.ember.app.data.remote.dto.ErrorResponse
 import com.ember.app.data.remote.dto.UpdateProfileRequestDto
 import com.ember.app.data.remote.dto.UsernameAvailabilityDto
@@ -40,6 +41,18 @@ class UserRepository(private val api: EmberApi) {
             file.asRequestBody("image/jpeg".toMediaType()),
         )
         handle(api.uploadProfilePhoto(filePart))
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> = safeCall {
+        val response = api.changePassword(ChangePasswordRequestDto(currentPassword = currentPassword, newPassword = newPassword))
+        if (response.isSuccessful) {
+            Result.success(Unit)
+        } else {
+            val message = response.errorBody()?.string()?.let {
+                runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+            } ?: "Couldn't change your password (${response.code()})"
+            Result.failure(Exception(message))
+        }
     }
 
     /** Irreversible — the backend has already deleted the account and everything it owns by the

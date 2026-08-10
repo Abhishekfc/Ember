@@ -11,6 +11,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -693,6 +696,10 @@ class MainActivity : ComponentActivity() {
                         coroutineScope.launch { pagerState.scrollToPage(PAGE_CAMERA) }
                     }
 
+                    // Wraps the whole nested-screen `when` (and the Gold overlay below it) so
+                    // Gold can render on top of whatever the `when` currently shows, rather than
+                    // being one more mutually-exclusive branch inside it.
+                    Box(modifier = Modifier.fillMaxSize()) {
                     when {
                         nestedScreen == NestedScreen.PROFILE -> {
                             val myProfileViewModel: MyProfileViewModel = viewModel(
@@ -720,7 +727,8 @@ class MainActivity : ComponentActivity() {
                             onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                         )
 
-                        nestedScreen == NestedScreen.GOLD -> EmberGoldScreen(onBack = { nestedScreen = null })
+                        // NestedScreen.GOLD is deliberately not a branch here — see the Box/
+                        // AnimatedVisibility wrapping this whole `when`, below.
 
                         // Activity moved here from being pager page PAGE_ACTIVITY — reached via
                         // the bell icon in Home's own header now (see HomeScreen's onActivityClick)
@@ -934,6 +942,21 @@ class MainActivity : ComponentActivity() {
                                 HorizontalPager(
                                     state = pagerState,
                                     modifier = Modifier.fillMaxSize(),
+                                    // Keeps the immediate neighbours of the current tab composed
+                                    // instead of tearing them down the moment you swipe away.
+                                    //
+                                    // This is what fixes Home's featured card briefly showing the
+                                    // previous photo every time you come back to it. Rebuilding
+                                    // Home from scratch recreates its card pager, and while that
+                                    // pager restores its page number immediately, the scroll
+                                    // offset it needs to actually *show* that page is only applied
+                                    // on the following frame — so for one frame it paints the page
+                                    // before it. Verified via logging: the page index was already
+                                    // correct on return every single time, which is why nothing
+                                    // that adjusted the page number ever helped. Not rebuilding
+                                    // the screen at all removes the wrong frame entirely, rather
+                                    // than trying to correct it after it's been drawn.
+                                    beyondViewportPageCount = 1,
                                     // A photo mid-review/caption is easy to lose to an
                                     // accidental swipe — once one's been captured, swiping is
                                     // blocked entirely until it's sent or explicitly discarded.
@@ -1064,6 +1087,21 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                    }
+
+                    // Always composed (not gated inside the `when` above) so its exit transition
+                    // has something to animate — a screen selected by `when` gets torn out of
+                    // composition the instant its condition flips, before any exit animation
+                    // could actually play. This is the one nested screen with its own distinct
+                    // entrance: slides up from the bottom like a sheet, every time, rather than
+                    // appearing instantly the way every other nested screen still does.
+                    AnimatedVisibility(
+                        visible = nestedScreen == NestedScreen.GOLD,
+                        enter = slideInVertically(initialOffsetY = { it }),
+                        exit = slideOutVertically(targetOffsetY = { it }),
+                    ) {
+                        EmberGoldScreen(onBack = { nestedScreen = null })
+                    }
                     }
                 }
             }
