@@ -10,7 +10,9 @@ import com.google.auth.http.HttpCredentialsAdapter
 import com.google.auth.oauth2.GoogleCredentials
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.io.ByteArrayInputStream
 import java.io.FileInputStream
+import java.io.InputStream
 import java.time.Instant
 
 data class PlayPurchaseVerification(
@@ -25,14 +27,31 @@ class PlayBillingVerificationService(private val playBillingProperties: PlayBill
 
     private val androidPublisher: AndroidPublisher? by lazy { initClient() }
 
+    /** Inline JSON wins over the file path — see PlayBillingProperties for why both exist. */
+    private fun credentialsStream(): InputStream? = when {
+        playBillingProperties.serviceAccountCredentialsJson.isNotBlank() ->
+            ByteArrayInputStream(playBillingProperties.serviceAccountCredentialsJson.toByteArray(Charsets.UTF_8))
+        playBillingProperties.serviceAccountCredentialsPath.isNotBlank() ->
+            FileInputStream(playBillingProperties.serviceAccountCredentialsPath)
+        else -> null
+    }
+
     private fun initClient(): AndroidPublisher? {
-        if (!playBillingProperties.enabled || playBillingProperties.serviceAccountCredentialsPath.isBlank()) {
-            logger.warn("Play Billing verification is disabled or credentials are not configured")
+        if (!playBillingProperties.enabled) {
+            logger.warn("Play Billing verification is disabled")
             return null
         }
         return try {
-            FileInputStream(playBillingProperties.serviceAccountCredentialsPath).use { stream ->
-                val credentials = GoogleCredentials.fromStream(stream)
+            val stream = credentialsStream()
+            if (stream == null) {
+                logger.error(
+                    "Play Billing is enabled but no credentials are configured — set " +
+                        "PLAY_SERVICE_ACCOUNT_CREDENTIALS_JSON. Every purchase verification will fail.",
+                )
+                return null
+            }
+            stream.use {
+                val credentials = GoogleCredentials.fromStream(it)
                     .createScoped(listOf(AndroidPublisherScopes.ANDROIDPUBLISHER))
                 AndroidPublisher.Builder(
                     GoogleNetHttpTransport.newTrustedTransport(),

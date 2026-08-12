@@ -57,11 +57,16 @@ ember:
   fcm:
     # Path to the Firebase service-account JSON credentials file.
     credentials-path: ${FCM_CREDENTIALS_PATH:}
+    # The same JSON supplied inline, for hosts that can only provide environment variables and not
+    # files (Railway has no secret-file feature). Wins over the path above when set.
+    credentials-json: ${FCM_CREDENTIALS_JSON:}
     enabled: ${FCM_ENABLED:true}
 
   play-billing:
     package-name: ${PLAY_PACKAGE_NAME:com.emigo.app}
     service-account-credentials-path: ${PLAY_SERVICE_ACCOUNT_CREDENTIALS_PATH:}
+    # Inline counterpart, same reasoning as ember.fcm.credentials-json above.
+    service-account-credentials-json: ${PLAY_SERVICE_ACCOUNT_CREDENTIALS_JSON:}
     enabled: ${PLAY_BILLING_ENABLED:true}
 
 logging:
