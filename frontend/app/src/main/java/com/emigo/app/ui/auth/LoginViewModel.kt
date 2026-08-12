@@ -137,10 +137,35 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
             AuthStep.REGISTER_EMAIL, AuthStep.LOGIN -> AuthStep.WELCOME
             AuthStep.WELCOME -> step
         }
+        // Backing out to the fork between signing in and signing up abandons whichever attempt was
+        // in progress, so the password typed for it shouldn't outlive it — the same reasoning as
+        // onSignInClicked/onContinueWithEmailClicked, covering the case where the person leaves via
+        // the back arrow rather than by picking the other option.
+        if (step == AuthStep.WELCOME) password = ""
     }
 
-    fun onContinueWithEmailClicked() = goTo(AuthStep.REGISTER_EMAIL)
-    fun onSignInClicked() = goTo(AuthStep.LOGIN)
+    /**
+     * Both entry points clear [password] first, because sign-in and sign-up share that one field
+     * and it is otherwise only cleared on *success*.
+     *
+     * The path that exposed this: try to sign in, get "invalid email or password" because no
+     * account exists, go back, start creating one instead — and the sign-up password step opens
+     * already filled in with the password just typed for a different account. Easy to miss (it
+     * renders as dots) and easy to accept, so the new account silently gets a password the person
+     * never chose for it, and which they believe belongs to some other account entirely.
+     *
+     * Cleared here, at the fork between the two flows, rather than on every step change: going
+     * back one step *within* sign-up to correct an email should keep the password already typed.
+     */
+    fun onContinueWithEmailClicked() {
+        password = ""
+        goTo(AuthStep.REGISTER_EMAIL)
+    }
+
+    fun onSignInClicked() {
+        password = ""
+        goTo(AuthStep.LOGIN)
+    }
     /** Verifies the address isn't already registered before moving on, rather than only checking
      * that it looks like an email. Registration itself rejects duplicates (AuthService.register,
      * plus a unique constraint on the column), but that only fires at the very end — so without

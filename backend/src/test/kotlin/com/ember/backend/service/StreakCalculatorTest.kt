@@ -193,12 +193,18 @@ class StreakCalculatorTest {
         // Time-of-day dependent by nature, so this asserts the rule rather than a fixed answer:
         // with yesterday as the last mutual day, at-risk must agree with how much of today is
         // actually left.
+        //
+        // Stated as an instant comparison, not as `Duration.toHours() <= 4`. That truncates towards
+        // zero, so it treats "4 hours 59 minutes remaining" as 4 and calls it at-risk — which made
+        // the threshold behave as five hours, and disagree with atRiskWindowOpensAt for a whole
+        // hour. This is the exact boundary, and the same one that helper defines.
         val midnight = today.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
-        val hoursLeft = Duration.between(Instant.now(), midnight).toHours()
+        val now = Instant.now()
+        val warningStarts = StreakCalculator.atRiskWindowOpensAt(midnight)
         assertEquals(
-            hoursLeft <= 4,
+            !now.isBefore(warningStarts),
             StreakCalculator.isAtRisk(streak = 3, mostRecentMutualDay = today.minusDays(1)),
-            "threshold is 4 hours; $hoursLeft remain",
+            "warning opens at $warningStarts; it is now $now",
         )
     }
 

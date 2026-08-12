@@ -103,8 +103,15 @@ object StreakCalculator {
         val today = LocalDate.now(ZoneOffset.UTC)
         if (mostRecentMutualDay != today.minusDays(1)) return false
         val midnightUtc = today.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
-        val hoursLeft = Duration.between(Instant.now(), midnightUtc).toHours()
-        return hoursLeft <= STREAK_AT_RISK_THRESHOLD_HOURS
+        // Compared as instants against [atRiskWindowOpensAt], not as a whole-hours countdown.
+        // `Duration.toHours()` truncates towards zero, so "4 hours 59 minutes remaining" counted as
+        // 4 and reported at-risk — a whole hour before atRiskWindowOpensAt says the window opens.
+        // The two are meant to be the same boundary (one decides whether to show the warning, the
+        // other dates it), and for that hour they disagreed: ActivityService would emit a
+        // STREAK_EXPIRING event stamped with a time in the future, which sorts above everything and
+        // renders as a warning that hasn't started yet. Deriving both from the one helper makes them
+        // the same boundary by construction rather than by two calculations happening to agree.
+        return !Instant.now().isBefore(atRiskWindowOpensAt(midnightUtc))
     }
 
     /** The instant the "about to expire" warning becomes true for a window closing at [deadline] —
