@@ -49,11 +49,19 @@ class NetworkModule(context: Context) {
     // isn't a rejected/expired session at all. Without this exclusion, typing the current password
     // wrong signed the whole app out instead of showing an inline error in the dialog, since this
     // interceptor couldn't tell that 401 apart from a real token rejection.
+    //
+    // devices/unregister is excluded for a different reason: it is the *first* thing sign-out
+    // does (see MainActivity.onSignOut), so when sign-out was itself triggered by a 401 the token
+    // it carries is already dead and this call 401s too. Left unexcluded, that second 401 emits
+    // sessionExpired again, which runs onSignOut again, which calls this again — an endless
+    // sign-out loop firing a request every round. Its result is irrelevant to session state
+    // regardless: the session is being torn down either way.
     private val sessionExpiryInterceptor = okhttp3.Interceptor { chain ->
         val request = chain.request()
         val response = chain.proceed(request)
-        val isChangePassword = request.url.encodedPath.endsWith("/users/me/password")
-        if (response.code == 401 && request.header("Authorization") != null && !isChangePassword) {
+        val path = request.url.encodedPath
+        val isSelfHandled401 = path.endsWith("/users/me/password") || path.endsWith("/devices/unregister")
+        if (response.code == 401 && request.header("Authorization") != null && !isSelfHandled401) {
             _sessionExpired.tryEmit(Unit)
         }
         response

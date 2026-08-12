@@ -30,6 +30,14 @@ import java.util.UUID
 
 private const val SEARCH_RESULT_LIMIT = 20
 
+/** Ceiling on a single page, since `limit` comes straight off the query string — see the clamp in
+ * [FriendService.getFriends]. Comfortably above the client's own default of 30. */
+private const val MAX_PAGE_SIZE = 100
+
+/** Ceiling on a search string's length. Longer than any real name, and short enough that the
+ * trigram index is never asked to match a pathologically long pattern. */
+private const val MAX_SEARCH_QUERY_LENGTH = 100
+
 @Service
 class FriendService(
     private val friendshipRepository: FriendshipRepository,
@@ -71,8 +79,15 @@ class FriendService(
         // streak/pin computation needs every friendship anyway; slicing it here means the
         // *response* stays small without a separate DB-level pagination path for what's a
         // per-user list that's realistically never huge.
-        val page = summaries.drop(offset).take(limit)
-        return Page(items = page, hasMore = offset + limit < summaries.size)
+        //
+        // Both values are clamped because they arrive straight off the query string: `drop`/`take`
+        // both `require(n >= 0)`, so a plain `?offset=-1` threw IllegalArgumentException out of
+        // here and surfaced as a 500, and an unbounded `limit` let one request ask for the entire
+        // list in a single response.
+        val safeOffset = offset.coerceAtLeast(0)
+        val safeLimit = limit.coerceIn(1, MAX_PAGE_SIZE)
+        val page = summaries.drop(safeOffset).take(safeLimit)
+        return Page(items = page, hasMore = safeOffset + safeLimit < summaries.size)
     }
 
     private fun computeFriendSummaries(userId: UUID): List<FriendSummary> {
@@ -118,7 +133,6 @@ class FriendService(
                 friendId = friend.id,
                 displayName = friend.displayName,
                 username = friend.username,
-                email = friend.email,
                 profilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
                 pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
                 pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
@@ -145,17 +159,23 @@ class FriendService(
                     requesterId = it.requester.id,
                     displayName = it.requester.displayName,
                     username = it.requester.username,
-                    email = it.requester.email,
                     profilePhotoUrl = it.requester.profilePhotoStorageKey?.let { key -> r2StorageService.publicUrl(key) },
                     createdAt = it.createdAt,
                 )
             }
 
     fun searchUsers(userId: UUID, query: String): List<FriendSearchResult> {
-        val trimmed = query.trim()
+        val trimmed = query.trim().take(MAX_SEARCH_QUERY_LENGTH)
         if (trimmed.length < 2) return emptyList()
 
-        val results = userRepository.search(userId, trimmed, PageRequest.of(0, SEARCH_RESULT_LIMIT))
+        // The repository query interpolates this into a LIKE pattern, so `%` and `_` were being
+        // taken as wildcards rather than as literal characters someone typed. That made `%%` (or
+        // any two characters including one) match *every* account in the system — turning a
+        // name search into a user-enumeration endpoint, and defeating the two-character minimum
+        // above that exists precisely to stop broad matches. Escaping them makes the search mean
+        // what it looks like it means: a literal substring match.
+        val escaped = trimmed.escapeLikeWildcards()
+        val results = userRepository.search(userId, escaped, PageRequest.of(0, SEARCH_RESULT_LIMIT))
         if (results.isEmpty()) return emptyList()
 
         // One query covering every result instead of one findBetween call per result.
@@ -222,7 +242,6 @@ class FriendService(
             requesterId = requester.id,
             displayName = requester.displayName,
             username = requester.username,
-            email = requester.email,
             profilePhotoUrl = requester.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
             createdAt = friendship.createdAt,
         )
@@ -257,7 +276,6 @@ class FriendService(
             friendId = friendship.requester.id,
             displayName = friendship.requester.displayName,
             username = friendship.requester.username,
-            email = friendship.requester.email,
             profilePhotoUrl = friendship.requester.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
             pinnedByMe = friendship.addresseePinned,
             pinnedByThem = friendship.requesterPinned,
@@ -293,7 +311,6 @@ class FriendService(
             friendId = friend.id,
             displayName = friend.displayName,
             username = friend.username,
-            email = friend.email,
             profilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
             pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
             pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
@@ -374,7 +391,6 @@ class FriendService(
             friendId = friend.id,
             displayName = friend.displayName,
             username = friend.username,
-            email = friend.email,
             profilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
             pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
             pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
@@ -426,3 +442,12 @@ class FriendService(
         userIds.forEach { cache.evict(it.toString()) }
     }
 }
+
+/** Neutralizes the two SQL LIKE metacharacters so a search string is matched literally — see
+ * [FriendService.searchUsers]. Uses `!` as the escape character rather than the conventional
+ * backslash purely to keep the JPQL literal unambiguous (`escape '!'` in
+ * [com.ember.backend.repository.UserRepository.search] must stay in step with this); the escape
+ * character itself has to be escaped first, or escaping `%` would produce a sequence this same
+ * function could no longer read back. */
+internal fun String.escapeLikeWildcards(): String =
+    replace("!", "!!").replace("%", "!%").replace("_", "!_")

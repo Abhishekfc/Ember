@@ -7,6 +7,8 @@ import com.ember.backend.dto.PhotoUploadResponse
 import com.ember.backend.dto.SentPhoto
 import com.ember.backend.security.AuthenticatedUser
 import com.ember.backend.service.PhotoService
+import com.ember.backend.service.RateLimiterService
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -27,6 +30,7 @@ import java.util.UUID
 @RequestMapping("/photos")
 class PhotosController(
     private val photoService: PhotoService,
+    private val rateLimiterService: RateLimiterService,
     // Reaction feature disabled — see PhotoReactionService's own comment.
     // private val photoReactionService: PhotoReactionService,
 ) {
@@ -40,8 +44,15 @@ class PhotosController(
         // send to) is what makes recipientIds legitimately empty now.
         @RequestParam(name = "recipientIds", required = false) recipientIds: List<UUID>?,
         @RequestParam(name = "save", defaultValue = "false") save: Boolean,
-    ): ResponseEntity<PhotoUploadResponse> =
-        ResponseEntity.status(HttpStatus.CREATED).body(photoService.upload(me.id, file, recipientIds.orEmpty(), save))
+    ): ResponseEntity<PhotoUploadResponse> {
+        // By far the most expensive endpoint here — up to 25MB in, a full image decode and
+        // re-encode, an R2 write and a push fan-out per call — and it had no ceiling, so one
+        // account could drive unbounded storage cost and CPU. Generous enough that no real
+        // session of taking and sending photos ever reaches it.
+        rateLimiterService.checkLimit("photo-upload:${me.id}", maxAttempts = 100, window = Duration.ofHours(1))
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(photoService.upload(me.id, file, recipientIds.orEmpty(), save))
+    }
 
     @DeleteMapping("/{photoId}")
     fun delete(
@@ -69,7 +80,7 @@ class PhotosController(
     fun addRecipients(
         @AuthenticationPrincipal me: AuthenticatedUser,
         @PathVariable photoId: UUID,
-        @RequestBody request: AddPhotoRecipientsRequest,
+        @Valid @RequestBody request: AddPhotoRecipientsRequest,
     ): ResponseEntity<Void> {
         photoService.addRecipients(me.id, photoId, request.recipientIds)
         return ResponseEntity.noContent().build()

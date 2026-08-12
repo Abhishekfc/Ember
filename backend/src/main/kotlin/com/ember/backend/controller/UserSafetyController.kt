@@ -6,6 +6,7 @@ import com.ember.backend.security.AuthenticatedUser
 import com.ember.backend.service.BlockService
 import com.ember.backend.service.RateLimiterService
 import com.ember.backend.service.ReportService
+import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -55,7 +56,7 @@ class UserSafetyController(
     fun reportUser(
         @AuthenticationPrincipal me: AuthenticatedUser,
         @PathVariable userId: UUID,
-        @RequestBody request: ReportUserRequest,
+        @Valid @RequestBody request: ReportUserRequest,
     ): ResponseEntity<Void> {
         // A generous but real ceiling — enough for genuine reports against several different
         // accounts in a day, not enough to spam any one account or the moderation queue as a

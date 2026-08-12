@@ -1,5 +1,6 @@
 package com.ember.backend.service
 
+import com.ember.backend.exception.InvalidFriendRequestException
 import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
@@ -35,10 +36,30 @@ object PhotoCompressionService {
     private const val MAX_DIMENSION = 2000
     private const val JPEG_QUALITY = 0.9f
 
+    /**
+     * Hard ceiling on how many pixels an upload is allowed to decode to, checked from the file's
+     * *header* before any pixel data is read.
+     *
+     * Compressed image formats have an essentially unbounded compression ratio for synthetic
+     * content: a 25MB PNG (the multipart limit) of flat colour decodes to hundreds of millions of
+     * pixels, and `ImageIO.read` allocates the whole decoded raster up front at 4 bytes each — so
+     * a single well-crafted upload, well inside every size limit already enforced, could ask the
+     * JVM for multiple gigabytes and OOM the container. That's a one-request kill of the whole
+     * server, from any authenticated account, and nothing before this looked at dimensions at all.
+     *
+     * 50 megapixels is far above any real phone camera (a 48MP sensor shooting full-res lands
+     * around 48MP, and this app's own client downscales long before upload), so no genuine photo
+     * is ever rejected by it — while capping the decode at roughly 200MB of raster, which the heap
+     * can absorb.
+     */
+    private const val MAX_PIXELS = 50_000_000L
+
     data class CompressedImage(val bytes: ByteArray, val contentType: String)
 
     fun compress(bytes: ByteArray, contentType: String): CompressedImage {
         if (contentType == "image/webp") return CompressedImage(bytes, contentType)
+
+        rejectIfOversizedRaster(bytes)
 
         val image = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
             ?: return CompressedImage(bytes, contentType)
@@ -47,6 +68,40 @@ object PhotoCompressionService {
 
         val target = if (needsResize) scaleDown(image) else image
         return CompressedImage(encodeJpeg(target), "image/jpeg")
+    }
+
+    /**
+     * Reads only the image header to learn its dimensions and rejects anything over [MAX_PIXELS]
+     * *before* [ImageIO.read] would allocate the full raster — see [MAX_PIXELS] for the attack
+     * this closes.
+     *
+     * `ImageReader.getWidth/getHeight` parse the format's size fields and nothing else, so this
+     * costs a few bytes of I/O regardless of how large the file claims to be. A file whose header
+     * can't be parsed at all is left alone rather than rejected: [compress] already treats an
+     * undecodable image as "pass through untouched", and this must not turn that into a hard
+     * failure for a format the JDK simply has no reader for (WebP is already short-circuited
+     * above, but this keeps the same tolerance for anything else).
+     */
+    private fun rejectIfOversizedRaster(bytes: ByteArray) {
+        val stream = ImageIO.createImageInputStream(ByteArrayInputStream(bytes)) ?: return
+        stream.use {
+            val readers = ImageIO.getImageReaders(it)
+            if (!readers.hasNext()) return
+            val reader = readers.next()
+            try {
+                reader.input = it
+                val pixels = reader.getWidth(0).toLong() * reader.getHeight(0).toLong()
+                if (pixels > MAX_PIXELS) {
+                    throw InvalidFriendRequestException("That image is too large to process")
+                }
+            } catch (ex: InvalidFriendRequestException) {
+                throw ex
+            } catch (ex: Exception) {
+                // Unreadable header — same tolerance as an unreadable image above.
+            } finally {
+                reader.dispose()
+            }
+        }
     }
 
     private fun scaleDown(image: BufferedImage): BufferedImage {

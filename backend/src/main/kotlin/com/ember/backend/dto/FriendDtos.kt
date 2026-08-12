@@ -21,7 +21,11 @@ data class FriendSummary(
     val friendId: UUID,
     val displayName: String,
     val username: String,
-    val email: String,
+    // Deliberately no `email`. This response used to carry every friend's address, handed to
+    // every one of their friends on every Friends-tab load, and no client ever read it — the only
+    // email the app displays is the signed-in user's own (see UserProfile). A field nothing needs
+    // is a field that can only ever leak, so it isn't sent at all rather than being sent and
+    // ignored. Username is the public handle this app identifies people by.
     val profilePhotoUrl: String?,
     val pinnedByMe: Boolean,
     val pinnedByThem: Boolean,
@@ -53,7 +57,9 @@ data class PendingFriendRequest(
     val requesterId: UUID,
     val displayName: String,
     val username: String,
-    val email: String,
+    // No `email`, same reasoning as FriendSummary above — and worse here: a pending request comes
+    // from someone you have no relationship with yet, so this disclosed a stranger's address to
+    // whoever they'd sent a request to, whether or not it was ever accepted.
     val profilePhotoUrl: String?,
     val createdAt: Instant,
 )

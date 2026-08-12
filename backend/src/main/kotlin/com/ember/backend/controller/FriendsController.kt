@@ -41,11 +41,19 @@ class FriendsController(
     fun listPendingRequests(@AuthenticationPrincipal me: AuthenticatedUser): List<PendingFriendRequest> =
         friendService.getPendingRequests(me.id)
 
+    /** Rate-limited because this is the most expensive read in the app per call — two trigram
+     * index scans across the whole users table — and it was the one authenticated endpoint with no
+     * ceiling at all, so a single account could run it continuously. The limit is sized for a
+     * person typing (the client debounces, so a full name is a few calls, not one per keystroke)
+     * rather than for a script. */
     @GetMapping("/search")
     fun searchUsers(
         @AuthenticationPrincipal me: AuthenticatedUser,
         @RequestParam q: String,
-    ): List<FriendSearchResult> = friendService.searchUsers(me.id, q)
+    ): List<FriendSearchResult> {
+        rateLimiterService.checkLimit("friend-search:${me.id}", maxAttempts = 120, window = Duration.ofMinutes(5))
+        return friendService.searchUsers(me.id, q)
+    }
 
     @PostMapping("/request")
     fun sendRequest(

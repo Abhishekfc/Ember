@@ -1,0 +1,16 @@
+-- Cutoff for how old an access token may be and still authenticate this account.
+--
+-- Access tokens are stateless JWTs with a 7-day lifetime, so until now nothing could ever revoke
+-- one early: changing a password left every already-issued token working for the rest of its
+-- life. That defeats the main reason anyone changes a password — believing someone else has it —
+-- since the person being locked out stayed signed in for up to a week.
+--
+-- Stamping the moment of the change here, and rejecting any token issued before it, revokes every
+-- outstanding session for that account at once without needing a server-side session store. It is
+-- deliberately a general "tokens issued before this are dead" marker rather than a
+-- `password_changed_at`, so anything else that should end every session (an account-recovery flow,
+-- an explicit "sign out everywhere") can reuse it.
+--
+-- NULL means no cutoff — every existing account keeps its current sessions, so deploying this
+-- doesn't sign the whole user base out.
+alter table users add column tokens_valid_from timestamptz;

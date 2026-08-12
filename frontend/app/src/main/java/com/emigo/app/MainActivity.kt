@@ -108,6 +108,8 @@ import com.google.firebase.messaging.FirebaseMessaging
 import dev.chrisbanes.haze.rememberHazeState
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import coil3.SingletonImageLoader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -338,7 +340,17 @@ class MainActivity : ComponentActivity() {
                 // handler below for an expired/invalid token (a 401 on an authenticated
                 // request) — both need to land the user back on a clean login screen.
                 val onSignOut = {
-                    coroutineScope.launch { networkModule.tokenStore.clear() }
+                    // Detach this device from the account's push list *before* the token that
+                    // authenticates that call is cleared — see AuthRepository.unregisterDeviceToken
+                    // for why leaving it attached kept delivering the previous account's photo
+                    // notifications (friend names included) to a signed-out phone. Sequential in
+                    // one coroutine for exactly that ordering; every other cleanup below is
+                    // independent and stays parallel.
+                    coroutineScope.launch {
+                        val fcmToken = runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()
+                        if (fcmToken != null) authRepository.unregisterDeviceToken(fcmToken)
+                        networkModule.tokenStore.clear()
+                    }
                     // LocalListCache isn't scoped per-account — without this, a different user
                     // signing in on the same device would briefly see this account's cached
                     // feed/friends/activity/memories before the fresh fetch overwrites them.
@@ -394,6 +406,17 @@ class MainActivity : ComponentActivity() {
                         WidgetPhotoStore(applicationContext).clear()
                         widgetPreferenceStore.clear()
                         EmberWidget().updateAll(applicationContext)
+                    }
+                    // Same reasoning as the widget's cached photo right above, for the much larger
+                    // store: Coil keeps every photo this account viewed — friends' photos, their
+                    // profile pictures — in an on-disk cache under the app's own directory, and
+                    // that survived sign-out untouched. Clearing the widget's single cached photo
+                    // as private data while leaving the full browsing history of decoded photos on
+                    // disk was inconsistent; both belong to the account that just signed out.
+                    // Only costs a re-download of whatever is looked at again after signing in.
+                    SingletonImageLoader.get(applicationContext).let { loader ->
+                        loader.memoryCache?.clear()
+                        coroutineScope.launch(Dispatchers.IO) { loader.diskCache?.clear() }
                     }
                     // All per-account ViewModels (home feed, friends list, login form, etc.)
                     // live in the Activity's ViewModelStore and are normally retrieved by
