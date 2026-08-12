@@ -9,6 +9,16 @@ import java.util.UUID
 
 interface FriendshipRepository : JpaRepository<Friendship, UUID> {
 
+    /** Every friendship in the system with a given status, regardless of who's on either side —
+     * used by the streak-break scheduled job, which has to check every accepted friendship once a
+     * day, not just one user's own. `join fetch` on both sides is required, not just an N+1
+     * nicety: the job reads `requester`/`addressee` display names after this query's own
+     * transaction has closed, and those associations are lazy — without eager-fetching them here,
+     * that read throws `LazyInitializationException` on a detached entity instead of just being
+     * a wasted extra query. */
+    @Query("select f from Friendship f join fetch f.requester join fetch f.addressee where f.status = :status")
+    fun findAllByStatus(@Param("status") status: FriendshipStatus): List<Friendship>
+
     @Query(
         """
         select f from Friendship f

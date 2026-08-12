@@ -6,7 +6,9 @@ import com.google.auth.oauth2.GoogleCredentials
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.AndroidConfig
+import com.google.firebase.messaging.BatchResponse
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.MessagingErrorCode
 import com.google.firebase.messaging.MulticastMessage
 import com.google.firebase.messaging.Notification
 import org.slf4j.LoggerFactory
@@ -23,6 +25,48 @@ class PushNotificationService(
     private val logger = LoggerFactory.getLogger(javaClass)
 
     private val firebaseApp: FirebaseApp? by lazy { initFirebaseApp() }
+
+    /**
+     * Records the outcome of a multicast send, deleting any token FCM reports as permanently dead.
+     *
+     * Without this, dead tokens accumulate forever and are re-sent to on every single push: a
+     * device that uninstalled, or one whose token was issued by a Firebase project the backend no
+     * longer authenticates against (exactly what happened moving from ember-app06 to emigo-85a07),
+     * keeps its row indefinitely. That is wasted work per send, and it makes the failure count in
+     * the logs permanently non-zero, which hides genuine delivery problems behind expected noise.
+     *
+     * Only [MessagingErrorCode.UNREGISTERED] and [MessagingErrorCode.INVALID_ARGUMENT] are treated
+     * as fatal to the token. Everything else — quota, timeouts, FCM being briefly unavailable — is
+     * transient and must *not* delete a perfectly good token just because one send failed.
+     *
+     * [tokens] must be in the same order they were added to the message: FCM returns responses
+     * positionally, so index alignment is what maps a failure back to its token.
+     */
+    private fun recordSendResult(response: BatchResponse, tokens: List<String>, context: String) {
+        if (response.failureCount == 0) return
+
+        val dead = response.responses.withIndex().mapNotNull { (index, result) ->
+            val code = result.exception?.messagingErrorCode
+            if (code == MessagingErrorCode.UNREGISTERED || code == MessagingErrorCode.INVALID_ARGUMENT) {
+                tokens.getOrNull(index)
+            } else {
+                null
+            }
+        }
+
+        logger.warn(
+            "FCM push ({}): {} of {} messages failed, {} token(s) permanently dead",
+            context, response.failureCount, tokens.size, dead.size,
+        )
+
+        if (dead.isNotEmpty()) {
+            // Best-effort: a cleanup failure must never propagate into the caller, which is always
+            // a fire-and-forget path hanging off a real user action (a photo upload, a friend
+            // request) that has already succeeded.
+            runCatching { deviceTokenRepository.deleteByFcmTokenIn(dead) }
+                .onFailure { logger.error("Failed to delete {} dead FCM token(s)", dead.size, it) }
+        }
+    }
 
     private fun initFirebaseApp(): FirebaseApp? {
         if (!fcmProperties.enabled || fcmProperties.credentialsPath.isBlank()) {
@@ -78,9 +122,40 @@ class PushNotificationService(
 
         try {
             val response = FirebaseMessaging.getInstance(app).sendEachForMulticast(message)
-            if (response.failureCount > 0) {
-                logger.warn("FCM push: {} of {} messages failed", response.failureCount, tokens.size)
-            }
+            recordSendResult(response, tokens, "NEW_PHOTO")
+        } catch (ex: Exception) {
+            logger.error("Failed to send FCM push", ex)
+        }
+    }
+
+    /** Data-only, same reasoning as [notifyNewPhoto]: the client has to build this notification
+     * itself (with a "Restore streak" action button attached), and that only happens if
+     * `onMessageReceived` actually runs, which FCM skips whenever the app is backgrounded and the
+     * message carries a `notification` payload directly. [restoreDeadlineEpochSeconds] travels
+     * with the payload so the client can set the notification's own auto-expiry to match the
+     * server-side restore window exactly, rather than guessing a duration independently. */
+    fun notifyStreakBroken(
+        friendshipId: UUID,
+        friendDisplayName: String,
+        restoreDeadlineEpochSeconds: Long,
+        recipientUserId: UUID,
+    ) {
+        val app = firebaseApp ?: return
+        val tokens = deviceTokenRepository.findAllByUserIdIn(listOf(recipientUserId)).map { it.fcmToken }
+        if (tokens.isEmpty()) return
+
+        val message = MulticastMessage.builder()
+            .putData("type", "STREAK_BROKEN")
+            .putData("friendshipId", friendshipId.toString())
+            .putData("friendName", friendDisplayName)
+            .putData("restoreDeadlineEpochSeconds", restoreDeadlineEpochSeconds.toString())
+            .setAndroidConfig(AndroidConfig.builder().setPriority(AndroidConfig.Priority.HIGH).build())
+            .addAllTokens(tokens)
+            .build()
+
+        try {
+            val response = FirebaseMessaging.getInstance(app).sendEachForMulticast(message)
+            recordSendResult(response, tokens, "STREAK_BROKEN")
         } catch (ex: Exception) {
             logger.error("Failed to send FCM push", ex)
         }
@@ -127,9 +202,7 @@ class PushNotificationService(
 
         try {
             val response = FirebaseMessaging.getInstance(app).sendEachForMulticast(message)
-            if (response.failureCount > 0) {
-                logger.warn("FCM push: {} of {} messages failed", response.failureCount, tokens.size)
-            }
+            recordSendResult(response, tokens, "FRIEND_EVENT")
         } catch (ex: Exception) {
             logger.error("Failed to send FCM push", ex)
         }

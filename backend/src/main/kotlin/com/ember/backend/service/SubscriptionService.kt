@@ -69,6 +69,15 @@ class SubscriptionService(
         )
     }
 
+    /** The one server-side source of truth for "is this user actually a paying Gold member" —
+     * gated actions (streak restore, and any future one) must check this themselves rather than
+     * trusting a client-supplied flag; the client's own `isGoldMember` is only ever a cached
+     * mirror of what this same query already computes. Re-derives [getStatus] rather than reading
+     * the subscription row directly, so the staleness/expiry handling there (a lapsed
+     * subscription past its own expiresAt reads as EXPIRED even before Google's been re-checked)
+     * only has to live in one place. */
+    fun isActiveGoldMember(userId: UUID): Boolean = getStatus(userId).status == SubscriptionStatus.ACTIVE
+
     private fun derivePlan(productId: String): SubscriptionPlan =
         if (productId.contains("year", ignoreCase = true)) SubscriptionPlan.YEARLY else SubscriptionPlan.MONTHLY
 }

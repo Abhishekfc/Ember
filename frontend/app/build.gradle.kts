@@ -1,3 +1,8 @@
+// Imported explicitly: inside a Gradle Kotlin DSL script, a bare `java.` prefix resolves to
+// Gradle's own `java` extension rather than the JDK package, so `java.util.Properties` does not
+// compile here even though it would in ordinary Kotlin.
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -7,12 +12,22 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// Signing credentials are read from a properties file kept OUTSIDE this repository
+// (~/ember-secrets/), never committed and never passed on a command line where they'd land in
+// shell history or CI logs. Absent — on a machine that only ever builds debug, or a fresh clone —
+// the release signingConfig is simply not registered, so a debug build still works and a release
+// build fails loudly rather than silently producing an unsigned or wrongly-signed artifact.
+val keystorePropsFile = file("${System.getProperty("user.home")}/ember-secrets/emigo-keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+
 android {
-    namespace = "com.ember.app"
+    namespace = "com.emigo.app"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.ember.app"
+        applicationId = "com.emigo.app"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -22,6 +37,20 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    signingConfigs {
+        // Registered only when the credentials file is actually present, so a clone without it can
+        // still build debug. A release build without it fails at signing rather than quietly
+        // emitting an unsigned artifact that Play would reject much later.
+        if (keystoreProps.isNotEmpty()) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     compileOptions {
@@ -57,8 +86,7 @@ android {
             val releaseBaseUrl = (project.findProperty("EMBER_RELEASE_BASE_URL") as? String)
                 ?: "https://REPLACE-WITH-REAL-PRODUCTION-BACKEND-URL.invalid/"
             buildConfigField("String", "BASE_URL", "\"$releaseBaseUrl\"")
-            // TODO: wire up a real signingConfig (keystore + credentials) before shipping —
-            // deliberately not fabricated here since that's a real secret, not something to stub.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 }
