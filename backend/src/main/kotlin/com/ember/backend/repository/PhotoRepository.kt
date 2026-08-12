@@ -26,6 +26,14 @@ interface PhotoRepository : JpaRepository<Photo, UUID> {
      * is not, since nothing in Postgres knows R2 exists. */
     fun findAllBySenderId(senderId: UUID): List<Photo>
 
+    /** Just the R2 keys [findAllBySenderId] was only ever read for, without materializing a full
+     * `Photo` entity (and its lazy `sender` proxy) per row. Account deletion is the only caller,
+     * and a long-standing account can have a lot of photos — loading all of them as managed
+     * entities to read one string off each is pure overhead, and put every one of them in the
+     * persistence context right before deleting their owner. */
+    @Query("select p.storageKey from Photo p where p.sender.id = :senderId")
+    fun findStorageKeysBySenderId(@Param("senderId") senderId: UUID): List<String>
+
     /** Unsaved photos no longer visible in *anyone's* feed — the same "superseded more than 24h
      * ago" grace-period rule PhotoRecipientRepository.findVisibleFeedPhotos uses to decide what a
      * single recipient still sees, generalized across every recipient a photo went to (a photo

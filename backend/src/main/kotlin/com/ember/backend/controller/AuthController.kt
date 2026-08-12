@@ -42,6 +42,18 @@ class AuthController(
     @PostMapping("/login")
     fun login(@Valid @RequestBody request: LoginRequest, httpRequest: HttpServletRequest): ResponseEntity<AuthResponse> {
         rateLimiterService.checkLimit("login:${httpRequest.remoteAddr}", maxAttempts = 20, window = Duration.ofMinutes(15))
+        // Per-IP alone only bounds how fast *one* source can guess. An attacker with a pool of
+        // addresses (or anyone behind a large shared NAT/VPN exit) gets a fresh 20-attempt budget
+        // per address, so a single targeted account faced no effective ceiling at all. Keying a
+        // second limit on the account being attempted bounds guesses against that account no
+        // matter where they come from.
+        //
+        // Normalized the same way AuthService.login normalizes it, so "User@x.com" and "user@x.com"
+        // share one bucket rather than being two free budgets against the same account. Deliberately
+        // more generous than a real person needs (a forgotten password is a handful of tries, not
+        // thirty) while still cutting an unattended guessing run down to a rate that gets nowhere.
+        val identifierKey = request.identifier.trim().lowercase().take(255)
+        rateLimiterService.checkLimit("login-id:$identifierKey", maxAttempts = 30, window = Duration.ofMinutes(15))
         return ResponseEntity.ok(authService.login(request))
     }
 

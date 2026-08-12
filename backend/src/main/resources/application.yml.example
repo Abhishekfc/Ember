@@ -1,5 +1,14 @@
 server:
   port: ${PORT:8080}
+  # Behind a hosting proxy (Railway, and any CDN in front of it) every request arrives from the
+  # proxy's own address, so `request.getRemoteAddr()` is the *proxy*, identical for every caller.
+  # Every rate limit in this app is keyed on that address (see AuthController), which without this
+  # collapses them all into one shared global bucket — 20 logins per 15 minutes for the entire user
+  # base. Turn this off only if the app is ever exposed directly, with no proxy in front.
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:framework}
+  tomcat:
+    connection-timeout: 20s
+    max-swallow-size: 26MB
 
 spring:
   application:
@@ -57,6 +66,8 @@ ember:
 
 logging:
   level:
-    com.ember.backend: ${EMBER_LOG_LEVEL:DEBUG}
+    # INFO, not DEBUG — these fallbacks are what a deployed instance runs with unless the host
+    # overrides them. Set EMBER_LOG_LEVEL=DEBUG locally when actually debugging.
+    com.ember.backend: ${EMBER_LOG_LEVEL:INFO}
     org.hibernate.SQL: ${SQL_LOG_LEVEL:WARN}
     org.hibernate.orm.jdbc.bind: ${SQL_LOG_LEVEL:WARN}

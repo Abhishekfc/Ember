@@ -13,6 +13,10 @@ interface UserRepository : JpaRepository<User, UUID> {
     fun findByUsername(username: String): User?
     fun existsByUsername(username: String): Boolean
 
+    // `:query` must already have its LIKE metacharacters escaped by the caller (see
+    // FriendService.escapeLikeWildcards) — `escape '!'` below is what makes those escapes take
+    // effect. Without it, a search for `%` matched every account in the system.
+    //
     // Excludes either direction of a block (see BlockedUserRepository.existsBetween's own doc
     // comment for why mutual, not one-directional) — a blocked user must not be findable by, or
     // able to find, the person who blocked them. This is the only place that check needs to
@@ -23,8 +27,8 @@ interface UserRepository : JpaRepository<User, UUID> {
         """
         select u from User u
         where u.id <> :selfId
-        and (lower(u.username) like lower(concat('%', :query, '%'))
-             or lower(u.displayName) like lower(concat('%', :query, '%')))
+        and (lower(u.username) like lower(concat('%', :query, '%')) escape '!'
+             or lower(u.displayName) like lower(concat('%', :query, '%')) escape '!')
         and not exists (
             select 1 from BlockedUser b
             where (b.blocker.id = :selfId and b.blocked.id = u.id)

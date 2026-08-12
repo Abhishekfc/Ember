@@ -42,33 +42,53 @@ class UserService(
         return user.toProfile()
     }
 
-    @Transactional
+    /** Not `@Transactional`: the only database work here is a single `save`, which carries its own
+     * transaction, and wrapping the method held a pooled connection across the R2 upload — an
+     * unbounded external call — for no atomicity benefit. Same reasoning as [deleteAccount]. */
     fun updateProfilePhoto(userId: UUID, file: MultipartFile): UserProfile {
         val contentType = file.contentType
         if (contentType == null || contentType !in ALLOWED_CONTENT_TYPES) {
             throw InvalidFriendRequestException("Unsupported content type: $contentType")
         }
+        // Read once and reused — see PhotoService.upload for why repeated `file.bytes` calls are
+        // worth avoiding.
+        val uploadedBytes = file.bytes
         // Sniffs the actual bytes rather than trusting the client-declared Content-Type, which a
         // raw API call can set to anything regardless of what's actually in the file.
-        val detectedType = ImageContentSniffer.detect(file.bytes)
+        val detectedType = ImageContentSniffer.detect(uploadedBytes)
         if (detectedType == null || detectedType !in ALLOWED_CONTENT_TYPES) {
             throw InvalidFriendRequestException("File content doesn't match a supported image type")
         }
+        // A profile photo went through no size normalization at all — the raw upload was stored
+        // and then re-fetched by every screen showing that person's avatar. This runs it through
+        // the same compression (and the same decompression-bomb guard) every photo upload gets.
+        val compressed = PhotoCompressionService.compress(uploadedBytes, detectedType)
 
         val user = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found") }
 
-        val extension = when (detectedType) {
+        val extension = when (compressed.contentType) {
             "image/png" -> "png"
             "image/webp" -> "webp"
             else -> "jpg"
         }
         val storageKey = "profile-photos/$userId/${UUID.randomUUID()}.$extension"
-        r2StorageService.upload(storageKey, detectedType, file.bytes)
+        r2StorageService.upload(storageKey, compressed.contentType, compressed.bytes)
 
+        val previousKey = user.profilePhotoStorageKey
         user.profilePhotoStorageKey = storageKey
         userRepository.save(user)
         logger.info("Profile photo updated: userId={}", userId)
+
+        // Only once the new key is committed. The old object is now unreachable — nothing points
+        // at it any more — so without this every profile-photo change leaves a file in R2 that no
+        // code path can ever reach or delete again, accumulating for the life of the account.
+        // Deliberately *after* the save rather than before it: deleting first would, if the save
+        // then failed, leave the row still pointing at a key whose object had already been
+        // removed — a permanently broken avatar. Best-effort by design (see R2StorageService.delete).
+        if (previousKey != null && previousKey != storageKey) {
+            r2StorageService.delete(previousKey)
+        }
 
         return user.toProfile()
     }
@@ -78,10 +98,9 @@ class UserService(
         val user = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found") }
 
-        request.displayName?.trim()?.let { trimmed ->
-            if (trimmed.isBlank()) throw InvalidFriendRequestException("Display name cannot be blank")
-            user.displayName = trimmed
-        }
+        // Same normalization registration applies — see sanitizeDisplayName. Without it here, a
+        // name rejected at sign-up could simply be set afterwards through this endpoint instead.
+        request.displayName?.let { user.displayName = sanitizeDisplayName(it) }
 
         request.username?.trim()?.lowercase()?.let { normalized ->
             if (normalized.isBlank()) throw InvalidFriendRequestException("Username cannot be blank")
@@ -156,7 +175,21 @@ class UserService(
      *    showing this account until each cache's TTL happens to expire on its own, the same
      *    staleness [removeFriend] already guards against for a single unfriend.
      */
-    @Transactional
+    /**
+     * Deliberately **not** `@Transactional`, and the storage cleanup deliberately runs *after* the
+     * row is gone rather than before it.
+     *
+     * Previously both happened inside one transaction: a pooled database connection was held open
+     * across one sequential R2 network round-trip per photo the account had ever sent. For an
+     * account with any real history that is minutes of a connection doing nothing, out of a pool
+     * of ten — a handful of concurrent deletions could exhaust it and stall every unrelated
+     * request in the app. It also meant a storage failure rolled back the deletion itself, which
+     * inverts the priority this method's own comment states: the account row disappearing is what
+     * matters, an orphaned R2 object with nothing pointing at it is the smaller problem.
+     *
+     * `userRepository.delete` carries its own transaction (Spring Data), so the row deletion and
+     * its cascades are still atomic.
+     */
     fun deleteAccount(userId: UUID) {
         val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
 
@@ -168,11 +201,14 @@ class UserService(
             cacheManager.getCache("activity")?.evict(friendId.toString())
         }
 
-        photoRepository.findAllBySenderId(userId).forEach { r2StorageService.delete(it.storageKey) }
-        user.profilePhotoStorageKey?.let { r2StorageService.delete(it) }
+        // Collected before the delete (the rows are about to cascade away), used after it.
+        val storageKeys = photoRepository.findStorageKeysBySenderId(userId) +
+            listOfNotNull(user.profilePhotoStorageKey)
 
         userRepository.delete(user)
-        logger.info("Account deleted: userId={} email={}", userId, user.email)
+        logger.info("Account deleted: userId={}", userId)
+
+        storageKeys.forEach { r2StorageService.delete(it) }
     }
 
     private fun generateUsernameSuggestions(base: String): List<String> {

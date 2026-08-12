@@ -8,7 +8,10 @@ data class FriendSummaryDto(
     val friendId: String,
     val displayName: String,
     val username: String,
-    val email: String,
+    // No `email` here any more. The server used to include every friend's address in this
+    // response and nothing on this side ever read it — the only email the app displays is the
+    // signed-in user's own, from UserProfileDto. Sending it meant one account's address was
+    // handed to every one of their friends on every Friends-tab load for no purpose at all.
     val profilePhotoUrl: String?,
     val pinnedByMe: Boolean,
     val pinnedByThem: Boolean,
@@ -37,7 +40,9 @@ data class PendingFriendRequestDto(
     val requesterId: String,
     val displayName: String,
     val username: String,
-    val email: String,
+    // Removed for the same reason as FriendSummaryDto.email above — a pending request exposed the
+    // requester's address to whoever they'd sent it to, including a complete stranger, and this
+    // screen only ever shows their name and username.
     val profilePhotoUrl: String? = null,
     val createdAt: String,
 )

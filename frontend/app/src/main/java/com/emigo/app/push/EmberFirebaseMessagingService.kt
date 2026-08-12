@@ -79,15 +79,28 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
             // see WidgetPhotoSync.syncFromPush's own doc comment.
             WidgetPhotoSync.syncFromPush(app, photoId = photoId, photoUrl = photoUrl, senderId = senderId, senderName = senderName, createdAtIso = createdAt)
             app.notifyNewPhotoPush()
+            // Inside the coroutine, and after the widget/feed sync above, because reading the
+            // preference suspends — and because those two must happen regardless of it. Turning
+            // notifications off means "stop showing me notifications", not "stop keeping my
+            // widget and feed up to date", which is what this same message also carries.
+            if (app.notificationPreferenceStore.enabledNow()) {
+                showNewPhotoNotification(senderName)
+            }
         }
-        showNewPhotoNotification(senderName)
     }
 
     private fun handleStreakBroken(message: RemoteMessage) {
         val friendshipId = message.data["friendshipId"] ?: return
         val friendName = message.data["friendName"] ?: return
         val restoreDeadlineEpochSeconds = message.data["restoreDeadlineEpochSeconds"]?.toLongOrNull() ?: return
-        showStreakBrokenNotification(friendshipId, friendName, restoreDeadlineEpochSeconds)
+        val app = application as EmberApplication
+        // Same gate as the new-photo notification above — the Settings toggle is a single
+        // "Notifications" switch covering every notification this app posts, not just one kind.
+        scope.launch {
+            if (app.notificationPreferenceStore.enabledNow()) {
+                showStreakBrokenNotification(friendshipId, friendName, restoreDeadlineEpochSeconds)
+            }
+        }
     }
 
     /** Stands in for the visible notification FCM used to show automatically before this push

@@ -1,5 +1,6 @@
 package com.ember.backend.dto
 
+import jakarta.validation.constraints.Size
 import java.time.Instant
 import java.util.UUID
 
@@ -12,6 +13,10 @@ data class PhotoUploadResponse(
 )
 
 data class AddPhotoRecipientsRequest(
+    // Bounded at the edge as well as in PhotoService's own MAX_RECIPIENTS_PER_PHOTO check — the
+    // service check happens *after* `distinct()` has already had to process the whole list, and
+    // this endpoint was the one recipient-taking request with no `@Valid` at all.
+    @field:Size(max = 200)
     val recipientIds: List<UUID>,
 )
 

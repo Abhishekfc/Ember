@@ -1,6 +1,8 @@
 package com.emigo.app.data
 
+import com.emigo.app.data.local.TokenStore
 import com.emigo.app.data.remote.EmberApi
+import com.emigo.app.data.remote.dto.AuthResponse
 import com.emigo.app.data.remote.dto.ChangePasswordRequestDto
 import com.emigo.app.data.remote.dto.ErrorResponse
 import com.emigo.app.data.remote.dto.UpdateProfileRequestDto
@@ -13,7 +15,7 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.Response
 import java.io.File
 
-class UserRepository(private val api: EmberApi) {
+class UserRepository(private val api: EmberApi, private val tokenStore: TokenStore) {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun getMyProfile(): Result<UserProfileDto> = safeCall { handle(api.getMyProfile()) }
@@ -43,9 +45,15 @@ class UserRepository(private val api: EmberApi) {
         handle(api.uploadProfilePhoto(filePart))
     }
 
+    /** Changing the password signs every *other* device out — the server revokes every token it
+     * issued before this moment — so it hands back a replacement token for this device and this
+     * one has to be stored, or the very next request from here 401s and signs this device out too.
+     * That storing is the whole reason this repository needs a [TokenStore] at all. */
     suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> = safeCall {
         val response = api.changePassword(ChangePasswordRequestDto(currentPassword = currentPassword, newPassword = newPassword))
-        if (response.isSuccessful) {
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            tokenStore.save(body.token)
             Result.success(Unit)
         } else {
             val message = response.errorBody()?.string()?.let {

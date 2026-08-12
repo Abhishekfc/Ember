@@ -48,7 +48,7 @@ import dev.chrisbanes.haze.HazeState
 
 /** Where "Help & Support" and "Send Feedback" open an email composer to — there's no dedicated
  * support inbox or feedback form yet, so both point at the same address for now. */
-private const val SUPPORT_EMAIL = "abhisheksir6280@gmail.com"
+private const val SUPPORT_EMAIL = "emigohq@gmail.com"
 
 private fun openSupportEmail(context: android.content.Context, subject: String) {
     val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")).apply {

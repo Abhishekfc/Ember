@@ -19,6 +19,7 @@ import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
+import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -35,6 +36,18 @@ private const val PHOTO_GRACE_PERIOD_HOURS = 24L
  * friendship check + one user lookup + one insert *per recipient*). No real send in this app
  * needs more than a modest fraction of a friend list at once. */
 private const val MAX_RECIPIENTS_PER_PHOTO = 50
+
+/**
+ * Widest date range a single Memories request may span.
+ *
+ * `start`/`end` arrive straight off the query string, and the query behind them has no count
+ * limit of its own — the reasoning being that "a single month is naturally small". That holds for
+ * the client, which only ever asks for one calendar month, but nothing enforced it: `start=1970`,
+ * `end=3000` returned every saved photo an account has ever had, in one unbounded response,
+ * repeatable as fast as the caller likes. A generous multiple of the one month the client
+ * actually requests, so no legitimate call is affected.
+ */
+private const val MAX_MEMORIES_RANGE_DAYS = 366L
 
 @Service
 class PhotoService(
@@ -72,7 +85,12 @@ class PhotoService(
         if (contentType == null || contentType !in ALLOWED_CONTENT_TYPES) {
             throw InvalidFriendRequestException("Unsupported content type: $contentType")
         }
-        val detectedType = ImageContentSniffer.detect(file.bytes)
+        // Read once and reused. `MultipartFile.getBytes()` re-materializes the entire upload every
+        // time it's called (from disk, for anything past Spring's in-memory threshold), and this
+        // method used to call it twice — sniff, then compress — so a burst of 25MB uploads moved
+        // twice as many bytes and held twice the peak heap as it needed to.
+        val uploadedBytes = file.bytes
+        val detectedType = ImageContentSniffer.detect(uploadedBytes)
         if (detectedType == null || detectedType !in ALLOWED_CONTENT_TYPES) {
             throw InvalidFriendRequestException("File content doesn't match a supported image type")
         }
@@ -80,7 +98,7 @@ class PhotoService(
         // fetch of this photo — from any screen, any client — is reasonably sized regardless of
         // what was actually uploaded. See PhotoCompressionService's own doc comment for why this
         // is conservative (an already-small JPEG passes through untouched).
-        val compressed = PhotoCompressionService.compress(file.bytes, detectedType)
+        val compressed = PhotoCompressionService.compress(uploadedBytes, detectedType)
 
         val sender = userRepository.findById(senderId)
             .orElseThrow { ResourceNotFoundException("User not found") }
@@ -367,8 +385,14 @@ class PhotoService(
      * total-count cap unlike the old top-200-then-paginate approach — a single month is naturally
      * small, so nothing here needs bounding, and a long-time user's history further back stays
      * fully reachable. */
-    fun getMemoriesInRange(userId: UUID, start: Instant, end: Instant): List<MemoryPhoto> =
-        photoRepository.findBySenderIdAndSavedAtIsNotNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(userId, start, end)
+    fun getMemoriesInRange(userId: UUID, start: Instant, end: Instant): List<MemoryPhoto> {
+        if (!end.isAfter(start)) {
+            throw InvalidFriendRequestException("end must be after start")
+        }
+        if (Duration.between(start, end).toDays() > MAX_MEMORIES_RANGE_DAYS) {
+            throw InvalidFriendRequestException("That date range is too wide")
+        }
+        return photoRepository.findBySenderIdAndSavedAtIsNotNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(userId, start, end)
             .map {
                 MemoryPhoto(
                     photoId = it.id,
@@ -376,4 +400,5 @@ class PhotoService(
                     createdAt = it.createdAt,
                 )
             }
+    }
 }

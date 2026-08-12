@@ -64,6 +64,29 @@ class AuthRepository(
         }
     }
 
+    /**
+     * Detaches this device from the signed-out account's push list.
+     *
+     * Without it, signing out left the device's FCM token still attached server-side, so the
+     * account that was just signed out of kept pushing "<friend> sent you a photo" — with the
+     * sender's real name in the notification shade — to a phone now sitting on the login screen,
+     * or in someone else's hands. Nothing on the device could suppress those: the token is what
+     * the server sends to, and clearing the local JWT has no effect on it.
+     *
+     * Must run *before* the token store is cleared, since this call is itself authenticated. Best
+     * effort — if it fails (offline sign-out being the obvious case) the account simply keeps the
+     * stale token until FCM reports it dead or the next account to sign in on this device
+     * reclaims it, which is exactly the old behaviour, so a failure never blocks signing out.
+     */
+    suspend fun unregisterDeviceToken(fcmToken: String): Result<Unit> = safeCall {
+        val response = api.unregisterDevice(DeviceTokenRequestDto(fcmToken))
+        if (response.isSuccessful) {
+            Result.success(Unit)
+        } else {
+            Result.failure(Exception("Couldn't unregister device (${response.code()})"))
+        }
+    }
+
     private suspend fun handle(response: Response<AuthResponse>): Result<AuthResponse> {
         val body = response.body()
         return if (response.isSuccessful && body != null) {

@@ -166,14 +166,20 @@ interface EmberApi {
     @DELETE("users/me")
     suspend fun deleteAccount(): Response<Unit>
 
+    /** Returns a replacement token, not 204 — the change revokes every token issued before it,
+     * including the one this call was made with. See UserRepository.changePassword. */
     @POST("users/me/password")
-    suspend fun changePassword(@Body request: ChangePasswordRequestDto): Response<Unit>
+    suspend fun changePassword(@Body request: ChangePasswordRequestDto): Response<AuthResponse>
 
     @GET("subscription/status")
     suspend fun getSubscriptionStatus(): Response<SubscriptionStatusDto>
 
     @POST("devices/register")
     suspend fun registerDevice(@Body request: DeviceTokenRequestDto): Response<Unit>
+
+    /** The sign-out counterpart to [registerDevice] — see AuthRepository.unregisterDeviceToken. */
+    @POST("devices/unregister")
+    suspend fun unregisterDevice(@Body request: DeviceTokenRequestDto): Response<Unit>
 
     @GET("users/blocked")
     suspend fun getBlockedUsers(): Response<List<BlockedUserDto>>

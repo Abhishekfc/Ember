@@ -18,6 +18,23 @@ import java.time.Instant
 import java.util.UUID
 
 private const val RECENT_PHOTOS_LIMIT = 20
+
+/**
+ * Ceiling on how many events one Activity feed can hold, applied after everything is assembled
+ * and sorted so it always keeps the newest.
+ *
+ * Only the photo rows were bounded before (by [RECENT_PHOTOS_LIMIT]); the friend-request,
+ * acceptance and streak events were emitted one-per-friendship with no cap at all, even though
+ * this list is built in full on every cache miss, held in memory, and cached as a single unit.
+ * An account with a few thousand friends therefore produced a few thousand events — and paid for
+ * building all of them — to display the thirty the client actually asks for. The code already
+ * described a limit ("the full, already-capped-at-ACTIVITY_FEED_LIMIT list") that had never
+ * existed.
+ */
+private const val ACTIVITY_FEED_LIMIT = 200
+
+/** Ceiling on a single requested page, since `limit` arrives straight off the query string. */
+private const val MAX_PAGE_SIZE = 100
 // Reaction feature disabled — see PhotoReactionService's own comment.
 // private const val RECENT_REACTIONS_LIMIT = 20
 
@@ -67,10 +84,16 @@ class ActivityService(
         }
 
         // Paginated in memory, same reasoning as FriendService.getFriends — the full,
-        // already-capped-at-ACTIVITY_FEED_LIMIT list is what's cached and evicted as a unit;
+        // already-capped-at-[ACTIVITY_FEED_LIMIT] list is what's cached and evicted as a unit;
         // this just slices the requested page out of it.
-        val page = events.drop(offset).take(limit)
-        return Page(items = page, hasMore = offset + limit < events.size)
+        //
+        // Both clamped for the same reason FriendService.getFriends clamps its own: these come
+        // straight off the query string, and `drop`/`take` both `require(n >= 0)`, so `?offset=-1`
+        // threw out of here as a 500.
+        val safeOffset = offset.coerceAtLeast(0)
+        val safeLimit = limit.coerceIn(1, MAX_PAGE_SIZE)
+        val page = events.drop(safeOffset).take(safeLimit)
+        return Page(items = page, hasMore = safeOffset + safeLimit < events.size)
     }
 
     private fun computeActivity(userId: UUID): List<ActivityEvent> {
@@ -242,6 +265,8 @@ class ActivityService(
             }
         }
 
-        return events.sortedByDescending { it.createdAt }
+        // Sorted before truncating, so the cap always keeps the newest events rather than
+        // whichever ones happened to be assembled first.
+        return events.sortedByDescending { it.createdAt }.take(ACTIVITY_FEED_LIMIT)
     }
 }

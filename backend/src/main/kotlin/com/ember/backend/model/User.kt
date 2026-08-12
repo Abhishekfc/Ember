@@ -31,6 +31,11 @@ class User(
     @Column(name = "activity_last_seen_at")
     var activityLastSeenAt: Instant? = null,
 
+    // Any access token issued before this instant is rejected — see the V11 migration for the
+    // full reasoning, and JwtAuthenticationFilter for where it's enforced. Null means no cutoff.
+    @Column(name = "tokens_valid_from")
+    var tokensValidFrom: Instant? = null,
+
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: Instant = Instant.now(),
 )

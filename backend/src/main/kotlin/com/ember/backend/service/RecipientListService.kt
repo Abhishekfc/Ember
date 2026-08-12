@@ -17,6 +17,11 @@ import java.util.UUID
 /** Backs the camera recipient picker's own saved-list shortcuts ("+" badge) — kept on the server
  * (not just on-device) specifically so a list created on one phone shows up on every other device
  * signed into the same account, the same way the friends list itself already does. */
+/** Most saved lists one account can hold. Nothing capped this before, so `POST /recipient-lists`
+ * could be called in a loop to grow the table (and the response every client fetches on opening
+ * the picker) without limit. Far more than the handful of groupings this feature is for. */
+private const val MAX_LISTS_PER_USER = 50
+
 @Service
 class RecipientListService(
     private val recipientListRepository: RecipientListRepository,
@@ -33,6 +38,9 @@ class RecipientListService(
      * or a stale/tampered request could otherwise let an arbitrary UUID sit in a saved list
      * forever with no way for it to ever resolve to a real, displayable person. */
     fun createList(ownerId: UUID, request: CreateRecipientListRequest): RecipientListSummary {
+        if (recipientListRepository.countByOwnerId(ownerId) >= MAX_LISTS_PER_USER) {
+            throw InvalidRecipientListException("You've reached the maximum number of saved lists")
+        }
         val requestedIds = request.friendIds.distinct()
         val actualFriendIds = friendshipRepository
             .findAllWithStatusBetween(ownerId, requestedIds, FriendshipStatus.ACCEPTED)
