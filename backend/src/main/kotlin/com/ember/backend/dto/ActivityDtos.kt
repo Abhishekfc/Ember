@@ -7,7 +7,7 @@ import java.util.UUID
 // own comment) and deliberately left out of this enum again — the Android client's own
 // ActivityEventType enum doesn't have that case, and since nothing can produce a PHOTO_REACTION
 // event with the feature disabled, there's no reason to reintroduce the mismatch risk.
-enum class ActivityEventType { PHOTO_RECEIVED, STREAK_EXPIRING, REQUEST_ACCEPTED, REQUEST_INCOMING }
+enum class ActivityEventType { PHOTO_RECEIVED, STREAK_EXPIRING, STREAK_BROKEN, REQUEST_ACCEPTED, REQUEST_INCOMING }
 
 data class ActivityEvent(
     val type: ActivityEventType,

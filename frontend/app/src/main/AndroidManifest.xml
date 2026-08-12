@@ -37,17 +37,56 @@
         android:theme="@style/Theme.Ember"
         android:supportsRtl="true">
 
+        <!-- No LAUNCHER intent-filter here any more — see the two activity-aliases right below,
+             which are the only launcher-visible identities now. This keeps MainActivity itself
+             untouched by icon switching entirely: every explicit Intent(context,
+             MainActivity::class.java) already used throughout the app (notifications, internal
+             navigation) resolves and starts this Activity exactly as before regardless of which
+             alias is currently enabled, since explicit intents target the component directly and
+             never go through intent-filter resolution at all. Nothing here needed to change for
+             Emigo Gold's "custom app icon" perk to work — only the two aliases below did. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
             android:importantForAutofill="noExcludeDescendants"
-            android:theme="@style/Theme.Ember">
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Ember" />
+
+        <!-- The app's default launcher identity, now expressed as an alias rather than on
+             MainActivity directly (see its own comment above) — enabled by default so a fresh
+             install behaves exactly as before this feature existed. android:icon matches the
+             app-level default declared above. -->
+        <activity-alias
+            android:name=".MainActivityDefaultIcon"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <!-- Emigo Gold's "custom app icon" perk (see AppIconScreen) — a second launcher identity
+             for the exact same MainActivity, disabled by default. AppIconSwitcher always enables
+             exactly one of the two aliases above and disables the other in the same operation;
+             MainActivity's own enabled-state is never touched by either (see its own comment).
+             android:icon is a placeholder (the real launcher-icon art for this hasn't been
+             supplied yet) — swapping it for the real one later needs no code change, just this
+             one line. -->
+        <activity-alias
+            android:name=".MainActivityGoldIcon"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <service
             android:name=".push.EmberFirebaseMessagingService"

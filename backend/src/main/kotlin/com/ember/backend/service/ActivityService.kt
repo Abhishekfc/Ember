@@ -7,6 +7,7 @@ import com.ember.backend.dto.Page
 import com.ember.backend.exception.ResourceNotFoundException
 import com.ember.backend.model.FriendshipStatus
 import com.ember.backend.repository.FriendshipRepository
+import com.ember.backend.repository.FriendshipStreakStateRepository
 import com.ember.backend.repository.PhotoRecipientRepository
 import com.ember.backend.repository.UserRepository
 import org.springframework.cache.CacheManager
@@ -14,8 +15,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneOffset
 import java.util.UUID
 
 private const val RECENT_PHOTOS_LIMIT = 20
@@ -30,6 +29,7 @@ class ActivityService(
     private val userRepository: UserRepository,
     private val r2StorageService: R2StorageService,
     private val cacheManager: CacheManager,
+    private val friendshipStreakStateRepository: FriendshipStreakStateRepository,
 ) {
 
     fun getLastSeen(userId: UUID): ActivityLastSeen {
@@ -155,35 +155,88 @@ class ActivityService(
                 .groupBy({ it.otherPartyId }, { StreakExchange(it.createdAt, it.sentByMe) })
         }
 
+        // One query covering every accepted friendship's break state, same batching reasoning as
+        // the exchange-timestamps query above. Keyed by friendshipId, which is this repository's
+        // own primary key (see FriendshipStreakStateRepository's own doc comment).
+        val streakStateByFriendshipId = friendshipStreakStateRepository
+            .findAllById(accepted.map { it.id })
+            .associateBy { it.friendshipId }
+
         accepted.forEach { friendship ->
             val friend = if (friendship.requester.id == userId) friendship.addressee else friendship.requester
+            val streakState = streakStateByFriendshipId[friendship.id]
+
             val exchanges = timestampsByFriend[friend.id] ?: emptyList()
             if (exchanges.isEmpty()) return@forEach
 
-            val streak = StreakCalculator.compute(exchanges)
+            // Both of these have to see restoredThroughDate for the same reason FriendService's
+            // own copy of this computation does — a restored day is a real part of the chain, and
+            // leaving it out here made this service disagree with the Friends list about both the
+            // streak's value and whether it's currently at risk, for exactly the friendships
+            // someone had just paid to restore.
+            val streak = StreakCalculator.compute(exchanges, streakState?.restoredThroughDate)
             // The most recent day BOTH sides sent a photo — not just either direction — since
             // that's the same rule the streak count itself now uses. One person sending today
             // without a reply yet must not push this forward, or the "expiring" warning below
             // would never fire on the very day it's actually needed.
-            val mostRecentDay = StreakCalculator.mostRecentMutualDay(exchanges)
-            val today = LocalDate.now(ZoneOffset.UTC)
+            val mostRecentDay = StreakCalculator.mostRecentMutualDay(exchanges, streakState?.restoredThroughDate)
 
-            // Streak is only "at risk" once today hasn't been exchanged yet but yesterday was —
-            // a streak with today already covered isn't expiring.
-            if (streak > 0 && mostRecentDay == today.minusDays(1)) {
-                val midnightUtc = today.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
-                val hoursLeft = Duration.between(Instant.now(), midnightUtc).toHours().coerceAtLeast(1)
+            // A friendship's streak having actually broken (as opposed to "at risk" below, which
+            // is about a still-live streak) is its own event, driven by StreakBreakDetectionService's
+            // own record of the break rather than a live recompute here — that job is the one
+            // place `brokenAt` gets set, and this just surfaces it the same way STREAK_EXPIRING
+            // surfaces a live computation. Timestamped at the real break moment, not "now", for the
+            // same reason STREAK_EXPIRING below anchors on the start of today rather than fetch time.
+            // Three guards, because brokenAt alone outlives what it describes: restoredThroughDate
+            // being set means this exact break was already paid for and undone; a currently
+            // positive streak means the friendship has moved on regardless of what the last
+            // recorded break says (the detection job clears brokenAt for that case too, but only
+            // on its next run — this stays correct in between); and the restore deadline having
+            // passed means there's nothing left to act on, so the row would just sit in the feed
+            // indefinitely. Bounding on the deadline rather than a separate duration keeps this
+            // row alive for exactly as long as the Friends tab offers its matching restore pill,
+            // so the two can never disagree about whether a break is still actionable.
+            val restoreStillOpen = streakState?.restoreDeadline?.isAfter(Instant.now()) == true
+            if (streak == 0 && streakState?.restoredThroughDate == null && restoreStillOpen) {
+                streakState?.brokenAt?.let { brokenAt ->
+                    events += ActivityEvent(
+                        type = ActivityEventType.STREAK_BROKEN,
+                        actorId = friend.id,
+                        actorDisplayName = friend.displayName,
+                        actorProfilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
+                        message = "Your streak with ${friend.displayName} broke",
+                        createdAt = brokenAt,
+                        warn = true,
+                    )
+                }
+            }
+
+            // The same threshold the Friends list's own hourglass applies, via the one shared
+            // helper that exists precisely so these two can't drift — this used to inline its own
+            // "yesterday was mutual, today isn't yet" check with no threshold at all, which is
+            // true for the whole day: Activity would announce a streak "expiring" more than 20
+            // hours before anything was actually at stake, while the Friends tab stayed silent
+            // until the last few hours.
+            // Deadline via the shared helper rather than recomputing "tomorrow's UTC midnight" by
+            // hand here — that inline copy was one more place the same rule could drift from
+            // StreakCalculator's own version of it.
+            val windowDeadline = StreakCalculator.currentWindowDeadline(streak, mostRecentDay)
+            if (windowDeadline != null && StreakCalculator.isAtRisk(streak, mostRecentDay)) {
+                val hoursLeft = Duration.between(Instant.now(), windowDeadline).toHours().coerceAtLeast(1)
                 events += ActivityEvent(
                     type = ActivityEventType.STREAK_EXPIRING,
                     actorId = friend.id,
                     actorDisplayName = friend.displayName,
                     actorProfilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
                     message = "Your streak with ${friend.displayName} expires in ${hoursLeft}h",
-                    // The warning became true the moment today started without an exchange yet —
-                    // not "now", which re-stamped on every single fetch/refresh and made the
-                    // relative time permanently stuck reading "just now" no matter how long the
-                    // streak had actually been at risk.
-                    createdAt = today.atStartOfDay(ZoneOffset.UTC).toInstant(),
+                    // Dated to when the warning itself became true — the moment the at-risk window
+                    // opened. Not "now", which re-stamped on every fetch and left the relative
+                    // time permanently reading "just now"; and no longer the start of the day
+                    // either, which was roughly right back when this fired all day long but is
+                    // badly wrong now that it only fires in the final hours: a warning that just
+                    // appeared would sort below everything else that happened earlier that day,
+                    // burying the most urgent row in the feed at exactly the point it matters.
+                    createdAt = StreakCalculator.atRiskWindowOpensAt(windowDeadline),
                     warn = true,
                 )
             }

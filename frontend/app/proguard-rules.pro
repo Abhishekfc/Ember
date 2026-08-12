@@ -3,17 +3,17 @@
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
 -keepclasseswithmembers class kotlinx.serialization.json.** { *; }
--keep,includedescriptorclasses class com.ember.app.**$$serializer { *; }
--keepclassmembers class com.ember.app.** {
+-keep,includedescriptorclasses class com.emigo.app.**$$serializer { *; }
+-keepclassmembers class com.emigo.app.** {
     *** Companion;
 }
--keepclasseswithmembers class com.ember.app.** {
+-keepclasseswithmembers class com.emigo.app.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
 
 # Retrofit/OkHttp keep rules for the generated API interface and its Kotlin coroutine bridging.
 -keepattributes Signature, Exceptions
--keep interface com.ember.app.data.remote.EmberApi { *; }
+-keep interface com.emigo.app.data.remote.EmberApi { *; }
 
 # androidx.security:security-crypto pulls in Google Tink, which references error_prone_annotations
 # classes that only ever matter at compile time (e.g. @CanIgnoreReturnValue) — safe to ignore at

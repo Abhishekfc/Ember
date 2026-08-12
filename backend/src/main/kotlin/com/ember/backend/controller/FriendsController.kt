@@ -77,6 +77,12 @@ class FriendsController(
         @PathVariable friendshipId: UUID,
     ): FriendSummary = friendService.setPinned(me.id, friendshipId, pinned = false)
 
+    @PostMapping("/{friendshipId}/streak/restore")
+    fun restoreStreak(
+        @AuthenticationPrincipal me: AuthenticatedUser,
+        @PathVariable friendshipId: UUID,
+    ): FriendSummary = friendService.restoreStreak(me.id, friendshipId)
+
     @DeleteMapping("/{friendshipId}")
     fun removeFriend(
         @AuthenticationPrincipal me: AuthenticatedUser,

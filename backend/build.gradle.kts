@@ -31,8 +31,13 @@ val androidPublisherVersion = "v3-rev20241125-2.0.0"
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 	implementation("org.springframework.boot:spring-boot-starter-cache")
+	// In-process cache, replacing Redis. Redis was only ever backing a 30-second read-through
+	// cache and a fixed-window rate limiter (see CacheConfig / RateLimiterService) — neither
+	// needs to outlive the process or be shared, so a whole separate managed service (and its
+	// bill, and its failure mode) bought nothing at this size. Revisit if this ever runs on more
+	// than one instance: both caches become per-instance, which is the one real trade here.
+	implementation("com.github.ben-manes.caffeine:caffeine")
 	implementation("org.springframework.boot:spring-boot-starter-security")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.flywaydb:flyway-core")

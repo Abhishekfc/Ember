@@ -30,6 +30,22 @@ data class FriendSummary(
     // sending to the friend, false if the friend sent it to this user.
     val lastActivityBySelf: Boolean?,
     val streak: Int,
+    // A deadline instant, not a precomputed boolean — the client evaluates both of these against
+    // its own current time on every render, not just once when this response was fetched. A
+    // fixed boolean was correct only in the instant it was computed; anyone looking at cached or
+    // offline data (LocalListCache, no network) would keep seeing whatever was true at the last
+    // successful fetch, drifting further wrong the longer they'd been offline — "at risk" could
+    // stay stuck false for hours after it became genuinely true, or a restore pill could keep
+    // showing well past its real deadline. Non-null exactly when there's a live streak whose
+    // mutual-exchange window for today hasn't closed yet (yesterday was mutual, today isn't) —
+    // this is when today's window actually closes (UTC midnight), not when the "close to the
+    // deadline" threshold starts; the client owns deciding how close counts as "at risk" (see
+    // FriendsScreen.STREAK_AT_RISK_THRESHOLD_SECONDS).
+    val streakDeadlineEpochSeconds: Long?,
+    // Non-null exactly while a real, unexpired restore window is open for this friendship (see
+    // FriendshipStreakState.restoreDeadline) — same "client evaluates against its own clock"
+    // reasoning as streakDeadlineEpochSeconds above.
+    val streakRestoreDeadlineEpochSeconds: Long?,
 )
 
 data class PendingFriendRequest(

@@ -5,13 +5,16 @@ import com.ember.backend.dto.FriendSearchResult
 import com.ember.backend.dto.FriendSummary
 import com.ember.backend.dto.Page
 import com.ember.backend.dto.PendingFriendRequest
+import com.ember.backend.exception.GoldSubscriptionRequiredException
 import com.ember.backend.exception.InvalidFriendRequestException
 import com.ember.backend.exception.ResourceNotFoundException
+import com.ember.backend.exception.StreakRestoreNotAvailableException
 import com.ember.backend.model.Friendship
 import com.ember.backend.model.FriendshipStatus
 import com.ember.backend.model.User
 import com.ember.backend.repository.BlockedUserRepository
 import com.ember.backend.repository.FriendshipRepository
+import com.ember.backend.repository.FriendshipStreakStateRepository
 import com.ember.backend.repository.PhotoRecipientRepository
 import com.ember.backend.repository.UserRepository
 import com.ember.backend.repository.existsBetween
@@ -21,6 +24,8 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 
 private const val SEARCH_RESULT_LIMIT = 20
@@ -34,6 +39,8 @@ class FriendService(
     private val r2StorageService: R2StorageService,
     private val cacheManager: CacheManager,
     private val pushNotificationService: PushNotificationService,
+    private val friendshipStreakStateRepository: FriendshipStreakStateRepository,
+    private val subscriptionService: SubscriptionService,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -79,11 +86,32 @@ class FriendService(
         val timestampsByFriend = photoRecipientRepository.findExchangeTimestampsBatch(userId, friendIds)
             .groupBy({ it.otherPartyId }, { StreakExchange(it.createdAt, it.sentByMe) })
 
+        // Same batching reasoning as the exchange-history query above — one lookup for every
+        // friendship's streak-restore state instead of one per friendship in the loop below.
+        val streakStateByFriendshipId = friendshipStreakStateRepository.findAllById(friendships.map { it.id })
+            .associateBy { it.friendshipId }
+
         return friendships.map { friendship ->
             val isRequester = friendship.requester.id == userId
             val friend = if (isRequester) friendship.addressee else friendship.requester
             val exchanges = timestampsByFriend[friend.id] ?: emptyList()
             val lastExchange = exchanges.maxByOrNull { it.timestamp }
+            val streakState = streakStateByFriendshipId[friendship.id]
+
+            val streak = StreakCalculator.compute(exchanges, streakState?.restoredThroughDate)
+            // Raw deadlines, not precomputed booleans — see FriendSummary's own doc comment on
+            // streakDeadlineEpochSeconds for why: a boolean is only ever correct at the instant
+            // it's computed, which breaks down the moment this response gets cached and viewed
+            // offline sometime later. The client re-evaluates both against its own current clock
+            // on every render instead.
+            val mostRecentMutualDay = StreakCalculator.mostRecentMutualDay(exchanges, streakState?.restoredThroughDate)
+            val streakDeadline = StreakCalculator.currentWindowDeadline(streak, mostRecentMutualDay)
+            // Only while a break is genuinely still open: a deadline exists, and this break
+            // hasn't already been restored (restoredThroughDate would be set). Whether that
+            // deadline has *passed* is left to the client's own clock, same as streakDeadline.
+            val streakRestoreDeadline = streakState
+                ?.takeIf { it.restoredThroughDate == null }
+                ?.restoreDeadline
 
             FriendSummary(
                 friendshipId = friendship.id,
@@ -101,7 +129,9 @@ class FriendService(
                 // sent" vs "Sent to you" instead of a direction-blind "Last sent", without
                 // needing its own copy of the exchange list just to work that out.
                 lastActivityBySelf = lastExchange?.sentByMe,
-                streak = StreakCalculator.compute(exchanges),
+                streak = streak,
+                streakDeadlineEpochSeconds = streakDeadline?.epochSecond,
+                streakRestoreDeadlineEpochSeconds = streakRestoreDeadline?.epochSecond,
             )
         }
     }
@@ -234,6 +264,8 @@ class FriendService(
             lastActivityAt = null,
             lastActivityBySelf = null,
             streak = 0,
+            streakDeadlineEpochSeconds = null,
+            streakRestoreDeadlineEpochSeconds = null,
         )
     }
 
@@ -268,6 +300,92 @@ class FriendService(
             lastActivityAt = null,
             lastActivityBySelf = null,
             streak = 0,
+            streakDeadlineEpochSeconds = null,
+            streakRestoreDeadlineEpochSeconds = null,
+        )
+    }
+
+    /** Restores exactly the one day [StreakBreakDetectionService] flagged as missed when this
+     * friendship's streak broke — never touches real exchange history (see
+     * [StreakCalculator.compute]'s own doc comment on why), just tells the calculator to treat
+     * that one day as covered from now on. Gold-gated server-side, not just hidden client-side —
+     * a paywalled action must never trust the caller's own claim about their subscription status. */
+    @Transactional
+    fun restoreStreak(userId: UUID, friendshipId: UUID): FriendSummary {
+        val friendship = friendshipRepository.findById(friendshipId)
+            .orElseThrow { ResourceNotFoundException("Friendship not found") }
+
+        val isRequester = friendship.requester.id == userId
+        val isAddressee = friendship.addressee.id == userId
+        if (!isRequester && !isAddressee) {
+            throw InvalidFriendRequestException("You are not part of this friendship")
+        }
+        if (friendship.status != FriendshipStatus.ACCEPTED) {
+            throw InvalidFriendRequestException("You can only restore a streak with an accepted friend")
+        }
+        if (!subscriptionService.isActiveGoldMember(userId)) {
+            throw GoldSubscriptionRequiredException()
+        }
+
+        val state = friendshipStreakStateRepository.findById(friendshipId)
+            .orElseThrow { StreakRestoreNotAvailableException() }
+        val deadline = state.restoreDeadline
+        if (deadline == null || deadline.isBefore(Instant.now()) || state.restoredThroughDate != null) {
+            throw StreakRestoreNotAvailableException()
+        }
+
+        // Bridged through *yesterday*, not through the single day that originally lapsed: the
+        // restore window is two days wide (StreakBreakDetectionService.STREAK_RESTORE_WINDOW_DAYS),
+        // so a restore bought on its second day has two missed days behind it, and reconnecting
+        // only the first would leave the chain still broken — a paid action returning a streak of
+        // zero. StreakCalculator.compute walks back from this date and fills exactly the gap it
+        // finds, so naming yesterday restores the chain right up to today whether that gap is one
+        // day or two. Never today: the point of a restore is to put the streak back in play, not
+        // to also cover the exchange still owed today to keep it alive.
+        state.restoredThroughDate = LocalDate.now(ZoneOffset.UTC).minusDays(1)
+        state.updatedAt = Instant.now()
+        friendshipStreakStateRepository.save(state)
+        evictFriendsCache(friendship.requester.id, friendship.addressee.id)
+        // The Activity feed carries a STREAK_BROKEN row driven by this exact state (see
+        // ActivityService) — without evicting it too, the row someone just paid to resolve keeps
+        // showing until the 30s TTL happens to lapse. Same both-sides eviction removeFriend does.
+        cacheManager.getCache("activity")?.let { cache ->
+            cache.evict(friendship.requester.id.toString())
+            cache.evict(friendship.addressee.id.toString())
+        }
+        logger.info("Streak restored: friendshipId={} by userId={}", friendshipId, userId)
+
+        val friend: User = if (isRequester) friendship.addressee else friendship.requester
+        val exchanges = photoRecipientRepository.findExchangeTimestampsBatch(userId, listOf(friend.id))
+            .map { StreakExchange(it.createdAt, it.sentByMe) }
+        val restoredStreak = StreakCalculator.compute(exchanges, state.restoredThroughDate)
+        // Same fields, computed the same way computeFriendSummaries computes them for every other
+        // friendship — this response replaces that friend's row in-place on the client
+        // (FriendsViewModel.applyUpdatedFriend), so hardcoding these to null (as this used to do)
+        // wiped out real history the client already had: the row briefly showed "No photos yet"
+        // and sorted as if it had never had any activity, since the Friends list orders by
+        // lastActivityAt descending.
+        val lastExchange = exchanges.maxByOrNull { it.timestamp }
+        val mostRecentMutualDay = StreakCalculator.mostRecentMutualDay(exchanges, state.restoredThroughDate)
+        val streakDeadline = StreakCalculator.currentWindowDeadline(restoredStreak, mostRecentMutualDay)
+
+        return FriendSummary(
+            friendshipId = friendship.id,
+            friendId = friend.id,
+            displayName = friend.displayName,
+            username = friend.username,
+            email = friend.email,
+            profilePhotoUrl = friend.profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
+            pinnedByMe = if (isRequester) friendship.requesterPinned else friendship.addresseePinned,
+            pinnedByThem = if (isRequester) friendship.addresseePinned else friendship.requesterPinned,
+            lastActivityAt = lastExchange?.timestamp,
+            lastActivityBySelf = lastExchange?.sentByMe,
+            streak = restoredStreak,
+            streakDeadlineEpochSeconds = streakDeadline?.epochSecond,
+            // Just restored — restoredThroughDate is non-null on state now, so this is correctly
+            // null (no live restore window open any more), matching the same
+            // ?.takeIf { restoredThroughDate == null } gate computeFriendSummaries applies.
+            streakRestoreDeadlineEpochSeconds = null,
         )
     }
 

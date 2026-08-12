@@ -9,12 +9,7 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/ember}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:changeme}
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-  cache:
-    type: redis
+  # Caching is in-process (Caffeine) — no Redis service to configure. See CacheConfig.
   jpa:
     hibernate:
       ddl-auto: validate
@@ -56,7 +51,7 @@ ember:
     enabled: ${FCM_ENABLED:true}
 
   play-billing:
-    package-name: ${PLAY_PACKAGE_NAME:com.ember.app}
+    package-name: ${PLAY_PACKAGE_NAME:com.emigo.app}
     service-account-credentials-path: ${PLAY_SERVICE_ACCOUNT_CREDENTIALS_PATH:}
     enabled: ${PLAY_BILLING_ENABLED:true}
 

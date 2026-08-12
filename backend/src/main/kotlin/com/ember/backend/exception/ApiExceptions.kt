@@ -37,3 +37,9 @@ class RateLimitExceededException :
 
 class UnsendWindowExpiredException :
     ApiException(HttpStatus.GONE, "This photo can no longer be unsent")
+
+class GoldSubscriptionRequiredException :
+    ApiException(HttpStatus.FORBIDDEN, "This is an Emigo Gold feature")
+
+class StreakRestoreNotAvailableException :
+    ApiException(HttpStatus.GONE, "This streak can't be restored anymore")
