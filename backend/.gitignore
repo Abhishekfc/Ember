@@ -35,6 +35,19 @@ bin/
 ### Secrets / local config ###
 *.env
 application-local.yml
-src/main/resources/application.yml
+# `src/main/resources/application.yml` is NO LONGER ignored, and must not be again.
+#
+# Ignoring it meant it was never in the repo, so the Docker image built from this repo shipped with
+# no configuration file at all: on Railway every `ember.*` property was missing and the app died at
+# startup binding JwtProperties. The committed file is placeholders only — every value reads an
+# environment variable, and no secret has a real default.
+#
+# Real local values live in `backend/config/application.yml` instead (ignored below). Spring Boot
+# loads `./config/application.yml` automatically, at higher precedence than the one on the
+# classpath, so local development picks it up with no profile or run-configuration change.
+# Leading slash matters: it anchors this to `backend/config/` only. Unanchored, `config/` matches a
+# directory of that name at ANY depth — including `src/main/kotlin/com/ember/backend/config/`, which
+# would silently stop any newly added SecurityConfig-style class from ever being committed.
+/config/
 *firebase*.json
 *service-account*.json
