@@ -82,6 +82,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -249,19 +250,46 @@ fun HomeScreen(
         val foldDensity = LocalDensity.current
         val statusBarTopPx = WindowInsets.statusBars.getTop(foldDensity)
         val dockHeightPx = with(foldDensity) { LocalNavDockHeight.current.toPx() }
-        with(foldDensity) {
-            homeFoldMetricsFor(
-                // Deliberately does NOT subtract sharePromptHeightPx (the toggle row's measured
-                // height) even though that row occupies this same space — the pill size this
-                // returns determines that measurement, so including it would make the decision
-                // depend on its own result. homeFoldMetricsFor accounts for the row on the
-                // requirement side at a fixed size instead; see its doc comment.
-                availableHeight = (
-                    screenSize.height - statusBarTopPx - headerHeightPx - dockHeightPx
-                    ).toDp(),
-                screenWidth = screenSize.width.toDp(),
-            )
+
+        // Both of these start at zero and only become real once their onSizeChanged /
+        // onGloballyPositioned callbacks land, a frame or more after first composition. Deciding
+        // the scale from a zero header means believing there is a whole header's worth of spare
+        // room, which picks the roomy scale on a device that can't afford it — and then visibly
+        // corrects itself the moment the measurement arrives. Since Home is torn down and rebuilt
+        // on every return from a nested screen, that correction played out as the view-mode pill
+        // appearing large and instantly shrinking, every single time.
+        //
+        // So: only decide when the inputs are actually known, and until then reuse the last
+        // confidently measured answer (kept on the ViewModel, which outlives this composable).
+        val measurementsReady = screenSize != Size.Zero && headerHeightPx > 0f
+        val measured = if (measurementsReady) {
+            with(foldDensity) {
+                homeFoldMetricsFor(
+                    // Deliberately does NOT subtract sharePromptHeightPx (the toggle row's measured
+                    // height) even though that row occupies this same space — the pill size this
+                    // returns determines that measurement, so including it would make the decision
+                    // depend on its own result. homeFoldMetricsFor accounts for the row on the
+                    // requirement side at a fixed size instead; see its doc comment.
+                    availableHeight = (
+                        screenSize.height - statusBarTopPx - headerHeightPx - dockHeightPx
+                        ).toDp(),
+                    screenWidth = screenSize.width.toDp(),
+                )
+            }
+        } else {
+            null
         }
+
+        if (measured != null && measured != viewModel.foldMetrics) {
+            // Written during composition would be a side effect at the wrong time; this runs after
+            // the frame that measured it, and only when the answer actually changed, so it can't
+            // loop.
+            SideEffect { viewModel.setFoldMetrics(measured) }
+        }
+
+        // Falls back to the roomy scale only on the very first frame of a cold start, before any
+        // measurement exists anywhere — every later rebuild has the remembered answer to use.
+        measured ?: viewModel.foldMetrics ?: HomeFoldRoomy
     }
 
     // Which of Home's two views is showing — read from the ViewModel (see HomeViewMode's own doc
@@ -559,39 +587,19 @@ fun HomeScreen(
                     modifier = Modifier.padding(top = 6.dp),
                 )
 
-                // Only blocks the whole screen when there's truly nothing cached to fall back
-                // on — this used to run whenever errorMessage was set at all, which meant a
-                // network blip hid an already-loaded, perfectly good cached feed behind a full
-                // "couldn't connect" page instead of just showing what's already there. Once
-                // there's a real feed on screen, a failed background refresh surfaces as the
-                // small inline indicator in the `else` branch below instead.
-                viewModel.errorMessage != null && viewModel.feedItems.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 180.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        // Doesn't repeat "Couldn't connect" — the header above already says
-                        // that (see hasConnectionError). This is specifically the one thing that
-                        // header line doesn't cover: there's nothing saved on this device yet
-                        // to fall back on either.
-                        Text(
-                            text = "Nothing saved on this device yet",
-                            fontFamily = typography.body,
-                            fontSize = 13.sp,
-                            color = colors.muted,
-                        )
-                        Text(
-                            text = "Tap to retry",
-                            fontFamily = typography.body,
-                            fontSize = 13.sp,
-                            color = colors.glow,
-                            modifier = Modifier
-                                .padding(top = 12.dp)
-                                .clickable { viewModel.loadFeed() },
-                        )
-                    }
-                }
-
+                // There is deliberately no branch here for "failed to load and nothing cached".
+                // One used to exist and replaced the entire screen with "Nothing saved on this
+                // device yet · Tap to retry", which is the wrong thing to do twice over: it states
+                // something that isn't necessarily true (the account may well have photos; we just
+                // couldn't reach the server to find out), and it swaps Home for a page of text over
+                // what is usually a momentary blip. Being offline is not a different screen.
+                //
+                // A connection problem is already reported, once, by the tappable
+                // "Couldn't connect · Tap to retry" line in the header above (see
+                // hasConnectionError), which floats over the layout without moving anything. So a
+                // failure simply falls through to the ordinary empty state below and Home keeps
+                // looking like Home — and the moment a request succeeds, the real feed replaces it
+                // with no change of scenery.
                 viewModel.feedItems.isEmpty() -> {
                     // No one's shared anything yet — the card itself (with its own "Find
                     // friends" action) is the whole story here. Memories deliberately doesn't

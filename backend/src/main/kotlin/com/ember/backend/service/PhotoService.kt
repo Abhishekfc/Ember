@@ -19,7 +19,6 @@ import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
-import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -38,16 +37,25 @@ private const val PHOTO_GRACE_PERIOD_HOURS = 24L
 private const val MAX_RECIPIENTS_PER_PHOTO = 50
 
 /**
- * Widest date range a single Memories request may span.
+ * Widest date range a single Memories request may span. Anything wider is narrowed to this rather
+ * than rejected.
  *
- * `start`/`end` arrive straight off the query string, and the query behind them has no count
- * limit of its own — the reasoning being that "a single month is naturally small". That holds for
- * the client, which only ever asks for one calendar month, but nothing enforced it: `start=1970`,
- * `end=3000` returned every saved photo an account has ever had, in one unbounded response,
- * repeatable as fast as the caller likes. A generous multiple of the one month the client
- * actually requests, so no legitimate call is affected.
+ * `start`/`end` arrive straight off the query string with no count limit behind them, so
+ * `start=1970&end=3000` would return every saved photo an account has ever had in one response,
+ * repeatable as fast as the caller likes. That still needs a bound.
+ *
+ * Two things were wrong with the first attempt at one. It assumed the client only ever asks for a
+ * single calendar month and capped the span at 366 days — but on first load, before the account's
+ * creation date is known, the client deliberately asks for the last
+ * `MEMORIES_HISTORY_LIMIT_YEARS` (5) years in one go, so the cap rejected the app's own opening
+ * request. And it rejected rather than clamped, turning that into a 400 the client surfaces as
+ * "Couldn't connect" — a hard failure of the whole screen over a parameter the server could
+ * simply have narrowed.
+ *
+ * Ten years both comfortably clears that five-year request and is longer than this app has
+ * existed, so clamping can never actually drop a photo anyone has; it only stops an absurd range.
  */
-private const val MAX_MEMORIES_RANGE_DAYS = 366L
+private const val MAX_MEMORIES_RANGE_DAYS = 3650L
 
 @Service
 class PhotoService(
@@ -386,13 +394,13 @@ class PhotoService(
      * small, so nothing here needs bounding, and a long-time user's history further back stays
      * fully reachable. */
     fun getMemoriesInRange(userId: UUID, start: Instant, end: Instant): List<MemoryPhoto> {
-        if (!end.isAfter(start)) {
-            throw InvalidFriendRequestException("end must be after start")
-        }
-        if (Duration.between(start, end).toDays() > MAX_MEMORIES_RANGE_DAYS) {
-            throw InvalidFriendRequestException("That date range is too wide")
-        }
-        return photoRepository.findBySenderIdAndSavedAtIsNotNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(userId, start, end)
+        if (!end.isAfter(start)) return emptyList()
+        // Narrowed, not refused — see MAX_MEMORIES_RANGE_DAYS. A request wider than the bound is
+        // answered with the most recent slice of it rather than an error, so an over-wide range can
+        // never break the screen.
+        val earliest = end.minus(MAX_MEMORIES_RANGE_DAYS, ChronoUnit.DAYS)
+        val boundedStart = if (start.isBefore(earliest)) earliest else start
+        return photoRepository.findBySenderIdAndSavedAtIsNotNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(userId, boundedStart, end)
             .map {
                 MemoryPhoto(
                     photoId = it.id,

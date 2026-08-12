@@ -30,9 +30,17 @@ import java.util.UUID
 
 private const val SEARCH_RESULT_LIMIT = 20
 
-/** Ceiling on a single page, since `limit` comes straight off the query string — see the clamp in
- * [FriendService.getFriends]. Comfortably above the client's own default of 30. */
-private const val MAX_PAGE_SIZE = 100
+/**
+ * Ceiling on a single page, since `limit` comes straight off the query string — see the clamp in
+ * [FriendService.getFriends].
+ *
+ * Must stay at or above the largest limit the client legitimately asks for, which is 500: several
+ * screens fetch the whole friend list in one call rather than paging it (the recipient picker needs
+ * every friend to be selectable). An earlier value of 100 silently truncated that to the first 100
+ * for anyone with more friends than that — no error, just a quietly incomplete list, which is a far
+ * worse failure than a large response.
+ */
+private const val MAX_PAGE_SIZE = 500
 
 /** Ceiling on a search string's length. Longer than any real name, and short enough that the
  * trigram index is never asked to match a pathologically long pattern. */

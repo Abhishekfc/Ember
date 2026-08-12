@@ -123,6 +123,29 @@ class HomeViewModel(
         homeViewMode = mode
     }
 
+    /**
+     * Home's chosen spacing scale, held here for the same reason [homeViewMode] is: the composable
+     * is torn down and rebuilt on every return visit, and this must not be re-decided from scratch
+     * each time.
+     *
+     * That re-decision was visible. The scale is derived from how much vertical room is actually
+     * left once the header and nav dock are measured (see homeFoldMetricsFor), and on the frame
+     * right after Home is rebuilt the header's measurement hasn't landed yet — it reads as zero, so
+     * the calculation believes there is a header's worth of extra room, picks the roomy scale, and
+     * corrects itself once the real measurement arrives. The visible result was the view-mode pill
+     * appearing large and immediately shrinking, every single time you came back to Home from a
+     * nested screen.
+     *
+     * Kept as the last *confidently measured* answer, so a rebuild reuses it instead of guessing
+     * from half-measured values. Null only until the very first real measurement of a session.
+     */
+    internal var foldMetrics by mutableStateOf<HomeFoldMetrics?>(null)
+        private set
+
+    internal fun setFoldMetrics(metrics: HomeFoldMetrics) {
+        foldMetrics = metrics
+    }
+
     // Set once the very first real fetch (not the synchronous cache hydration at construction)
     // completes — see loadFeed, which always promotes that one fetch regardless of isPullRefresh
     // since there's no established session yet to protect. Publicly readable (and a real Compose
