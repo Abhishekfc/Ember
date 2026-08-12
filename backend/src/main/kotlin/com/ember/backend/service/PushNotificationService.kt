@@ -13,7 +13,9 @@ import com.google.firebase.messaging.MulticastMessage
 import com.google.firebase.messaging.Notification
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.io.ByteArrayInputStream
 import java.io.FileInputStream
+import java.io.InputStream
 import java.time.Instant
 import java.util.UUID
 
@@ -68,15 +70,32 @@ class PushNotificationService(
         }
     }
 
+    /** Credentials come from [FcmProperties.credentialsJson] if it's set, otherwise from the file
+     * at [FcmProperties.credentialsPath] — see FcmProperties for why both exist. */
+    private fun credentialsStream(): InputStream? = when {
+        fcmProperties.credentialsJson.isNotBlank() ->
+            ByteArrayInputStream(fcmProperties.credentialsJson.toByteArray(Charsets.UTF_8))
+        fcmProperties.credentialsPath.isNotBlank() -> FileInputStream(fcmProperties.credentialsPath)
+        else -> null
+    }
+
     private fun initFirebaseApp(): FirebaseApp? {
-        if (!fcmProperties.enabled || fcmProperties.credentialsPath.isBlank()) {
-            logger.warn("FCM is disabled or ember.fcm.credentials-path is not set; push notifications are no-ops")
+        if (!fcmProperties.enabled) {
+            logger.warn("FCM is disabled; push notifications are no-ops")
             return null
         }
         return try {
-            FileInputStream(fcmProperties.credentialsPath).use { stream ->
+            val stream = credentialsStream()
+            if (stream == null) {
+                logger.error(
+                    "FCM is enabled but no credentials are configured — set FCM_CREDENTIALS_JSON " +
+                        "(or FCM_CREDENTIALS_PATH). Push notifications will not be delivered.",
+                )
+                return null
+            }
+            stream.use {
                 val options = FirebaseOptions.builder()
-                    .setCredentials(GoogleCredentials.fromStream(stream))
+                    .setCredentials(GoogleCredentials.fromStream(it))
                     .build()
                 if (FirebaseApp.getApps().isEmpty()) FirebaseApp.initializeApp(options) else FirebaseApp.getInstance()
             }
