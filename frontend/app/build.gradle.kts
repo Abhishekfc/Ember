@@ -78,13 +78,20 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // No real production backend exists yet for this project — this reads from a Gradle
-            // property (`-PEMBER_RELEASE_BASE_URL=https://...` or `gradle.properties`) so the
-            // real URL is never hardcoded in source, and falls back to an obviously-fake
-            // placeholder rather than silently reusing localhost or failing the build outright.
-            // Must be set to the real deployed HTTPS backend URL before shipping a release build.
+            // The real production backend: the Railway deployment, reached through Cloudflare
+            // rather than at its Railway address directly. That indirection is not cosmetic —
+            // Railway publishes a single US IP, and at least one Indian mobile carrier could not
+            // route to it at all (a phone that worked perfectly on WiFi never reached the server
+            // on mobile data, with the requests never arriving in the logs). Proxied through
+            // Cloudflare the same requests terminate in Delhi and succeed, and photo uploads that
+            // took ~29s across the Pacific take a fraction of that.
+            //
+            // Still overridable with `-PEMBER_RELEASE_BASE_URL=https://...` for a staging build.
+            // Whatever ships here is permanent for every install that never updates, so this must
+            // stay a domain under our own control (never a *.up.railway.app address) so the host
+            // can change later without stranding anyone.
             val releaseBaseUrl = (project.findProperty("EMBER_RELEASE_BASE_URL") as? String)
-                ?: "https://REPLACE-WITH-REAL-PRODUCTION-BACKEND-URL.invalid/"
+                ?: "https://api.joinhustle.in/"
             buildConfigField("String", "BASE_URL", "\"$releaseBaseUrl\"")
             signingConfig = signingConfigs.findByName("release")
         }

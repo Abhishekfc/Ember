@@ -2,6 +2,7 @@
 docs/
 .claude/
 PROJECT_CONTEXT.md
+DEPLOYMENT.md
 FEATURE_IDEAS.md
 AUTH_SCREEN_CONTEXT.md
 test-accounts/
