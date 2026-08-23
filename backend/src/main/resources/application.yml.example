@@ -23,6 +23,13 @@ spring:
       # single instance serving this app is nowhere near needing more. Raise only alongside a
       # check of the database's own connection limit.
       maximum-pool-size: ${DB_POOL_SIZE:10}
+      # Let the pool empty when idle so a scale-to-zero database (Neon) can actually suspend.
+      # HikariCP otherwise holds `maximum-pool-size` connections open forever, which reads as
+      # continuous activity and bills compute 24/7 for an idle app. Costs a half-second wake-up on
+      # the first request after a quiet spell.
+      minimum-idle: ${DB_POOL_MIN_IDLE:0}
+      idle-timeout: 60000
+      max-lifetime: 900000
   # Caching is in-process (Caffeine) — no Redis service to configure. See CacheConfig.
   jpa:
     hibernate:

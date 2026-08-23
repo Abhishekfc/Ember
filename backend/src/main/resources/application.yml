@@ -23,6 +23,25 @@ spring:
       # single instance serving this app is nowhere near needing more. Raise only alongside a
       # check of the database's own connection limit.
       maximum-pool-size: ${DB_POOL_SIZE:10}
+      # The pool is allowed to empty completely when the app is idle, and idle connections are
+      # closed after a minute rather than HikariCP's usual ten.
+      #
+      # This is about cost, not performance. The database is Neon, which bills for the time it is
+      # *awake* and suspends itself once nothing is connected. HikariCP's default `minimumIdle`
+      # equals `maximumPoolSize`, so the app opened ten connections at startup and held every one
+      # of them open forever — which Neon reads as continuous activity. The result was a database
+      # billed 24 hours a day, every day, for an app with almost no traffic: roughly 180 CU-hours a
+      # month against a 100-hour allowance, none of it doing any work.
+      #
+      # Letting the pool drain means Neon sleeps whenever Emigo is idle and wakes on the next
+      # request. The only visible cost is that the first request after a quiet spell waits an extra
+      # half-second or so for that wake-up, which lands on app launch and is not perceptible.
+      #
+      # `max-lifetime` is well under Neon's own connection limits so a pooled connection is never
+      # handed out after the server has quietly dropped it.
+      minimum-idle: ${DB_POOL_MIN_IDLE:0}
+      idle-timeout: 60000
+      max-lifetime: 900000
   # Caching is in-process (Caffeine) — no Redis service to configure. See CacheConfig.
   jpa:
     hibernate:
