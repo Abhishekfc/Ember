@@ -17,6 +17,7 @@ import com.emigo.app.NOTIFICATION_ACTION_RESTORE_STREAK
 import com.emigo.app.R
 import com.emigo.app.STREAK_NOTIFICATION_CHANNEL_ID
 import com.emigo.app.widget.WidgetPhotoSync
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
@@ -48,7 +49,7 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
             // If nobody's signed in yet, there's nothing to register against — MainActivity
             // fetches and registers the current token itself the moment a session becomes
             // authenticated (see its own LaunchedEffect(authenticated)), covering that case.
-            if (app.networkModule.tokenStore.currentToken() != null) {
+            if (FirebaseAuth.getInstance().currentUser != null) {
                 app.authRepository.registerDeviceToken(token)
             }
         }

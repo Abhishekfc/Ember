@@ -1,10 +1,7 @@
 package com.ember.backend.service
 
-import com.ember.backend.config.FcmProperties
 import com.ember.backend.repository.DeviceTokenRepository
-import com.google.auth.oauth2.GoogleCredentials
 import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.AndroidConfig
 import com.google.firebase.messaging.BatchResponse
 import com.google.firebase.messaging.FirebaseMessaging
@@ -13,20 +10,18 @@ import com.google.firebase.messaging.MulticastMessage
 import com.google.firebase.messaging.Notification
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import java.io.ByteArrayInputStream
-import java.io.FileInputStream
-import java.io.InputStream
 import java.time.Instant
 import java.util.UUID
 
 @Service
 class PushNotificationService(
-    private val fcmProperties: FcmProperties,
+    // Shared across every Firebase-touching service now — see FirebaseAppConfig's own doc
+    // comment for why this used to be built privately here and no longer is. Null exactly when
+    // Firebase credentials aren't configured, same meaning as before.
+    private val firebaseApp: FirebaseApp?,
     private val deviceTokenRepository: DeviceTokenRepository,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
-
-    private val firebaseApp: FirebaseApp? by lazy { initFirebaseApp() }
 
     /**
      * Records the outcome of a multicast send, deleting any token FCM reports as permanently dead.
@@ -67,41 +62,6 @@ class PushNotificationService(
             // request) that has already succeeded.
             runCatching { deviceTokenRepository.deleteByFcmTokenIn(dead) }
                 .onFailure { logger.error("Failed to delete {} dead FCM token(s)", dead.size, it) }
-        }
-    }
-
-    /** Credentials come from [FcmProperties.credentialsJson] if it's set, otherwise from the file
-     * at [FcmProperties.credentialsPath] — see FcmProperties for why both exist. */
-    private fun credentialsStream(): InputStream? = when {
-        fcmProperties.credentialsJson.isNotBlank() ->
-            ByteArrayInputStream(fcmProperties.credentialsJson.toByteArray(Charsets.UTF_8))
-        fcmProperties.credentialsPath.isNotBlank() -> FileInputStream(fcmProperties.credentialsPath)
-        else -> null
-    }
-
-    private fun initFirebaseApp(): FirebaseApp? {
-        if (!fcmProperties.enabled) {
-            logger.warn("FCM is disabled; push notifications are no-ops")
-            return null
-        }
-        return try {
-            val stream = credentialsStream()
-            if (stream == null) {
-                logger.error(
-                    "FCM is enabled but no credentials are configured — set FCM_CREDENTIALS_JSON " +
-                        "(or FCM_CREDENTIALS_PATH). Push notifications will not be delivered.",
-                )
-                return null
-            }
-            stream.use {
-                val options = FirebaseOptions.builder()
-                    .setCredentials(GoogleCredentials.fromStream(it))
-                    .build()
-                if (FirebaseApp.getApps().isEmpty()) FirebaseApp.initializeApp(options) else FirebaseApp.getInstance()
-            }
-        } catch (ex: Exception) {
-            logger.error("Failed to initialize Firebase app; push notifications disabled", ex)
-            null
         }
     }
 

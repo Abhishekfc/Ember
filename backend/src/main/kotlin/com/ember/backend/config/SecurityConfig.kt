@@ -1,7 +1,7 @@
 package com.ember.backend.config
 
 import com.ember.backend.logging.RequestLoggingFilter
-import com.ember.backend.security.JwtAuthenticationFilter
+import com.ember.backend.security.FirebaseAuthenticationFilter
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -9,26 +9,17 @@ import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer
 import org.springframework.security.config.http.SessionCreationPolicy
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
-import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.HttpStatusEntryPoint
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 
 @Configuration
 class SecurityConfig(
-    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val firebaseAuthenticationFilter: FirebaseAuthenticationFilter,
     private val requestLoggingFilter: RequestLoggingFilter,
 ) {
 
-    // Explicit strength, not the framework default (10) — 12 keeps pace with current OWASP
-    // guidance for how expensive an offline brute-force should be if the users table is ever
-    // exfiltrated. Written down here so a future refactor can't silently drop back to the
-    // BCryptPasswordEncoder() default by omitting the argument.
-    @Bean
-    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder(12)
-
-    // RequestLoggingFilter is added explicitly to the security chain below (after JWT auth
+    // RequestLoggingFilter is added explicitly to the security chain below (after Firebase auth
     // resolves the caller) instead of letting Spring Boot auto-register it a second time.
     @Bean
     fun requestLoggingFilterRegistration(): FilterRegistrationBean<RequestLoggingFilter> =
@@ -47,8 +38,8 @@ class SecurityConfig(
             .exceptionHandling { it.authenticationEntryPoint(HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)) }
             .httpBasic { it.disable() }
             .formLogin(AbstractHttpConfigurer<*, HttpSecurity>::disable)
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
-            .addFilterAfter(requestLoggingFilter, JwtAuthenticationFilter::class.java)
+            .addFilterBefore(firebaseAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterAfter(requestLoggingFilter, FirebaseAuthenticationFilter::class.java)
 
         return http.build()
     }

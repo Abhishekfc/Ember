@@ -49,8 +49,10 @@ enum class ThemeKey(val displayName: String, val locked: Boolean) {
     BOTANICA("Botanica", locked = true),
     // Free, and the app's default (see [ThemeKey.DEFAULT]) — moved out of Gold deliberately, not
     // an oversight: the theme every new account actually opens the app in can't be one they're
-    // locked out of.
-    CITRUS("Citrus", locked = false),
+    // locked out of. Displayed as "Ember" (renamed from "Citrus") since this is the theme the app
+    // actually opens in for everyone — the enum constant keeps its original name regardless, per
+    // this enum's own top-of-file doc comment, so nobody's persisted selection resets.
+    CITRUS("Ember", locked = false),
     // Added directly against a user-supplied accent color (#A9D7FF, a pale icy blue) rather than
     // from the ember-complete-app.jsx reference this enum's own doc comment describes — not in
     // that file, a deliberate one-off addition.

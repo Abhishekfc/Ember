@@ -1,12 +1,9 @@
 package com.ember.backend.controller
 
-import com.ember.backend.dto.AuthResponse
-import com.ember.backend.dto.ChangePasswordRequest
 import com.ember.backend.dto.UpdateProfileRequest
 import com.ember.backend.dto.UsernameAvailability
 import com.ember.backend.dto.UserProfile
 import com.ember.backend.security.AuthenticatedUser
-import com.ember.backend.service.AuthService
 import com.ember.backend.service.UserService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -27,7 +24,6 @@ import org.springframework.web.multipart.MultipartFile
 @RequestMapping("/users/me")
 class UserController(
     private val userService: UserService,
-    private val authService: AuthService,
 ) {
 
     @GetMapping
@@ -52,14 +48,9 @@ class UserController(
         @RequestPart("file") file: MultipartFile,
     ): UserProfile = userService.updateProfilePhoto(me.id, file)
 
-    /** Returns a fresh token rather than 204: changing a password now revokes every token issued
-     * before it (see AuthService.changePassword), which would otherwise include the caller's own.
-     * The client must store what comes back, or its next request will 401. */
-    @PostMapping("/password")
-    fun changePassword(
-        @AuthenticationPrincipal me: AuthenticatedUser,
-        @Valid @RequestBody request: ChangePasswordRequest,
-    ): AuthResponse = authService.changePassword(me.id, request)
+    // Password change no longer has a backend endpoint at all — Firebase owns the credential now,
+    // so changing it is a client-side call straight to the Firebase SDK
+    // (updatePassword/reauthenticate), with nothing for this server to verify or store.
 
     // No re-auth (password re-entry) required here — the client already gates this behind its
     // own "type DELETE to confirm" dialog, and the request itself is already authenticated by

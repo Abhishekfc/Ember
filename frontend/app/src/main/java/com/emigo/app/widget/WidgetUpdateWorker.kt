@@ -11,6 +11,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.emigo.app.EmberApplication
 import com.emigo.app.data.UnauthorizedException
+import com.google.firebase.auth.FirebaseAuth
 import java.util.concurrent.TimeUnit
 
 private const val TAG = "WidgetUpdateWorker"
@@ -36,7 +37,7 @@ class WidgetUpdateWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as EmberApplication
         val tokenStore = app.networkModule.tokenStore
-        if (tokenStore.currentToken() == null) return Result.success()
+        if (FirebaseAuth.getInstance().currentUser == null) return Result.success()
 
         // Goes through the shared PhotoRepository now (same one HomeViewModel uses), rather than
         // calling networkModule.api directly — this benefits from its short in-memory cache/
@@ -47,8 +48,14 @@ class WidgetUpdateWorker(
         // why that distinction matters here specifically.
         val items = app.photoRepository.getFeed().getOrElse { error ->
             if (error is UnauthorizedException) {
-                Log.w(TAG, "Session expired, clearing token")
+                Log.w(TAG, "Session expired, signing out")
                 tokenStore.clear()
+                // Ends the actual Firebase session — clearing the display-name cache alone no
+                // longer does that (see TokenStore's own doc comment on what it stopped holding).
+                // Without this, Firebase's own SDK has no way to know the account behind it is no
+                // longer valid on this backend, and every future run would keep retrying with the
+                // same dead identity forever.
+                FirebaseAuth.getInstance().signOut()
                 return Result.success()
             }
             Log.w(TAG, "Feed fetch failed, will retry", error)

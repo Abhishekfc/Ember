@@ -58,6 +58,12 @@ private fun openSupportEmail(context: android.content.Context, subject: String) 
     runCatching { context.startActivity(intent) }
 }
 
+private const val PRIVACY_POLICY_URL = "https://emigo.live/privacy-policy"
+
+private fun openPrivacyPolicy(context: android.content.Context) {
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL))) }
+}
+
 /** Flat, straight on the screen's own background — no panel behind any row. Same language as
  * the Friends list: clarity comes from generous spacing and one consistent, quiet color accent
  * (see [SettingsIconBadge]) per row, not from a card boundary. */
@@ -67,7 +73,6 @@ fun SettingsScreen(
     username: String?,
     profilePhotoUrl: String?,
     currentTheme: ThemeKey,
-    currentAppIcon: AppIconKey,
     isGoldMember: Boolean,
     widgetBadge: String,
     notificationsEnabled: Boolean,
@@ -75,7 +80,6 @@ fun SettingsScreen(
     onCameraClick: () -> Unit,
     onProfileClick: () -> Unit,
     onThemeClick: () -> Unit,
-    onAppIconClick: () -> Unit,
     onGoldClick: () -> Unit,
     onWidgetClick: () -> Unit,
     onBlockedUsersClick: () -> Unit,
@@ -210,9 +214,6 @@ fun SettingsScreen(
         item(key = "appearance") {
             FlatSettingsRow("Appearance", currentTheme.displayName, onThemeClick)
         }
-        item(key = "app-icon") {
-            FlatSettingsRow("App icon", currentAppIcon.displayName, onAppIconClick)
-        }
         item(key = "widget") {
             // widgetBadge reads "Anyone" (the default every account starts with) or a friend
             // count once a Gold subscriber has chosen who to feature — see WidgetSettingsScreen,
@@ -225,6 +226,9 @@ fun SettingsScreen(
         }
         item(key = "blocked") {
             FlatSettingsRow("Blocked accounts", null, onBlockedUsersClick)
+        }
+        item(key = "privacy-policy") {
+            FlatSettingsRow("Privacy policy", null, { openPrivacyPolicy(context) })
         }
 
         item(key = "support-header") {

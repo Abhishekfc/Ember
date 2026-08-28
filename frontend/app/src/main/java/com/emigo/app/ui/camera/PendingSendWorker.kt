@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.emigo.app.EmberApplication
 import com.emigo.app.data.UnauthorizedException
+import com.google.firebase.auth.FirebaseAuth
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -86,6 +87,7 @@ class PendingSendWorker(
                     error is UnauthorizedException -> {
                         Log.w(TAG, "Session expired, giving up on this queued send")
                         app.networkModule.tokenStore.clear()
+                        FirebaseAuth.getInstance().signOut()
                         file.delete()
                         Result.failure()
                     }
@@ -211,6 +213,7 @@ class AttachPhotoWorker(
                     error is UnauthorizedException -> {
                         Log.w(TAG, "Session expired, giving up on this attach")
                         app.networkModule.tokenStore.clear()
+                        FirebaseAuth.getInstance().signOut()
                         Result.failure()
                     }
                     runAttemptCount >= MAX_ATTEMPTS -> {

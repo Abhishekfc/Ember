@@ -13,6 +13,10 @@ interface UserRepository : JpaRepository<User, UUID> {
     fun findByUsername(username: String): User?
     fun existsByUsername(username: String): Boolean
 
+    // The lookup FirebaseAuthenticationFilter runs on every single authenticated request — how a
+    // verified Firebase identity is matched back to its Emigo profile.
+    fun findByFirebaseUid(firebaseUid: String): User?
+
     // `:query` must already have its LIKE metacharacters escaped by the caller (see
     // FriendService.escapeLikeWildcards) — `escape '!'` below is what makes those escapes take
     // effect. Without it, a search for `%` matched every account in the system.
