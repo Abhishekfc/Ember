@@ -3,9 +3,8 @@ package com.emigo.app.data.remote
 import com.emigo.app.data.remote.dto.ActivityEventDto
 import com.emigo.app.data.remote.dto.ActivityLastSeenDto
 import com.emigo.app.data.remote.dto.AddPhotoRecipientsBody
-import com.emigo.app.data.remote.dto.AuthResponse
 import com.emigo.app.data.remote.dto.BlockedUserDto
-import com.emigo.app.data.remote.dto.ChangePasswordRequestDto
+import com.emigo.app.data.remote.dto.CompleteProfileRequestDto
 import com.emigo.app.data.remote.dto.CreateRecipientListBody
 import com.emigo.app.data.remote.dto.DeviceTokenRequestDto
 import com.emigo.app.data.remote.dto.FeedItem
@@ -13,13 +12,11 @@ import com.emigo.app.data.remote.dto.FriendAcceptBody
 import com.emigo.app.data.remote.dto.FriendRequestBody
 import com.emigo.app.data.remote.dto.FriendSearchResultDto
 import com.emigo.app.data.remote.dto.FriendSummaryDto
-import com.emigo.app.data.remote.dto.LoginRequest
 import com.emigo.app.data.remote.dto.MemoryPhotoDto
 import com.emigo.app.data.remote.dto.PageDto
 import com.emigo.app.data.remote.dto.PendingFriendRequestDto
 import com.emigo.app.data.remote.dto.PhotoUploadResponseDto
 import com.emigo.app.data.remote.dto.RecipientListDto
-import com.emigo.app.data.remote.dto.RegisterRequest
 import com.emigo.app.data.remote.dto.ReportUserRequestDto
 import com.emigo.app.data.remote.dto.SentPhotoDto
 import com.emigo.app.data.remote.dto.SubscriptionStatusDto
@@ -40,11 +37,13 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface EmberApi {
-    @POST("auth/register")
-    suspend fun register(@Body request: RegisterRequest): Response<AuthResponse>
-
-    @POST("auth/login")
-    suspend fun login(@Body request: LoginRequest): Response<AuthResponse>
+    /** The one step this app's own backend still owns after sign-up — see CompleteProfileRequestDto.
+     * No explicit auth header parameter: NetworkModule's own interceptor already attaches
+     * whatever Firebase considers the current signed-in identity to every request, this one
+     * included, since by the time this is called the Firebase SDK has already signed that
+     * identity in locally (via createUserWithEmailAndPassword / signInWithCredential). */
+    @POST("auth/complete-profile")
+    suspend fun completeProfile(@Body request: CompleteProfileRequestDto): Response<UserProfileDto>
 
     /** Public counterpart to [checkUsernameAvailability] — used during registration, before an
      * account (and therefore a token) exists at all, so it can't go through the authenticated
@@ -165,11 +164,6 @@ interface EmberApi {
 
     @DELETE("users/me")
     suspend fun deleteAccount(): Response<Unit>
-
-    /** Returns a replacement token, not 204 — the change revokes every token issued before it,
-     * including the one this call was made with. See UserRepository.changePassword. */
-    @POST("users/me/password")
-    suspend fun changePassword(@Body request: ChangePasswordRequestDto): Response<AuthResponse>
 
     @GET("subscription/status")
     suspend fun getSubscriptionStatus(): Response<SubscriptionStatusDto>

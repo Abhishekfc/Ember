@@ -1,10 +1,10 @@
 package com.ember.backend.controller
 
-import com.ember.backend.dto.AuthResponse
+import com.ember.backend.dto.CompleteProfileRequest
 import com.ember.backend.dto.EmailAvailability
-import com.ember.backend.dto.LoginRequest
-import com.ember.backend.dto.RegisterRequest
+import com.ember.backend.dto.UserProfile
 import com.ember.backend.dto.UsernameAvailability
+import com.ember.backend.security.FirebaseTokenVerifier
 import com.ember.backend.service.AuthService
 import com.ember.backend.service.RateLimiterService
 import com.ember.backend.service.UserService
@@ -15,51 +15,56 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.Duration
 
 /** The `/auth` endpoints are the only `permitAll()` surface in the app (see SecurityConfig) —
- * both are rate-limited per client IP since neither had any brute-force/mass-registration
- * protection before. Limits are deliberately generous (a real user mistyping a password a few
- * times, or a household registering several accounts, should never be the one who gets blocked)
- * but bound how much unattended guessing/scripting is possible per IP per window. */
+ * every one of them is rate-limited per client IP, since none has any brute-force/mass-abuse
+ * protection otherwise. Sign-in and sign-up themselves no longer happen here at all — that's
+ * Firebase Authentication's job on the client now — so what's left is: finishing a new profile
+ * once Firebase has already verified who someone is, and the availability checks that flow needs
+ * along the way. */
 @RestController
 @RequestMapping("/auth")
 class AuthController(
     private val authService: AuthService,
     private val userService: UserService,
+    private val tokenVerifier: FirebaseTokenVerifier,
     private val rateLimiterService: RateLimiterService,
 ) {
 
-    @PostMapping("/register")
-    fun register(@Valid @RequestBody request: RegisterRequest, httpRequest: HttpServletRequest): ResponseEntity<AuthResponse> {
-        rateLimiterService.checkLimit("register:${httpRequest.remoteAddr}", maxAttempts = 10, window = Duration.ofHours(1))
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request))
-    }
-
-    @PostMapping("/login")
-    fun login(@Valid @RequestBody request: LoginRequest, httpRequest: HttpServletRequest): ResponseEntity<AuthResponse> {
-        rateLimiterService.checkLimit("login:${httpRequest.remoteAddr}", maxAttempts = 20, window = Duration.ofMinutes(15))
-        // Per-IP alone only bounds how fast *one* source can guess. An attacker with a pool of
-        // addresses (or anyone behind a large shared NAT/VPN exit) gets a fresh 20-attempt budget
-        // per address, so a single targeted account faced no effective ceiling at all. Keying a
-        // second limit on the account being attempted bounds guesses against that account no
-        // matter where they come from.
-        //
-        // Normalized the same way AuthService.login normalizes it, so "User@x.com" and "user@x.com"
-        // share one bucket rather than being two free budgets against the same account. Deliberately
-        // more generous than a real person needs (a forgotten password is a handful of tries, not
-        // thirty) while still cutting an unattended guessing run down to a rate that gets nowhere.
-        val identifierKey = request.identifier.trim().lowercase().take(255)
-        rateLimiterService.checkLimit("login-id:$identifierKey", maxAttempts = 30, window = Duration.ofMinutes(15))
-        return ResponseEntity.ok(authService.login(request))
+    /**
+     * The one step this backend still owns after sign-up: choosing a username and display name.
+     * Called once, right after the client finishes creating (and, for the email/password
+     * provider, verifying) the account directly with Firebase — everything about *who* this is
+     * comes from the bearer token itself, verified here by hand rather than through the normal
+     * [com.ember.backend.security.FirebaseAuthenticationFilter] path, since that filter can only
+     * authenticate identities that already have a matching Emigo profile, which by definition
+     * this one doesn't yet.
+     */
+    @PostMapping("/complete-profile")
+    fun completeProfile(
+        // Optional at the Spring level deliberately — a request with no header at all must reach
+        // this same "not authenticated" path as an invalid one, not throw a framework-level
+        // MissingRequestHeaderException that the global handler has no specific case for and
+        // surfaces as a raw 500. Both a missing and a garbage token mean the same thing here.
+        @RequestHeader("Authorization", required = false) authorization: String?,
+        @Valid @RequestBody request: CompleteProfileRequest,
+        httpRequest: HttpServletRequest,
+    ): ResponseEntity<UserProfile> {
+        rateLimiterService.checkLimit("complete-profile:${httpRequest.remoteAddr}", maxAttempts = 10, window = Duration.ofHours(1))
+        val token = authorization?.removePrefix("Bearer ")?.trim()
+        val verified = token?.let { tokenVerifier.verify(it) }
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.completeProfile(verified, request))
     }
 
     // Called on every keystroke (client-debounced) while someone's picking a username during
-    // registration, well before an account/token exists — generous limit since a single person
-    // typing out a few candidates easily fires a dozen+ checks, but still bounded per IP.
+    // sign-up, well before an account/token exists — generous limit since a single person typing
+    // out a few candidates easily fires a dozen+ checks, but still bounded per IP.
     @GetMapping("/username-availability")
     fun checkUsernameAvailability(@RequestParam username: String, httpRequest: HttpServletRequest): UsernameAvailability {
         rateLimiterService.checkLimit("username-availability:${httpRequest.remoteAddr}", maxAttempts = 60, window = Duration.ofMinutes(10))
@@ -68,7 +73,7 @@ class AuthController(
 
     // Checked once per email step (on continue), not per keystroke, so a much tighter limit than
     // the username check above is enough. Rate limited at all because this can otherwise be used
-    // to test whether a given address has an Ember account.
+    // to test whether a given address has an Emigo account.
     @GetMapping("/email-availability")
     fun checkEmailAvailability(@RequestParam email: String, httpRequest: HttpServletRequest): EmailAvailability {
         rateLimiterService.checkLimit("email-availability:${httpRequest.remoteAddr}", maxAttempts = 20, window = Duration.ofMinutes(10))

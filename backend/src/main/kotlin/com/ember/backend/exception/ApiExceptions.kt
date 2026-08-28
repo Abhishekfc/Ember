@@ -10,12 +10,6 @@ class EmailAlreadyRegisteredException :
 class UsernameAlreadyTakenException :
     ApiException(HttpStatus.CONFLICT, "That username is already taken")
 
-class InvalidCredentialsException :
-    ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password")
-
-class IncorrectPasswordException :
-    ApiException(HttpStatus.UNAUTHORIZED, "Current password is incorrect")
-
 class ResourceNotFoundException(message: String) : ApiException(HttpStatus.NOT_FOUND, message)
 
 class InvalidFriendRequestException(message: String) : ApiException(HttpStatus.BAD_REQUEST, message)

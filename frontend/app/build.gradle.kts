@@ -91,7 +91,7 @@ android {
             // stay a domain under our own control (never a *.up.railway.app address) so the host
             // can change later without stranding anyone.
             val releaseBaseUrl = (project.findProperty("EMBER_RELEASE_BASE_URL") as? String)
-                ?: "https://api.joinhustle.in/"
+                ?: "https://api.emigo.live/"
             buildConfigField("String", "BASE_URL", "\"$releaseBaseUrl\"")
             signingConfig = signingConfigs.findByName("release")
         }
@@ -133,8 +133,15 @@ dependencies {
     // The -ktx artifact was merged into the base module and is no longer published separately
     // as of recent Firebase BoM releases.
     implementation("com.google.firebase:firebase-messaging")
-    // Bridges FirebaseMessaging's Task-based token API to a suspend call (.await()).
+    // Sign-in itself — see AuthRepository, which now creates/signs in the Firebase identity
+    // directly rather than calling this app's own backend for a password check.
+    implementation("com.google.firebase:firebase-auth")
+    // Bridges FirebaseMessaging's/FirebaseAuth's Task-based APIs to a suspend call (.await()).
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.1")
+    // The classic (not Credential Manager) Google Sign-In client — still fully supported by
+    // Firebase, and simpler to get right than the newer Credential Manager API for the one thing
+    // this app needs from it: an ID token to hand to FirebaseAuth.
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
 
     implementation("dev.chrisbanes.haze:haze:1.7.2")
 

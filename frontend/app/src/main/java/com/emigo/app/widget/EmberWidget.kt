@@ -28,6 +28,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.emigo.app.MainActivity
+import com.emigo.app.R
 import java.io.File
 
 /** The home-screen widget: shows the single most recent photo any friend has sent, matching the
@@ -54,7 +55,7 @@ class EmberWidget : GlanceAppWidget() {
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .cornerRadius(24.dp)
-                    .background(Color(0xFF1A1626))
+                    .background(Color(0xFF17181B))
                     .clickable(actionStartActivity<MainActivity>()),
             ) {
                 if (snapshot != null) {
@@ -90,9 +91,10 @@ class EmberWidget : GlanceAppWidget() {
     private fun EmptyState(hasFeaturedFriends: Boolean) {
         Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "Emigo",
-                    style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                Image(
+                    provider = ImageProvider(R.drawable.widget_empty_state),
+                    contentDescription = null,
+                    modifier = GlanceModifier.padding(bottom = 8.dp),
                 )
                 Text(
                     text = if (hasFeaturedFriends) {

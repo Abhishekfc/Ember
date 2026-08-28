@@ -3,10 +3,12 @@ package com.emigo.app.data.remote
 import android.content.Context
 import com.emigo.app.BuildConfig
 import com.emigo.app.data.local.TokenStore
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -24,15 +26,23 @@ class NetworkModule(context: Context) {
 
     private val _sessionExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
-    /** Emits when an authenticated request comes back 401 — the token was rejected (expired or
-     * revoked), as opposed to a login/register attempt with the wrong password, which also
-     * returns 401 but never carried a token in the first place. MainActivity collects this to
-     * sign the user out back to the login screen instead of leaving the app stuck on a
-     * permanently failing feed/friends load. */
+    /** Emits when an authenticated request comes back 401 — the Firebase identity making the
+     * request has no matching Emigo profile (or Firebase itself rejected it, e.g. the account was
+     * deleted server-side). MainActivity collects this to sign the user out back to the login
+     * screen instead of leaving the app stuck on a permanently failing feed/friends load. */
     val sessionExpired: SharedFlow<Unit> = _sessionExpired.asSharedFlow()
 
+    // No token is read from local storage any more — every request asks Firebase's own SDK for
+    // the current ID token, which the SDK silently refreshes on its own schedule (tokens last an
+    // hour) and persists across restarts in its own storage. `getIdToken(false)` uses whatever
+    // Firebase already has cached rather than forcing a network refresh on every single request;
+    // the SDK still refreshes proactively in the background before expiry, so this is very rarely
+    // stale, and the one case it would be (a token revoked server-side) is exactly what
+    // sessionExpiryInterceptor below exists to catch.
     private val authInterceptor = okhttp3.Interceptor { chain ->
-        val token = runBlocking { tokenStore.currentToken() }
+        val token = runBlocking {
+            runCatching { FirebaseAuth.getInstance().currentUser?.getIdToken(false)?.await()?.token }.getOrNull()
+        }
         val request = if (token != null) {
             chain.request().newBuilder().addHeader("Authorization", "Bearer $token").build()
         } else {
@@ -44,15 +54,9 @@ class NetworkModule(context: Context) {
     // Must run after authInterceptor so chain.request() here reflects the Authorization header
     // it just added — that's how we tell "token rejected" apart from "no token to begin with".
     //
-    // users/me/password is excluded even though it's authenticated (always carries a token) —
-    // it has its own legitimate 401 (IncorrectPasswordException, wrong *current* password), which
-    // isn't a rejected/expired session at all. Without this exclusion, typing the current password
-    // wrong signed the whole app out instead of showing an inline error in the dialog, since this
-    // interceptor couldn't tell that 401 apart from a real token rejection.
-    //
-    // devices/unregister is excluded for a different reason: it is the *first* thing sign-out
-    // does (see MainActivity.onSignOut), so when sign-out was itself triggered by a 401 the token
-    // it carries is already dead and this call 401s too. Left unexcluded, that second 401 emits
+    // devices/unregister is excluded because it is the *first* thing sign-out does (see
+    // MainActivity.onSignOut), so when sign-out was itself triggered by a 401 the token it carries
+    // is already dead and this call 401s too. Left unexcluded, that second 401 emits
     // sessionExpired again, which runs onSignOut again, which calls this again — an endless
     // sign-out loop firing a request every round. Its result is irrelevant to session state
     // regardless: the session is being torn down either way.
@@ -60,7 +64,7 @@ class NetworkModule(context: Context) {
         val request = chain.request()
         val response = chain.proceed(request)
         val path = request.url.encodedPath
-        val isSelfHandled401 = path.endsWith("/users/me/password") || path.endsWith("/devices/unregister")
+        val isSelfHandled401 = path.endsWith("/devices/unregister")
         if (response.code == 401 && request.header("Authorization") != null && !isSelfHandled401) {
             _sessionExpired.tryEmit(Unit)
         }

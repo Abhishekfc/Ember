@@ -83,9 +83,7 @@ import com.emigo.app.ui.home.MemoriesTabScreen
 import com.emigo.app.ui.profile.MyProfileScreen
 import com.emigo.app.ui.profile.MyProfileViewModel
 import com.emigo.app.ui.settings.AppIconKey
-import com.emigo.app.ui.settings.AppIconScreen
 import com.emigo.app.ui.settings.AppIconSwitcher
-import com.emigo.app.ui.settings.AppIconViewModel
 import com.emigo.app.ui.settings.BlockedUsersScreen
 import com.emigo.app.ui.settings.BlockedUsersViewModel
 import com.emigo.app.ui.settings.EmberGoldScreen
@@ -104,6 +102,7 @@ import com.emigo.app.widget.WidgetPhotoSync
 import com.emigo.app.widget.WidgetPreferenceStore
 import com.emigo.app.widget.WidgetUpdateWorker
 import androidx.glance.appwidget.updateAll
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessaging
 import dev.chrisbanes.haze.rememberHazeState
 import kotlin.math.abs
@@ -121,7 +120,7 @@ import kotlinx.coroutines.tasks.await
  * or Friends, not a modal reached from a button. Activity joined this list (rather than staying
  * a pager page) once it moved out of the bottom nav dock into a bell icon in Home's own header —
  * see NavDestination's own doc comment for the full reasoning. */
-private enum class NestedScreen { THEME, APP_ICON, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS, BLOCKED_USERS, OTHER_SETTINGS, SENT_PHOTOS, ACTIVITY }
+private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS, BLOCKED_USERS, OTHER_SETTINGS, SENT_PHOTOS, ACTIVITY }
 
 /** The unified pager's page order — left to right, matching the bottom nav's own visual layout
  * (Memories, Home, [Camera in the center], Friends, Settings). Home sits immediately next to
@@ -240,7 +239,9 @@ class MainActivity : ComponentActivity() {
         // gap was invisible while every theme's background was a flat gradient (the placeholder
         // painted the identical background), but a theme with an image backdrop made it obvious:
         // the backdrop appeared alone, then everything else arrived a beat later.
-        val hasSavedSession = runBlocking { networkModule.tokenStore.currentToken() != null }
+        // Firebase's own SDK persists this across process restarts in its own storage — no
+        // local read needed at all, synchronous or otherwise, unlike the custom JWT this replaced.
+        val hasSavedSession = FirebaseAuth.getInstance().currentUser != null
         var initialHomeCache = runBlocking {
             InitialHomeCache(
                 feedItems = localListCache.read<FeedItem>(LocalListCache.KEY_FEED) ?: emptyList(),
@@ -264,11 +265,6 @@ class MainActivity : ComponentActivity() {
             val themeViewModel: ThemeViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer { ThemeViewModel(themePreferenceStore, subscriptionRepository) }
-                },
-            )
-            val appIconViewModel: AppIconViewModel = viewModel(
-                factory = viewModelFactory {
-                    initializer { AppIconViewModel(appIconPreferenceStore, subscriptionRepository) }
                 },
             )
             // Non-null only while ThemeScreen is being browsed with an unapplied pick staged —
@@ -350,6 +346,9 @@ class MainActivity : ComponentActivity() {
                         val fcmToken = runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()
                         if (fcmToken != null) authRepository.unregisterDeviceToken(fcmToken)
                         networkModule.tokenStore.clear()
+                        // Ends the actual session. Must come after the unregister call above,
+                        // which needs a still-valid Firebase identity to authenticate itself.
+                        FirebaseAuth.getInstance().signOut()
                     }
                     // LocalListCache isn't scoped per-account — without this, a different user
                     // signing in on the same device would briefly see this account's cached
@@ -863,12 +862,6 @@ class MainActivity : ComponentActivity() {
                             onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                         )
 
-                        nestedScreen == NestedScreen.APP_ICON -> AppIconScreen(
-                            viewModel = appIconViewModel,
-                            onBack = { nestedScreen = null },
-                            onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
-                        )
-
                         // NestedScreen.GOLD is deliberately not a branch here — see the Box/
                         // AnimatedVisibility wrapping this whole `when`, below.
 
@@ -1066,12 +1059,27 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                             )
-                            // Same reasoning as cameraViewModel's own collector above — this
-                            // screen's ViewModel can be an existing (not freshly re-fetched)
-                            // instance depending on how Compose's own viewModel() store reuse
-                            // lands, so it needs the same "tell me if I've gone stale" signal
-                            // rather than assuming its very first fetch is still good.
+                            // This screen's ViewModel is an existing (not freshly re-fetched)
+                            // instance whenever the picker is reopened — Compose's own
+                            // viewModel() store reuses it for as long as this ViewModel store
+                            // owner is alive, the same way cameraViewModel/friendsViewModel do.
+                            // Unlike those two, this one's own collector below only runs while
+                            // this branch is actually composed — i.e. only while the picker is
+                            // open — so a friend accepted anywhere else while the picker was
+                            // closed emitted a friendsChangedEvents signal nobody here was
+                            // listening for yet. That event has no replay (a plain SharedFlow,
+                            // not backed by a state holder), so a collector that starts listening
+                            // only after the fact can never see it — reopening the picker kept
+                            // showing whatever it last fetched, correctable only by restarting
+                            // the app and losing this stale instance entirely.
+                            //
+                            // The explicit loadFriends() below closes that gap by refreshing on
+                            // every open regardless of whether a signal was missed. The collector
+                            // stays for the one thing an on-open refresh alone can't cover: a
+                            // friend accepted through some other screen while this picker is
+                            // already open.
                             LaunchedEffect(Unit) {
+                                recipientPickerViewModel.loadFriends()
                                 emberApplication.friendsChangedEvents.collect { recipientPickerViewModel.loadFriends() }
                             }
                             RecipientPickerScreen(
@@ -1197,7 +1205,6 @@ class MainActivity : ComponentActivity() {
                                                 username = homeViewModel.username,
                                                 profilePhotoUrl = homeViewModel.profilePhotoUrl,
                                                 currentTheme = themeViewModel.selectedTheme,
-                                                currentAppIcon = appIconViewModel.selectedIcon,
                                                 isGoldMember = isGoldMember,
                                                 widgetBadge = if (widgetFeaturedFriendIds.isEmpty()) {
                                                     "Anyone"
@@ -1211,7 +1218,6 @@ class MainActivity : ComponentActivity() {
                                                 onCameraClick = onCameraClick,
                                                 onProfileClick = { nestedScreen = NestedScreen.PROFILE },
                                                 onThemeClick = { nestedScreen = NestedScreen.THEME },
-                                                onAppIconClick = { nestedScreen = NestedScreen.APP_ICON },
                                                 onGoldClick = { nestedScreen = NestedScreen.GOLD },
                                                 onWidgetClick = { nestedScreen = NestedScreen.WIDGET_SETTINGS },
                                                 onBlockedUsersClick = { nestedScreen = NestedScreen.BLOCKED_USERS },

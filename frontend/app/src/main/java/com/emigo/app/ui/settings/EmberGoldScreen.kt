@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AppShortcut
 import androidx.compose.material.icons.rounded.LocalFireDepartment
@@ -80,7 +82,7 @@ fun EmberGoldScreen(onBack: () -> Unit) {
         GoldPerk(Icons.Rounded.Palette, "Exclusive themes", "Unlock Cyber, Botanica, and Citrus looks"),
         GoldPerk(Icons.Rounded.PhotoLibrary, "Send from your gallery", "Share any photo, not just what you capture live"),
         GoldPerk(Icons.Rounded.Widgets, "Choose who's on your widget", "Pick exactly whose photos always show on your home screen"),
-        GoldPerk(Icons.Rounded.AppShortcut, "Custom app icon", "Personalize Emigo's icon on your home screen", badge = "New"),
+        GoldPerk(Icons.Rounded.AppShortcut, "Custom app icon", "Personalize Emigo's icon on your home screen", badge = "Coming soon"),
     )
 
     Column(
@@ -101,93 +103,102 @@ fun EmberGoldScreen(onBack: () -> Unit) {
     ) {
         NestedScreenHeader(onBack = onBack)
 
-        val badgeShape = RoundedCornerShape(26.dp)
-        // A soft halo behind the badge, not a flat circle sitting on the background — a real
-        // shadow read as "this is lit from within" rather than just another rounded rect, which
-        // is most of what was making the old version feel flat rather than premium.
-        Box(
-            modifier = Modifier
-                .padding(top = 12.dp)
-                .size(84.dp)
-                .shadow(elevation = 28.dp, shape = badgeShape, ambientColor = colors.accentStart, spotColor = colors.accentStart)
-                .background(colors.accentBrush, badgeShape),
-            contentAlignment = Alignment.Center,
+        // Fixed header + fixed footer, scrollable middle — same three-zone shape
+        // RegisterSharingStep uses for the same reason: on a short device (or with all five perks
+        // plus a long detail line each), the old single fixed Column could push the CTA button
+        // off the bottom of the screen entirely, with no way to reach it. The hero badge/title
+        // scrolls away with the perks now rather than staying pinned, which is the right trade —
+        // keeping it fixed would eat into the same limited height it's trying to free up.
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(Icons.Rounded.LocalFireDepartment, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(38.dp))
-        }
+            val badgeShape = RoundedCornerShape(26.dp)
+            // A soft halo behind the badge, not a flat circle sitting on the background — a real
+            // shadow read as "this is lit from within" rather than just another rounded rect, which
+            // is most of what was making the old version feel flat rather than premium.
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .size(84.dp)
+                    .shadow(elevation = 28.dp, shape = badgeShape, ambientColor = colors.accentStart, spotColor = colors.accentStart)
+                    .background(colors.accentBrush, badgeShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.LocalFireDepartment, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(38.dp))
+            }
 
-        Text(
-            text = "Emigo Gold",
-            fontFamily = colors.display,
-            fontSize = 30.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.cream,
-            modifier = Modifier.padding(top = 20.dp),
-        )
-        Text(
-            text = "A little extra glow for your favorite people",
-            fontFamily = colors.body,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = colors.muted,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 6.dp, bottom = 28.dp),
-        )
+            Text(
+                text = "Emigo Gold",
+                fontFamily = colors.display,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.cream,
+                modifier = Modifier.padding(top = 20.dp),
+            )
+            Text(
+                text = "A little extra glow for your favorite people",
+                fontFamily = colors.body,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.muted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp, bottom = 28.dp),
+            )
 
-        // Each perk gets its own card now, not one flat list — real separation between rows
-        // rather than just a hairline's worth of vertical padding, which is most of what reads
-        // as "basic" versus a real product page's own pricing/perks block.
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            perks.forEach { perk ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(colors.panel, EmberRadii.cardShape)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Plain tinted glyph, no badge/circle behind it — icons in this app read as
-                    // flat glyphs, never sitting on a colored background.
-                    Icon(perk.icon, contentDescription = null, tint = colors.accentStart, modifier = Modifier.size(22.dp))
-                    Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = perk.title,
-                                fontFamily = colors.body,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.cream,
-                            )
-                            if (perk.badge != null) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(start = 8.dp)
-                                        .background(colors.accentStart.copy(alpha = 0.16f), RoundedCornerShape(50))
-                                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                                ) {
-                                    Text(
-                                        text = perk.badge,
-                                        fontFamily = colors.body,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.accentStart,
-                                    )
+            // Each perk gets its own card now, not one flat list — real separation between rows
+            // rather than just a hairline's worth of vertical padding, which is most of what reads
+            // as "basic" versus a real product page's own pricing/perks block.
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                perks.forEach { perk ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.panel, EmberRadii.cardShape)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // Plain tinted glyph, no badge/circle behind it — icons in this app read as
+                        // flat glyphs, never sitting on a colored background.
+                        Icon(perk.icon, contentDescription = null, tint = colors.accentStart, modifier = Modifier.size(22.dp))
+                        Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = perk.title,
+                                    fontFamily = colors.body,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.cream,
+                                )
+                                if (perk.badge != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(start = 8.dp)
+                                            .background(colors.accentStart.copy(alpha = 0.16f), RoundedCornerShape(50))
+                                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                                    ) {
+                                        Text(
+                                            text = perk.badge,
+                                            fontFamily = colors.body,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.accentStart,
+                                        )
+                                    }
                                 }
                             }
+                            Text(
+                                text = perk.detail,
+                                fontFamily = colors.body,
+                                fontSize = 12.sp,
+                                color = colors.muted,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
                         }
-                        Text(
-                            text = perk.detail,
-                            fontFamily = colors.body,
-                            fontSize = 12.sp,
-                            color = colors.muted,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
                     }
                 }
             }
         }
-
-        Box(modifier = Modifier.weight(1f))
 
         // A real gradient-filled CTA now, the same brush the hero badge uses, rather than a flat
         // muted "Coming soon" box — that flat box was reading as an error/disabled state on
@@ -195,6 +206,7 @@ fun EmberGoldScreen(onBack: () -> Unit) {
         // being wired up yet via the caption underneath, not by looking disabled.
         Box(
             modifier = Modifier
+                .padding(top = 14.dp)
                 .fillMaxWidth()
                 .background(colors.accentBrush, EmberRadii.buttonShape)
                 .padding(vertical = 16.dp),

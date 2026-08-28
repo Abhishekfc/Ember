@@ -2,33 +2,11 @@ package com.emigo.app.data.remote.dto
 
 import kotlinx.serialization.Serializable
 
+/** The one thing this app's own backend still needs after sign-up: a username and display name.
+ * Everything about *who* this is — the email, proving it's really theirs, the password — is
+ * Firebase Authentication's job now, so this carries no email or password at all. */
 @Serializable
-data class RegisterRequest(
-    val email: String,
-    val password: String,
-    val displayName: String,
-    val username: String,
-)
-
-@Serializable
-data class LoginRequest(
-    // Either the account's email or its username — the backend tells them apart by whether
-    // this contains an "@" (see AuthService.login).
-    val identifier: String,
-    val password: String,
-)
-
-@Serializable
-data class ChangePasswordRequestDto(
-    val currentPassword: String,
-    val newPassword: String,
-)
-
-@Serializable
-data class AuthResponse(
-    val token: String,
-    val userId: String,
-    val email: String,
+data class CompleteProfileRequestDto(
     val displayName: String,
     val username: String,
 )

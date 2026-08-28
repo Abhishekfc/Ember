@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -91,18 +92,44 @@ fun ThemeScreen(
             )
         }
 
+        // Free themes first, Gold themes after — with the app's actual default (Citrus, shown as
+        // "Ember") pinned to the very first slot of the first group, since that's the one theme
+        // every account already opens in and the one this picker should lead with rather than bury
+        // wherever it happened to land in the enum.
+        val freeThemes = remember { listOf(ThemeKey.CITRUS) + ThemeKey.entries.filter { !it.locked && it != ThemeKey.CITRUS } }
+        val goldThemes = remember { ThemeKey.entries.filter { it.locked } }
+
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(20.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.weight(1f),
         ) {
-            items(ThemeKey.entries.toList(), key = { it.name }) { option ->
+            item(key = "free-header", span = { GridItemSpan(maxLineSpan) }) {
+                ThemeSectionLabel(text = "FREE", modifier = Modifier.padding(top = 16.dp, bottom = 2.dp))
+            }
+            items(freeThemes, key = { it.name }) { option ->
                 ThemeChip(
                     option = option,
                     isSelected = option == pendingTheme,
                     isGoldMember = viewModel.isGoldMember,
+                    isDefault = option == ThemeKey.DEFAULT,
+                    onClick = {
+                        pendingTheme = option
+                        onPreview(option)
+                    },
+                )
+            }
+            item(key = "gold-header", span = { GridItemSpan(maxLineSpan) }) {
+                ThemeSectionLabel(text = "EMIGO GOLD", modifier = Modifier.padding(top = 20.dp, bottom = 2.dp))
+            }
+            items(goldThemes, key = { it.name }) { option ->
+                ThemeChip(
+                    option = option,
+                    isSelected = option == pendingTheme,
+                    isGoldMember = viewModel.isGoldMember,
+                    isDefault = false,
                     onClick = {
                         pendingTheme = option
                         onPreview(option)
