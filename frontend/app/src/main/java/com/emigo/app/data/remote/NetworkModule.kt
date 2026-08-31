@@ -54,17 +54,32 @@ class NetworkModule(context: Context) {
     // Must run after authInterceptor so chain.request() here reflects the Authorization header
     // it just added — that's how we tell "token rejected" apart from "no token to begin with".
     //
-    // devices/unregister is excluded because it is the *first* thing sign-out does (see
-    // MainActivity.onSignOut), so when sign-out was itself triggered by a 401 the token it carries
-    // is already dead and this call 401s too. Left unexcluded, that second 401 emits
-    // sessionExpired again, which runs onSignOut again, which calls this again — an endless
-    // sign-out loop firing a request every round. Its result is irrelevant to session state
-    // regardless: the session is being torn down either way.
+    // Two endpoints are excluded, both because a 401 from them is expected and already handled by
+    // their own caller, rather than evidence the session is dead:
+    //
+    // - devices/unregister is the *first* thing sign-out does (see MainActivity.onSignOut), so
+    //   when sign-out was itself triggered by a 401 the token it carries is already dead and this
+    //   call 401s too. Left unexcluded, that second 401 emits sessionExpired again, which runs
+    //   onSignOut again, which calls this again — an endless sign-out loop firing a request every
+    //   round. Its result is irrelevant to session state regardless.
+    //
+    // - GET /users/me is how AuthRepository.checkExistingProfile *asks* whether a signed-in
+    //   Firebase identity has an Emigo profile yet; a 401 there is the documented answer "not
+    //   yet", which it turns into SignInOutcome.NeedsProfile so sign-in can continue into choosing
+    //   a username. Left unexcluded, that same 401 also fired sessionExpired, and the resulting
+    //   sign-out beat the NeedsProfile routing — so signing in with a real Firebase identity that
+    //   has no profile row (an interrupted sign-up, or any account that exists in Firebase but not
+    //   in whichever database the app is currently pointed at, since Firebase is shared between
+    //   local and production while the databases are not) just bounced straight back to the login
+    //   screen, making NeedsProfile effectively unreachable. Excluding it costs nothing: a
+    //   genuinely dead session still 401s on the feed/friends/activity calls that follow, and
+    //   those still sign the user out.
     private val sessionExpiryInterceptor = okhttp3.Interceptor { chain ->
         val request = chain.request()
         val response = chain.proceed(request)
         val path = request.url.encodedPath
-        val isSelfHandled401 = path.endsWith("/devices/unregister")
+        val isSelfHandled401 = path.endsWith("/devices/unregister") ||
+            (request.method == "GET" && path.endsWith("/users/me"))
         if (response.code == 401 && request.header("Authorization") != null && !isSelfHandled401) {
             _sessionExpired.tryEmit(Unit)
         }

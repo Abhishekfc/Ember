@@ -7,11 +7,17 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.emigo.app.data.AuthRepository
+import com.emigo.app.data.EMAIL_VERIFICATION_GRACE_PERIOD_MILLIS
 import com.emigo.app.data.SignInOutcome
+import com.emigo.app.data.firebaseErrorMessage
+import com.emigo.app.data.needsEmailVerification
+import com.emigo.app.data.verificationDeadlineFor
 import com.emigo.app.ui.profile.UsernameCheckState
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 /** Every screen the auth flow can be on. [WELCOME] is the true entry point. The new-account path
  * ([REGISTER_EMAIL] then [REGISTER_PASSWORD] then [REGISTER_NAME] then [REGISTER_USERNAME] then
@@ -21,15 +27,12 @@ import kotlinx.coroutines.launch
  * the same way would just be an extra tap for no benefit.
  *
  * The account itself now lives with Firebase Authentication, not this app's own backend — see
- * [AuthRepository]. [REGISTER_NAME]/[REGISTER_USERNAME] are reached two different ways: the
- * ordinary path (right after [REGISTER_EMAIL]/[REGISTER_PASSWORD], for a genuinely new sign-up),
- * and a *resumed* path — landing here with a Firebase identity that already exists but has no
- * Emigo profile yet, either because a previous sign-up was interrupted before finishing, or
- * because this is the first time this Google account has ever been used with Emigo (see
- * [needsFreshFirebaseAccount], and [submitUsername] for where the two paths converge back into
- * one backend call either way).
+ * [AuthRepository]. [REGISTER_NAME]/[REGISTER_USERNAME] are reached one way only: forward from
+ * [REGISTER_EMAIL]/[REGISTER_PASSWORD] on a genuinely new sign-up. Signing in never routes here —
+ * a Firebase identity with no Emigo profile behind it reports "no account found" instead of
+ * quietly continuing into sign-up, so the two flows can't be mistaken for each other.
  */
-enum class AuthStep { WELCOME, LOGIN, FORGOT_PASSWORD, REGISTER_EMAIL, REGISTER_PASSWORD, REGISTER_NAME, REGISTER_USERNAME, REGISTER_WIDGET, REGISTER_SHARING }
+enum class AuthStep { WELCOME, LOGIN, FORGOT_PASSWORD, REGISTER_EMAIL, REGISTER_PASSWORD, REGISTER_NAME, REGISTER_USERNAME, NEEDS_EMAIL_VERIFICATION, REGISTER_WIDGET, REGISTER_SHARING }
 
 private const val MIN_PASSWORD_LENGTH = 8
 private const val USERNAME_DEBOUNCE_MS = 400L
@@ -50,25 +53,39 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
      * it are no longer valid to resubmit — see [submitUsername] and [goBack]. */
     private var accountCreated = false
 
-    /** True for the ordinary sign-up path (create a brand-new Firebase identity in
-     * [submitUsername]); false when [REGISTER_NAME]/[REGISTER_USERNAME] were reached instead via
-     * an *already*-signed-in Firebase identity with no Emigo profile yet — a resumed sign-up
-     * (see [submitLogin]) or a first-time Google sign-in (see [onGoogleSignInResult]) — in which
-     * case [submitUsername] only needs to finish the Emigo side, never create another identity. */
-    private var needsFreshFirebaseAccount = true
-
     var email by mutableStateOf("")
         private set
 
     /** The [LOGIN] step's own identifier field. Deliberately a real email only, unlike the old
-     * backend-driven flow this replaced: Firebase Authentication signs in by email (or a linked
-     * Google account), it has no concept of a username at all, so a username typed here can no
-     * longer be resolved to an account the way the old custom backend login could. */
+     * backend-driven flow this replaced: Firebase Authentication signs in by email, it has no
+     * concept of a username at all, so a username typed here can no longer be resolved to an
+     * account the way the old custom backend login could. */
     var loginIdentifier by mutableStateOf("")
         private set
     var password by mutableStateOf("")
         private set
     var isLoading by mutableStateOf(false)
+        private set
+
+    /** Whichever address [AuthStep.NEEDS_EMAIL_VERIFICATION] is currently showing — set from
+     * [submitUsername]'s own result on a fresh sign-up, or from [SignInOutcome.NeedsVerification]
+     * on a returning sign-in; either way this is always the real backend-confirmed email for the
+     * account actually being verified, never just whatever was last typed into a field. */
+    var pendingVerificationEmail by mutableStateOf("")
+        private set
+
+    /** The same deadline EmailVerificationExpiryService enforces server-side (epoch millis) —
+     * VerifyEmailStep counts down to this, not a fresh independently-started timer, so leaving and
+     * reopening this screen (or the app itself) can never reset it. */
+    var pendingVerificationDeadlineMillis by mutableStateOf(0L)
+        private set
+    var isResendingVerification by mutableStateOf(false)
+        private set
+    var verificationResendMessage by mutableStateOf<String?>(null)
+        private set
+    var isCheckingVerification by mutableStateOf(false)
+        private set
+    var verificationCheckError by mutableStateOf<String?>(null)
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
@@ -153,6 +170,10 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
             // is the floor for back navigation.
             AuthStep.REGISTER_SHARING -> AuthStep.REGISTER_WIDGET
             AuthStep.REGISTER_WIDGET -> AuthStep.REGISTER_WIDGET
+            // No back button shown on this step at all (see VerifyEmailStep) — "Sign out" is the
+            // only way off it — but goBack's own when must stay exhaustive over every AuthStep
+            // regardless of which ones the UI actually exposes a back arrow for.
+            AuthStep.NEEDS_EMAIL_VERIFICATION -> AuthStep.NEEDS_EMAIL_VERIFICATION
             AuthStep.REGISTER_USERNAME -> AuthStep.REGISTER_NAME
             AuthStep.REGISTER_NAME -> AuthStep.REGISTER_PASSWORD
             AuthStep.REGISTER_PASSWORD -> AuthStep.REGISTER_EMAIL
@@ -220,23 +241,6 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
         }
     }
 
-    /** Fires once the actual Google Sign-In intent (launched by LoginScreen, which owns the
-     * Activity context this needs) has returned an ID token — null on cancel/failure, in which
-     * case this is a silent no-op rather than an error message for someone who simply backed out
-     * of the account picker. */
-    fun onGoogleSignInResult(googleIdToken: String?, onSuccess: () -> Unit) {
-        if (googleIdToken == null || isLoading) return
-        viewModelScope.launch {
-            isLoading = true
-            errorMessage = null
-            repository.signInWithGoogle(googleIdToken).fold(
-                onSuccess = { outcome -> handleSignInOutcome(outcome, onSuccess) },
-                onFailure = { errorMessage = it.message ?: "Google sign-in failed" },
-            )
-            isLoading = false
-        }
-    }
-
     fun submitLogin(onSuccess: () -> Unit) {
         // The button stays tappable while the request is in flight, so on a slow connection two
         // taps means two login calls — and two [onSuccess] callbacks, i.e. navigating onward
@@ -258,11 +262,10 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
         }
     }
 
-    /** Shared by [submitLogin] and [onGoogleSignInResult] — either can land on a Firebase
-     * identity with no Emigo profile yet (see this file's own top-of-file doc comment), in which
-     * case there's nothing to call [onSuccess] with; the flow routes into finishing the profile
-     * instead of signing straight in. [onSuccess] is only relevant to the login path — a fresh
-     * Google identity has nowhere to be "successfully signed in" to yet. */
+    /** [submitLogin] can land on a Firebase identity with no Emigo profile yet — a previous
+     * sign-up interrupted before finishing (see this file's own top-of-file doc comment) — in
+     * which case there's nothing to call [onSuccess] with; the flow routes into finishing the
+     * profile instead of signing straight in. */
     private fun handleSignInOutcome(outcome: SignInOutcome, onSuccess: (() -> Unit)? = null) {
         when (outcome) {
             is SignInOutcome.SignedIn -> {
@@ -270,11 +273,39 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
                 onSuccess?.invoke()
             }
             is SignInOutcome.NeedsProfile -> {
-                needsFreshFirebaseAccount = false
-                val parts = outcome.suggestedDisplayName.trim().split(" ", limit = 2)
-                firstName = parts.getOrElse(0) { "" }
-                lastName = parts.getOrElse(1) { "" }
-                goTo(AuthStep.REGISTER_NAME)
+                // Signing in is signing in: it either gets you into your account or it tells you
+                // it couldn't. It must never quietly turn into the sign-up flow, which is what
+                // routing this to the name/username steps used to do — indistinguishable, from
+                // the outside, from the app confusing the two.
+                //
+                // Reaching here means Firebase accepted the credentials but this backend has no
+                // profile attached to that identity. Deliberately *not* spelled out to the user:
+                // saying "this email exists but has no profile" would confirm to anyone typing
+                // guesses that an address is registered here. Same wording as a wrong password
+                // for that reason.
+                //
+                // Signed out again so no half-authenticated session is left behind for the next
+                // screen to trip over. The Firebase identity itself is left alone — it is *not*
+                // safe to assume a profile-less identity is worthless and delete it, because a
+                // debug build pointed at the local backend sees every real production account
+                // exactly this way.
+                FirebaseAuth.getInstance().signOut()
+                password = ""
+                // Deliberately the exact string firebaseErrorMessage already returns for a wrong
+                // password, not a distinct one: identical wording is what makes the two cases
+                // indistinguishable, so nobody typing guesses can use the difference to work out
+                // which addresses are registered.
+                errorMessage = "Incorrect email or password"
+            }
+            is SignInOutcome.NeedsVerification -> {
+                // accountCreated stays false here (unlike the fresh sign-up path in
+                // submitUsername) — this account already existed, it's just not verified yet —
+                // which is exactly what tells onEmailVerifiedContinue to call onAuthenticated
+                // directly instead of continuing into the widget/sharing onboarding steps.
+                password = ""
+                pendingVerificationEmail = outcome.email
+                pendingVerificationDeadlineMillis = outcome.verifyByEpochMillis
+                goTo(AuthStep.NEEDS_EMAIL_VERIFICATION)
             }
         }
     }
@@ -346,11 +377,14 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
 
     fun pickUsernameSuggestion(name: String) = onUsernameDraftChange(name)
 
-    /** The moment the Emigo profile actually comes into existence. Branches on
-     * [needsFreshFirebaseAccount]: the ordinary sign-up path still needs Firebase itself to create
-     * the identity first ([AuthRepository.signUp]); the resumed/Google path already has one
-     * signed in, so this only needs the backend half ([AuthRepository.completeProfile]) — see
-     * this file's own top-of-file doc comment for the two ways of arriving here. */
+    /** The moment the Emigo profile actually comes into existence. Always the full
+     * [AuthRepository.signUp] — Firebase identity first, then the backend profile on top of it.
+     * There used to be a second path here for a *resumed* sign-up (an already-signed-in identity
+     * with no profile yet, reached by signing in), which called [AuthRepository.completeProfile]
+     * alone; that path is gone, because signing in now reports "no account found" rather than
+     * quietly continuing into sign-up. signUp itself still reuses an existing signed-in identity
+     * when it's genuinely the same address, which is what covers a retry after the backend half
+     * failed. */
     fun submitUsername() {
         // Belt and braces alongside goBack's own floor: this must run exactly once per account.
         // Any second call can only ever fail (the identity/email is already taken by the account
@@ -376,28 +410,132 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
             isLoading = true
             errorMessage = null
             val displayName = "${firstName.trim()} ${lastName.trim()}".trim()
-            val result = if (needsFreshFirebaseAccount) {
-                repository.signUp(email.trim(), password, displayName, usernameDraft)
-            } else {
-                repository.completeProfile(displayName, usernameDraft)
-            }
+            val result = repository.signUp(email.trim(), password, displayName, usernameDraft)
             result.fold(
-                onSuccess = {
+                onSuccess = { profile ->
                     accountCreated = true
                     // Google Password Manager's "Save password?" prompt fires off the password
                     // field being non-empty when it disappears from the view tree (i.e. when this
                     // screen unmounts) — clearing it first, before that happens, leaves nothing
                     // for the save-prompt heuristic to act on.
                     password = ""
-                    // The widget is what this app actually is, so it's explained before anyone
-                    // is asked to invite friends to it — the invite reads as worth sending once
-                    // you know what the other person is being invited to.
-                    goTo(AuthStep.REGISTER_WIDGET)
+                    if (needsEmailVerification(profile)) {
+                        // Blocking here, before the widget/sharing steps, rather than after them —
+                        // showing "come look at the widget" onboarding and only *then* revealing
+                        // you're actually blocked would read as a bait-and-switch. Compulsory means
+                        // compulsory from the moment the account exists.
+                        pendingVerificationEmail = profile.email
+                        pendingVerificationDeadlineMillis = verificationDeadlineFor(profile)
+                        goTo(AuthStep.NEEDS_EMAIL_VERIFICATION)
+                    } else {
+                        // The widget is what this app actually is, so it's explained before anyone
+                        // is asked to invite friends to it — the invite reads as worth sending once
+                        // you know what the other person is being invited to.
+                        goTo(AuthStep.REGISTER_WIDGET)
+                    }
                 },
                 onFailure = { errorMessage = it.message ?: "Something went wrong" },
             )
             isLoading = false
         }
+    }
+
+    /** Routes a session resumed at cold start (see AuthRepository.resumeSession, and MainActivity
+     * for the one place that calls it) onto the verification screen. Unlike the passive 403
+     * listener this replaced, this is only ever reached from a single authoritative check made
+     * once per launch against a freshly refreshed token — never from whatever stale token some
+     * background request happened to carry — so it can't put someone who has already verified
+     * back onto this screen, let alone repeatedly.
+     *
+     * accountCreated stays false, same as [SignInOutcome.NeedsVerification] arriving through
+     * sign-in: this account already exists, so verifying from here re-enters the app directly
+     * rather than restarting the widget/sharing onboarding. */
+    fun showVerificationRequired(outcome: SignInOutcome.NeedsVerification) {
+        pendingVerificationEmail = outcome.email
+        pendingVerificationDeadlineMillis = outcome.verifyByEpochMillis
+        goTo(AuthStep.NEEDS_EMAIL_VERIFICATION)
+    }
+
+    /** Re-sends the same verification link Firebase already sent once at sign-up — the address
+     * itself never changes here, this only ever resends to [pendingVerificationEmail]. Verified
+     * directly against Firebase (not just read from this SDK call's own docs) that sending twice
+     * in quick succession — the exact shape of tapping this button right after the automatic send
+     * at sign-up — gets rejected with a rate-limit error, not a network one, which is why this
+     * uses the same [firebaseErrorMessage] mapping every other Firebase Auth call in this app
+     * already relies on instead of a single hardcoded "check your connection" guess that would be
+     * wrong for that specific, likely-common case. */
+    fun resendVerificationEmail() {
+        if (isResendingVerification) return
+        viewModelScope.launch {
+            isResendingVerification = true
+            verificationResendMessage = null
+            runCatching { FirebaseAuth.getInstance().currentUser?.sendEmailVerification()?.await() }
+                .onSuccess { verificationResendMessage = "Verification email sent." }
+                .onFailure { verificationResendMessage = firebaseErrorMessage(it) ?: "Couldn't send that. Please try again." }
+            isResendingVerification = false
+        }
+    }
+
+    /** Firebase's local record of `isEmailVerified` is a snapshot from whenever this identity's ID
+     * token was last issued — clicking the link in the email doesn't push anything back to an
+     * already-running app, so this has to explicitly ask Firebase to refresh before re-checking,
+     * or a genuinely-just-verified account would still read as unverified.
+     *
+     * `reload()` alone isn't enough, even though it does correctly update `isEmailVerified` on
+     * this [FirebaseUser] object — it doesn't touch the actual cached ID token every backend call
+     * attaches (see NetworkModule's authInterceptor), which still carries the *old*
+     * `email_verified: false` claim baked in at the moment it was originally issued. Without also
+     * forcing a fresh token here, the very next authenticated call this session makes (Home's own
+     * feed fetch, moments after landing in the app) would still send that stale token, get
+     * rejected by the exact same backend gate this screen just passed, and bounce straight back to
+     * this exact screen — which is precisely the loop this line exists to prevent.
+     *
+     * [onAuthenticated] is only called for a *returning* sign-in (accountCreated false — see
+     * [SignInOutcome.NeedsVerification]'s own handling); a fresh sign-up still has the widget/
+     * sharing onboarding steps ahead of it, same as it always did before this check existed. */
+    fun onEmailVerifiedContinue(onAuthenticated: () -> Unit) {
+        if (isCheckingVerification) return
+        viewModelScope.launch {
+            isCheckingVerification = true
+            verificationCheckError = null
+            val user = FirebaseAuth.getInstance().currentUser
+            runCatching { user?.reload()?.await() }
+            if (user?.isEmailVerified == true) {
+                runCatching { user.getIdToken(true).await() }
+                isCheckingVerification = false
+                if (accountCreated) goTo(AuthStep.REGISTER_WIDGET) else onAuthenticated()
+            } else {
+                isCheckingVerification = false
+                verificationCheckError = "Still not verified. Check your inbox and spam folder."
+            }
+        }
+    }
+
+    /** The escape hatch for exactly the problem this whole screen exists to prevent: someone who
+     * typed an email they don't actually have access to. The real sign-out (clearing the Firebase
+     * session, unregistering this device, wiping cached account data) is MainActivity's own
+     * onSignOut, passed in from LoginScreen — this only resets this ViewModel's own local state so
+     * the login screen it lands back on starts genuinely fresh, not mid-way through a flow for an
+     * account that no longer exists in this session. */
+    fun resetAfterSignOut(onSignOut: () -> Unit, welcomeMessage: String? = null) {
+        onSignOut()
+        accountCreated = false
+        email = ""
+        loginIdentifier = ""
+        password = ""
+        pendingVerificationEmail = ""
+        pendingVerificationDeadlineMillis = 0L
+        verificationResendMessage = null
+        verificationCheckError = null
+        // Every in-flight flag, not just the fields: each of these gates its own button
+        // (`enabled = !isLoading` and friends), so any one left stuck true from a request that was
+        // cut short by the sign-out itself would leave that button permanently dead on a screen
+        // that otherwise looks completely normal.
+        isLoading = false
+        isCheckingVerification = false
+        isResendingVerification = false
+        errorMessage = welcomeMessage
+        step = AuthStep.WELCOME
     }
 
     /** Opens the dedicated FORGOT_PASSWORD screen — see [forgotPasswordEmail]'s own doc comment
