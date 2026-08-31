@@ -14,6 +14,11 @@ data class UserProfileDto(
     // of failing outright; `ignoreUnknownKeys` on LocalListCache's Json only covers *extra*
     // fields, not ones the class expects that are missing from old cached JSON.
     val createdAt: String? = null,
+    // Same nullable-with-default reasoning as createdAt above — a profile cached before this
+    // field existed shouldn't retroactively lock a returning user out of the app it already had
+    // signed in; false ("not required") is the safe fallback for stale cached data specifically,
+    // separate from what a fresh network response for a real account actually says.
+    val emailVerificationRequired: Boolean = false,
 )
 
 @Serializable

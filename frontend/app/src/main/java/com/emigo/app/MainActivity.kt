@@ -25,11 +25,13 @@ import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -50,6 +52,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewmodel.initializer
 import com.emigo.app.data.FirstPhotoPreloader
+import com.emigo.app.data.SignInOutcome
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.remote.dto.FeedItem
 import com.emigo.app.data.remote.dto.MemoryPhotoDto
@@ -278,7 +281,23 @@ class MainActivity : ComponentActivity() {
             // Hoisted above EmberAppTheme so picking a theme on ThemeScreen re-themes the
             // whole app immediately, not just that screen.
             EmberAppTheme(themeKey = previewThemeKey ?: themeViewModel.selectedTheme) {
+                // Bumped by onSignOut (below), purely to force a *fresh* LoginViewModel afterwards.
+                //
+                // Sign-out calls viewModelStore.clear(), which cancels every ViewModel's own
+                // viewModelScope — including this one's, even though the login screen it drives is
+                // exactly where sign-out lands the user. A cancelled scope doesn't throw: every
+                // `viewModelScope.launch { }` in LoginViewModel simply never runs its body. So the
+                // login screen came back looking completely normal, buttons still animating on
+                // press, while nothing they triggered did anything at all — no network call, no
+                // navigation, no error. Reachable in one tap from the expired-verification screen
+                // ("Try again later"), and only a full app restart cleared it.
+                //
+                // Keying on this counter means the instance retrieved after a sign-out is a
+                // genuinely new one with a live scope, rather than the cleared instance the
+                // composition was still holding a reference to.
+                var loginSessionId by remember { mutableIntStateOf(0) }
                 val loginViewModel: LoginViewModel = viewModel(
+                    key = "login-$loginSessionId",
                     factory = viewModelFactory {
                         initializer { LoginViewModel(authRepository) }
                     },
@@ -423,6 +442,10 @@ class MainActivity : ComponentActivity() {
                     // clearing here, signing into a different account would keep showing the
                     // previous account's cached feed, friends, and stale form fields.
                     viewModelStore.clear()
+                    // Must follow that clear(), not precede it: it's what makes the login screen
+                    // pick up a LoginViewModel whose scope is still alive, rather than the one
+                    // clear() just cancelled. See loginSessionId's own doc comment above.
+                    loginSessionId++
                     authenticated = false
                     nestedScreen = null
                     selectedProfileSubject = null
@@ -433,6 +456,31 @@ class MainActivity : ComponentActivity() {
                 // permanently broken "couldn't load" error instead of returning to login.
                 LaunchedEffect(Unit) {
                     networkModule.sessionExpired.collect { onSignOut() }
+                }
+
+                // The third place email verification has to be enforced, after sign-up
+                // (submitUsername) and sign-in (AuthRepository.checkExistingProfile): a session
+                // resumed straight from Firebase's own cached state, which renders the app shell
+                // on frame one (see hasSavedSession in onCreate) without either of those two ever
+                // running. Without this, killing the app and reopening it during the window
+                // between the verification deadline passing and EmailVerificationExpiryService
+                // actually deleting the row put an unverified account right back inside the app.
+                //
+                // Deliberately a single authoritative check per launch — resumeSession reloads and
+                // force-refreshes before answering — rather than the passive 403 listener this
+                // replaced. That listener acted on whatever cached token some background caller
+                // (the widget sync worker especially) happened to send, so it kept throwing people
+                // who had genuinely already verified back onto the verification screen, restarting
+                // the countdown each time. A failure here is left alone entirely: it usually just
+                // means being offline, which must never sign anyone out.
+                LaunchedEffect(Unit) {
+                    if (!hasSavedSession) return@LaunchedEffect
+                    authRepository.resumeSession().onSuccess { outcome ->
+                        if (outcome is SignInOutcome.NeedsVerification) {
+                            loginViewModel.showVerificationRequired(outcome)
+                            authenticated = false
+                        }
+                    }
                 }
 
                 // Re-fires on every genuine authenticated-state transition — a fresh login, or an
@@ -478,6 +526,7 @@ class MainActivity : ComponentActivity() {
                             // this doesn't just happen on its own otherwise.
                             themeViewModel.reload()
                         },
+                        onSignOut = onSignOut,
                     )
                 } else {
                     var showRecipientPicker by remember { mutableStateOf(false) }
@@ -650,6 +699,9 @@ class MainActivity : ComponentActivity() {
                     // ViewModel its own copy had gone stale.
                     LaunchedEffect(Unit) {
                         emberApplication.friendsChangedEvents.collect { cameraViewModel.loadFriends() }
+                    }
+                    LaunchedEffect(Unit) {
+                        emberApplication.friendsChangedEvents.collect { friendsViewModel.refreshSilently() }
                     }
                     // Flips the outbox button's animation from SENDING to its filled checkmark —
                     // see CameraViewModel.markSendComplete's own doc comment for why this coarse,
@@ -1055,7 +1107,12 @@ class MainActivity : ComponentActivity() {
                             val recipientPickerViewModel: RecipientPickerViewModel = viewModel(
                                 factory = viewModelFactory {
                                     initializer {
-                                        RecipientPickerViewModel(friendRepository, localListCache, cameraViewModel.selectedRecipientIds)
+                                        RecipientPickerViewModel(
+                                            friendRepository,
+                                            localListCache,
+                                            cameraViewModel.selectedRecipientIds,
+                                            cameraViewModel.friends,
+                                        )
                                     }
                                 },
                             )
@@ -1089,6 +1146,10 @@ class MainActivity : ComponentActivity() {
                                     cameraViewModel.setSelectedRecipients(ids)
                                     showRecipientPicker = false
                                 },
+                                onAddFriend = {
+                                    showRecipientPicker = false
+                                    nestedScreen = NestedScreen.FIND_PEOPLE
+                                },
                             )
                         }
 
@@ -1099,7 +1160,25 @@ class MainActivity : ComponentActivity() {
                                 // LocalNavDockHeight instead of a fixed dp constant, which is what
                                 // originally left the Settings screen's Log out button partly
                                 // covered by the dock on at least one real device.
-                                CompositionLocalProvider(LocalNavDockHeight provides navDockHeight) {
+                                // Captured here, at the natural (un-overridden) composition point,
+                                // before the pager's own scope below deliberately nulls this out —
+                                // re-provided as-is inside the page content lambda so every tab's
+                                // own vertical lists (Home, Friends, Settings) keep the platform's
+                                // normal overscroll untouched; only the pager's own horizontal
+                                // edge-of-tabs bounce is disabled.
+                                val defaultOverscrollFactory = LocalOverscrollFactory.current
+                                CompositionLocalProvider(
+                                    LocalNavDockHeight provides navDockHeight,
+                                    // Swiping past the first (Memories) or last (Settings) tab
+                                    // used to stretch-and-bounce the same way a scrolled-to-the-end
+                                    // list does — reasonable for a list, but for tab navigation
+                                    // itself it read as the page "hitting a wall", not a deliberate
+                                    // choice anywhere else in this app's flat, no-bounce design
+                                    // language. null here turns that off for the pager specifically
+                                    // (see defaultOverscrollFactory above for how each tab's own
+                                    // content still keeps normal overscroll).
+                                    LocalOverscrollFactory provides null,
+                                ) {
                                 HorizontalPager(
                                     state = pagerState,
                                     modifier = Modifier.fillMaxSize(),
@@ -1133,6 +1212,7 @@ class MainActivity : ComponentActivity() {
                                         snapPositionalThreshold = 0.2f,
                                     ),
                                 ) { page ->
+                                    CompositionLocalProvider(LocalOverscrollFactory provides defaultOverscrollFactory) {
                                     when (page) {
                                         PAGE_MEMORIES -> MemoriesTabScreen(
                                             viewModel = homeViewModel,
@@ -1226,6 +1306,7 @@ class MainActivity : ComponentActivity() {
                                                 hazeState = hazeState,
                                             )
                                         }
+                                    }
                                     }
                                 }
 
