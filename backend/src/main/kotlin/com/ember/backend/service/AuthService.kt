@@ -64,5 +64,6 @@ class AuthService(private val userRepository: UserRepository) {
         email = email,
         profilePhotoUrl = null,
         createdAt = createdAt,
+        emailVerificationRequired = emailVerificationRequired,
     )
 }

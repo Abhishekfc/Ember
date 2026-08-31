@@ -12,6 +12,8 @@ import com.ember.backend.model.User
 import com.ember.backend.repository.FriendshipRepository
 import com.ember.backend.repository.PhotoRepository
 import com.ember.backend.repository.UserRepository
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import org.slf4j.LoggerFactory
 import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
@@ -33,6 +35,7 @@ class UserService(
     private val friendshipRepository: FriendshipRepository,
     private val photoRepository: PhotoRepository,
     private val cacheManager: CacheManager,
+    private val firebaseApp: FirebaseApp?,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -205,10 +208,32 @@ class UserService(
         val storageKeys = photoRepository.findStorageKeysBySenderId(userId) +
             listOfNotNull(user.profilePhotoStorageKey)
 
+        // Collected before the delete for the same reason as storageKeys above — the row (and
+        // this column) is about to be gone.
+        val firebaseUid = user.firebaseUid
+
         userRepository.delete(user)
         logger.info("Account deleted: userId={}", userId)
 
         storageKeys.forEach { r2StorageService.delete(it) }
+
+        // Without this, "delete my account" only ever removed this app's own data — the actual
+        // Firebase Authentication identity (email + password) lived on forever, so the same
+        // credentials could still sign in afterward, landing on a bare Firebase identity with no
+        // Emigo profile (the same NeedsProfile state a genuinely interrupted sign-up produces).
+        // That's a real gap against what "delete my account" promises in the privacy policy, not
+        // just a cosmetic leftover. Best-effort and swallowed the same way R2 cleanup above is —
+        // this runs after the row we actually care about is already gone, so a Firebase API
+        // hiccup here must never make an otherwise-successful account deletion look like it
+        // failed. Null only during the one-time migration window for an account never imported
+        // into Firebase at all, in which case there's nothing here to clean up.
+        if (firebaseUid != null) {
+            val app = firebaseApp
+            if (app != null) {
+                runCatching { FirebaseAuth.getInstance(app).deleteUser(firebaseUid) }
+                    .onFailure { logger.warn("Failed to delete Firebase identity during account deletion: firebaseUid={}", firebaseUid, it) }
+            }
+        }
     }
 
     private fun generateUsernameSuggestions(base: String): List<String> {
@@ -232,5 +257,6 @@ class UserService(
         email = email,
         profilePhotoUrl = profilePhotoStorageKey?.let { r2StorageService.publicUrl(it) },
         createdAt = createdAt,
+        emailVerificationRequired = emailVerificationRequired,
     )
 }
