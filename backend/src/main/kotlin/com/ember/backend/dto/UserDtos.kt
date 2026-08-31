@@ -14,6 +14,11 @@ data class UserProfile(
     // Backs the Memories grid's "don't let 'previous month' go back further than this account
     // ever existed" limit (see HomeViewModel.canGoToPreviousMonth on the Android client).
     val createdAt: Instant,
+    // The client checks this against Firebase's own (locally cached) isEmailVerified flag to
+    // decide whether to show the "verify your email" screen — see FirebaseAuthenticationFilter
+    // for the actual enforcement, this is just what lets the app show the right screen *before*
+    // hitting a wall on some other endpoint.
+    val emailVerificationRequired: Boolean,
 )
 
 data class UpdateProfileRequest(

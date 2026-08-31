@@ -47,4 +47,11 @@ class User(
 
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: Instant = Instant.now(),
+
+    // True for every account created from here on (see V13 migration, which grandfathered every
+    // row that existed before it in as false) — enforced in FirebaseAuthenticationFilter, which
+    // blocks every endpoint except reading your own profile for an account that has this set and
+    // whose current Firebase token isn't yet verified.
+    @Column(name = "email_verification_required", nullable = false)
+    var emailVerificationRequired: Boolean = true,
 )
