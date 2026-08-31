@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emigo</title>
+<!--
+  Firebase's own email-action handler, self-hosted so the links Emigo emails out carry
+  emigo.live rather than the raw Firebase project id. Set as the "Action URL" under
+  Authentication > Templates in the Firebase console; served at /auth/action thanks to
+  cleanUrls in vercel.json.
+
+  This one page must handle EVERY action Firebase emails, not just verification: the console
+  applies a single custom action URL to all templates at once. Password reset in particular
+  breaks entirely for every user if this page stops handling mode=resetPassword, which is why
+  that flow (including the new-password form) lives here too rather than verification alone.
+
+  The API key below is the app's public web key (it already ships inside the Android app's own
+  google-services.json) and is not a secret; Firebase security does not depend on hiding it.
+-->
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #1a1a1a;
+    --muted: #5c5c5c;
+    --rule: #e5e5e5;
+    --accent: #111111;
+    --field: #ffffff;
+    --danger: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121212; --text: #ececec; --muted: #a0a0a0; --rule: #2c2c2c; --accent: #ffffff; --field: #1c1c1c; --danger: #f2b8b5; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 48px 20px 96px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+    font-size: 16px;
+  }
+  main { max-width: 420px; margin: 0 auto; }
+  h1 { font-size: 26px; line-height: 1.25; margin: 0 0 10px; letter-spacing: -0.02em; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--muted); font-size: 15px; }
+  .email { font-weight: 600; word-break: break-all; }
+  form { margin: 22px 0 0; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 0 0 6px; }
+  input[type=password] {
+    width: 100%;
+    padding: 13px 14px;
+    font-size: 16px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--field);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+  }
+  input[type=password]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button {
+    width: 100%;
+    margin-top: 14px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    color: var(--bg);
+    background: var(--accent);
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  button[disabled] { opacity: 0.45; cursor: default; }
+  .error { color: var(--danger); font-size: 14.5px; margin-top: 12px; }
+  .spacer { height: 8px; }
+</style>
+</head>
+<body>
+<main id="root">
+  <p class="muted" id="loading">Working…</p>
+</main>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {
+  getAuth,
+  applyActionCode,
+  verifyPasswordResetCode,
+  confirmPasswordReset,
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+
+const auth = getAuth(initializeApp({
+  apiKey: 'AIzaSyBej_gun7VeJ1dg6Ej5R7Cc9ipOmkIrxqY',
+  authDomain: 'emigo-85a07.firebaseapp.com',
+  projectId: 'emigo-85a07',
+}));
+
+const root = document.getElementById('root');
+const params = new URLSearchParams(window.location.search);
+const mode = params.get('mode');
+const oobCode = params.get('oobCode');
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
+function render(title, bodyHtml) {
+  root.innerHTML = `<h1>${esc(title)}</h1>${bodyHtml}`;
+}
+
+// Deliberately plain about what went wrong and what to do next, rather than surfacing raw
+// Firebase error codes: by far the most common cause here is simply a link that was already
+// used or has since expired, and "request a new one" is the only useful action either way.
+function renderFailure(title) {
+  render(title, `
+    <p class="muted">This link is no longer valid. It may have already been used, or it may have
+    expired.</p>
+    <p class="muted">Open Emigo and request a new one.</p>
+  `);
+}
+
+async function handleVerifyEmail() {
+  try {
+    await applyActionCode(auth, oobCode);
+    render('Email verified', `
+      <p class="muted">You're all set. Head back to Emigo and tap <strong>I've verified</strong> to
+      continue.</p>
+    `);
+  } catch (e) {
+    renderFailure('Verification failed');
+  }
+}
+
+async function handleRecoverEmail() {
+  try {
+    await applyActionCode(auth, oobCode);
+    render('Email address restored', `
+      <p class="muted">Your Emigo account has been returned to its previous email address. If you
+      didn't expect this, change your password in the app straight away.</p>
+    `);
+  } catch (e) {
+    renderFailure('Couldn’t restore that address');
+  }
+}
+
+async function handleResetPassword() {
+  let email;
+  try {
+    email = await verifyPasswordResetCode(auth, oobCode);
+  } catch (e) {
+    renderFailure('Reset link expired');
+    return;
+  }
+
+  render('Choose a new password', `
+    <p class="muted">For <span class="email">${esc(email)}</span></p>
+    <form id="reset">
+      <label for="pw">New password</label>
+      <input id="pw" type="password" autocomplete="new-password" minlength="8" required>
+      <div class="spacer"></div>
+      <label for="pw2">Confirm new password</label>
+      <input id="pw2" type="password" autocomplete="new-password" minlength="8" required>
+      <button type="submit" id="submit">Save new password</button>
+      <p class="error" id="err" hidden></p>
+    </form>
+  `);
+
+  const form = document.getElementById('reset');
+  const err = document.getElementById('err');
+  const submit = document.getElementById('submit');
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const pw = document.getElementById('pw').value;
+    const pw2 = document.getElementById('pw2').value;
+    err.hidden = true;
+
+    // Same eight-character floor the app's own sign-up enforces (MIN_PASSWORD_LENGTH in
+    // LoginViewModel) — a password set here has to be one the app would have accepted.
+    if (pw.length < 8) {
+      err.textContent = 'Use at least 8 characters.';
+      err.hidden = false;
+      return;
+    }
+    if (pw !== pw2) {
+      err.textContent = 'Those passwords don’t match.';
+      err.hidden = false;
+      return;
+    }
+
+    submit.disabled = true;
+    submit.textContent = 'Saving…';
+    try {
+      await confirmPasswordReset(auth, oobCode, pw);
+      render('Password changed', `
+        <p class="muted">Open Emigo and sign in with your new password.</p>
+      `);
+    } catch (e) {
+      submit.disabled = false;
+      submit.textContent = 'Save new password';
+      err.textContent = e?.code === 'auth/weak-password'
+        ? 'That password is too weak. Try a longer one.'
+        : 'That link is no longer valid. Request a new reset email from Emigo.';
+      err.hidden = false;
+    }
+  });
+}
+
+if (!oobCode || !mode) {
+  render('Nothing to do here', '<p class="muted">Open this page from a link in an Emigo email.</p>');
+} else if (mode === 'verifyEmail') {
+  handleVerifyEmail();
+} else if (mode === 'resetPassword') {
+  handleResetPassword();
+} else if (mode === 'recoverEmail') {
+  handleRecoverEmail();
+} else {
+  // Any future action type Firebase adds lands here rather than on a blank page.
+  render('Unsupported link', '<p class="muted">Open Emigo and try again from the app.</p>');
+}
+</script>
+</body>
+</html>
