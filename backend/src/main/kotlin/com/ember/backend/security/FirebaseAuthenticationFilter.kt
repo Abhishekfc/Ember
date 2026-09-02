@@ -1,6 +1,7 @@
 package com.ember.backend.security
 
 import com.ember.backend.repository.UserRepository
+import com.ember.backend.service.UNVERIFIED_ACCOUNT_GRACE_PERIOD
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -8,6 +9,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
+import java.time.Instant
 
 /**
  * Replaces the old JwtAuthenticationFilter now that Firebase Authentication owns identity rather
@@ -47,44 +49,57 @@ class FirebaseAuthenticationFilter(
             val verified = tokenVerifier.verify(token)
             val user = verified?.let { userRepository.findByFirebaseUid(it.uid) }
             if (user != null) {
-                // Verification has actually happened, so this account is no longer pending and
-                // stops being a candidate for EmailVerificationExpiryService's sweep. Clearing it
-                // is what keeps that sweep's query bounded to accounts genuinely still waiting:
-                // left set forever (as it was), the query matched every account ever created past
-                // the grace period — the entire user base, permanently — and the sweep made one
-                // live Firebase lookup per row, every minute, growing without limit as the app
-                // grows. Guarded on the flag itself, so this is a single write once per account
-                // and then never again, not a write on every authenticated request.
-                //
-                // Swallowed on failure on purpose: this is housekeeping on the authentication
-                // path, and authentication must not start failing because a bookkeeping write
-                // didn't land. The sweep clears the same flag itself anyway, so a miss here costs
-                // one more Firebase check on that account, nothing more.
-                if (user.emailVerificationRequired && verified.emailVerified) {
-                    runCatching { userRepository.clearEmailVerificationRequired(user.id) }
-                }
-                // A real, matched identity that must verify its email and hasn't yet — blocked
-                // from everything except reading its own profile (which is what lets the client
-                // know it's in this state at all, and show the right screen instead of a wall of
-                // failing requests). GET /users/me specifically, not the whole prefix: an update
-                // to the profile is still a mutation this account shouldn't be able to make yet.
-                // Written directly here rather than thrown as an ApiException, since this filter
-                // runs before Spring MVC's dispatch — GlobalExceptionHandler's @ExceptionHandlers
-                // never see anything a filter short-circuits on.
-                val isOwnProfileRead = request.method == "GET" && request.requestURI == "/users/me"
-                if (user.emailVerificationRequired && !verified.emailVerified && !isOwnProfileRead) {
-                    response.status = HttpServletResponse.SC_FORBIDDEN
-                    response.contentType = "application/json"
-                    // A dedicated header, not something baked into the JSON body — the client's
-                    // sessionExpired-style interceptor only needs a single cheap header check to
-                    // tell this apart from every other 403 in the app (e.g.
-                    // GoldSubscriptionRequiredException, also a plain 403), without coupling it to
-                    // the exact error message text.
-                    response.setHeader("X-Ember-Error", "EMAIL_NOT_VERIFIED")
-                    response.writer.write(
-                        """{"status":403,"error":"Forbidden","message":"Please verify your email to continue"}""",
-                    )
-                    return
+                // Verification within the deadline is what actually clears the pending flag below
+                // — this is the *only* place it ever gets cleared (EmailVerificationExpiryService's
+                // own sweep never clears it any more, only deletes what's still set once its
+                // deadline has passed — see that class's own doc comment). Guarded on the flag
+                // itself, so this is a single write once per account and then never again, not a
+                // write on every authenticated request. Swallowed on failure on purpose: this is
+                // housekeeping on the authentication path, and authentication must not start
+                // failing because a bookkeeping write didn't land — a miss here just means this
+                // same write is retried on the account's very next authenticated request instead.
+                if (user.emailVerificationRequired) {
+                    // Gated on the exact same deadline EmailVerificationExpiryService enforces
+                    // (see UNVERIFIED_ACCOUNT_GRACE_PERIOD's own doc comment) — not just on
+                    // whether Firebase currently says verified. A verification clicked *after*
+                    // that deadline still makes Firebase's own reload happily report verified (it
+                    // has no idea this app enforces a stricter cutoff of its own), so clearing the
+                    // flag on that signal alone let a late verification rescue an account this
+                    // backend had already decided to delete — confirmed by testing exactly that:
+                    // verifying only once the on-screen countdown had already failed still left
+                    // the account alive forever afterward. Once past its own deadline, this
+                    // account is treated as expired regardless of what Firebase reports, and stays
+                    // blocked so the sweep is free to delete it without anything here having
+                    // already granted it permanent access on some earlier request.
+                    val pastDeadline = Instant.now().isAfter(user.createdAt.plus(UNVERIFIED_ACCOUNT_GRACE_PERIOD))
+                    if (verified.emailVerified && !pastDeadline) {
+                        runCatching { userRepository.clearEmailVerificationRequired(user.id) }
+                    } else {
+                        // A real, matched identity that must verify its email and hasn't (in
+                        // time) — blocked from everything except reading its own profile (which is
+                        // what lets the client know it's in this state at all, and show the right
+                        // screen instead of a wall of failing requests). GET /users/me
+                        // specifically, not the whole prefix: an update to the profile is still a
+                        // mutation this account shouldn't be able to make yet. Written directly
+                        // here rather than thrown as an ApiException, since this filter runs
+                        // before Spring MVC's dispatch — GlobalExceptionHandler's
+                        // @ExceptionHandlers never see anything a filter short-circuits on.
+                        val isOwnProfileRead = request.method == "GET" && request.requestURI == "/users/me"
+                        if (!isOwnProfileRead) {
+                            response.status = HttpServletResponse.SC_FORBIDDEN
+                            response.contentType = "application/json"
+                            // A dedicated header, not something baked into the JSON body — the
+                            // client's sessionExpired-style interceptor only needs a single cheap
+                            // header check to tell this apart from every other 403 in the app
+                            // (e.g. GoldSubscriptionRequiredException, also a plain 403), without
+                            // coupling it to the exact error message text.
+                            response.setHeader("X-Ember-Error", "EMAIL_NOT_VERIFIED")
+                            response.writer.write(
+                                """{"status":403,"error":"Forbidden","message":"Please verify your email to continue"}""",
+                            )
+                            return
+                        }
+                    }
                 }
                 if (SecurityContextHolder.getContext().authentication == null) {
                     val authentication = UsernamePasswordAuthenticationToken(
