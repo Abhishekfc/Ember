@@ -41,3 +41,13 @@ data class UsernameAvailability(
 data class EmailAvailability(
     val available: Boolean,
 )
+
+/** The one thing signing in by username needs that Firebase itself has no concept of: Firebase
+ * Authentication signs in by email only, so a username typed into the login screen has to be
+ * resolved back to its email here, server-side, before the client can hand it to Firebase at all.
+ * [email] is null when [username] doesn't match any account — the client treats that exactly like
+ * a wrong password (see LoginViewModel's own submitLogin), not a distinct "username not found",
+ * for the same reason [EmailAvailability] doesn't reveal more than it has to during sign-up. */
+data class UsernameLoginLookup(
+    val email: String?,
+)
