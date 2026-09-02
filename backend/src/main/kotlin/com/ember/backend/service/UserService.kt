@@ -3,6 +3,7 @@ package com.ember.backend.service
 import com.ember.backend.dto.EmailAvailability
 import com.ember.backend.dto.UpdateProfileRequest
 import com.ember.backend.dto.UsernameAvailability
+import com.ember.backend.dto.UsernameLoginLookup
 import com.ember.backend.dto.UserProfile
 import com.ember.backend.exception.InvalidFriendRequestException
 import com.ember.backend.exception.ResourceNotFoundException
@@ -163,6 +164,19 @@ class UserService(
         val normalized = candidate.trim().lowercase()
         if (normalized.isEmpty()) return EmailAvailability(available = false)
         return EmailAvailability(available = !userRepository.existsByEmail(normalized))
+    }
+
+    /** Resolves a username typed into the login screen back to the email Firebase actually needs
+     * to sign in with — same trim+lowercase normalization [AuthService.register] stores usernames
+     * with, so this matches exactly what a real account was created with. Returns a null email for
+     * no match rather than throwing or 404ing, so the controller (and rate limiting) here looks
+     * identical whether the username exists or not — the one-line difference between "doesn't
+     * exist" and "wrong password" is exactly what [checkEmailAvailabilityPublic] already avoids
+     * leaking for email, and a username deserves the same treatment. */
+    fun resolveUsernameForLogin(candidate: String): UsernameLoginLookup {
+        val normalized = candidate.trim().lowercase()
+        if (normalized.isEmpty()) return UsernameLoginLookup(email = null)
+        return UsernameLoginLookup(email = userRepository.findByUsername(normalized)?.email)
     }
 
     /**

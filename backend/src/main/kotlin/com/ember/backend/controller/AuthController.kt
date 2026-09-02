@@ -4,6 +4,7 @@ import com.ember.backend.dto.CompleteProfileRequest
 import com.ember.backend.dto.EmailAvailability
 import com.ember.backend.dto.UserProfile
 import com.ember.backend.dto.UsernameAvailability
+import com.ember.backend.dto.UsernameLoginLookup
 import com.ember.backend.security.FirebaseTokenVerifier
 import com.ember.backend.service.AuthService
 import com.ember.backend.service.RateLimiterService
@@ -78,5 +79,15 @@ class AuthController(
     fun checkEmailAvailability(@RequestParam email: String, httpRequest: HttpServletRequest): EmailAvailability {
         rateLimiterService.checkLimit("email-availability:${httpRequest.remoteAddr}", maxAttempts = 20, window = Duration.ofMinutes(10))
         return userService.checkEmailAvailabilityPublic(email)
+    }
+
+    // Firebase signs in by email only — no concept of a username at all — so a username typed
+    // into the login screen has to be resolved back to its email here before the client can hand
+    // it to Firebase. Same rate limit as email-availability above, and for the same reason: this
+    // is one more way to test whether a given identifier has an Emigo account behind it.
+    @GetMapping("/username-login-lookup")
+    fun resolveUsernameForLogin(@RequestParam username: String, httpRequest: HttpServletRequest): UsernameLoginLookup {
+        rateLimiterService.checkLimit("username-login-lookup:${httpRequest.remoteAddr}", maxAttempts = 20, window = Duration.ofMinutes(10))
+        return userService.resolveUsernameForLogin(username)
     }
 }
