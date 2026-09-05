@@ -107,22 +107,23 @@ fun AuthPrimaryButton(
     }
 }
 
-/** The quieter alternative-method button (Google sign-in) — outlined rather than filled, so it
- * reads as secondary to whichever [AuthPrimaryButton] shares its screen without competing for
- * attention. Same press-compress micro-interaction as the primary button, just applied to an
- * outline instead of a gradient fill. */
+/** The quieter alternative-action button — outlined rather than filled, so it reads as secondary
+ * to whichever [AuthPrimaryButton] shares its screen without competing for attention. Same
+ * press-compress micro-interaction as the primary button, just applied to an outline instead of a
+ * gradient fill. */
 @Composable
 fun AuthSecondaryButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     leadingContent: @Composable () -> Unit = {},
 ) {
     val colors = AuthPalette
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1f,
+        targetValue = if (isPressed && enabled) 0.97f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "authSecondaryButtonScale",
     )
@@ -134,7 +135,7 @@ fun AuthSecondaryButton(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
             .border(1.dp, colors.border, shape)
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick)
             .padding(vertical = 15.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -145,23 +146,9 @@ fun AuthSecondaryButton(
             fontFamily = PublicSansFontFamily,
             fontSize = 14.5.sp,
             fontWeight = FontWeight.Bold,
-            color = colors.cream,
+            color = if (enabled) colors.cream else colors.mutedDim,
             modifier = Modifier.padding(start = 10.dp),
         )
-    }
-}
-
-/** A plain, monochrome "G" glyph stands in for Google's own multi-color mark — this app doesn't
- * bundle Google's actual brand asset, and drawing a look-alike of it would misrepresent an
- * asset that isn't really there. Honest placeholder over a fabricated logo. */
-@Composable
-fun GoogleGlyph(modifier: Modifier = Modifier) {
-    val colors = AuthPalette
-    Box(
-        modifier = modifier.size(20.dp).clip(CircleShape).border(1.5.dp, colors.mutedDim, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = "G", fontFamily = PublicSansFontFamily, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.cream)
     }
 }
 

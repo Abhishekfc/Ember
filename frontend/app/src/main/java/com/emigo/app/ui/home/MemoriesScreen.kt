@@ -300,20 +300,29 @@ private fun MemoriesEmptyState(onCameraClick: () -> Unit, modifier: Modifier = M
             color = colors.muted,
             modifier = Modifier.padding(top = 4.dp),
         )
-        Text(
-            text = "Open camera",
-            fontFamily = PublicSansFontFamily,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.glow,
+        // Same solid-white pill RecipientPickerScreen's own "Find friends" button uses (see its
+        // own comment there) — same look for the same class of action, wherever it shows up.
+        Row(
             modifier = Modifier
-                .padding(top = 14.dp)
+                .padding(top = 18.dp)
+                .clip(RoundedCornerShape(percent = 50))
+                .background(Color.White)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onCameraClick,
-                ),
-        )
+                )
+                .padding(horizontal = 28.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Open camera",
+                fontFamily = PublicSansFontFamily,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black,
+            )
+        }
     }
 }
 

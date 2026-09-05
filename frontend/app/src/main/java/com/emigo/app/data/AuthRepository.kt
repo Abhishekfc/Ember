@@ -7,6 +7,7 @@ import com.emigo.app.data.remote.dto.DeviceTokenRequestDto
 import com.emigo.app.data.remote.dto.EmailAvailabilityDto
 import com.emigo.app.data.remote.dto.ErrorResponse
 import com.emigo.app.data.remote.dto.UsernameAvailabilityDto
+import com.emigo.app.data.remote.dto.UsernameLoginLookupDto
 import com.emigo.app.data.remote.dto.UserProfileDto
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.tasks.await
@@ -36,14 +37,20 @@ sealed class SignInOutcome {
     data class NeedsVerification(val email: String, val verifyByEpochMillis: Long) : SignInOutcome()
 }
 
-/** True when [profile]'s account requires email verification and Firebase's own (locally cached)
- * record for the current identity says that hasn't happened — the one check every entry point
- * into the app (fresh sign-up, fresh sign-in, and NetworkModule.emailVerificationRequired for an
- * already-signed-in session) needs to make the same way. Firebase's cached flag can be stale right
- * after the user actually clicks the email link — see EmailVerificationScreen's own "I've
- * verified" action, which forces a reload before re-checking this. */
-fun needsEmailVerification(profile: UserProfileDto): Boolean =
-    profile.emailVerificationRequired && FirebaseAuth.getInstance().currentUser?.isEmailVerified != true
+/** True when [profile]'s account still requires email verification, per the server's own say-so
+ * alone — the one check both [signIn]/[resumeSession] (via checkExistingProfile) and a fresh
+ * sign-up's own submitUsername need to make the same way.
+ *
+ * Used to also require Firebase's own locally-cached `isEmailVerified` to agree before returning
+ * true. That doubled-up check is exactly what let a verification clicked *after* the 10-minute
+ * deadline still read as "done" on this device: Firebase's own reload happily confirms it (Firebase
+ * has no idea this app enforces its own stricter cutoff), and that alone was enough for this
+ * function to decide no verification was needed any more — silently walking straight past the
+ * server's own [UserProfileDto.emailVerificationRequired], which FirebaseAuthenticationFilter had
+ * deliberately left set precisely because that same verification arrived too late to count. The
+ * server is the only side that knows about the deadline at all, so it's the only side that gets a
+ * vote here now. */
+fun needsEmailVerification(profile: UserProfileDto): Boolean = profile.emailVerificationRequired
 
 /** Must match EmailVerificationExpiryService's own grace period on the backend exactly — this is
  * purely the number the countdown UI shows, the backend's own copy of it is the one that actually
@@ -146,13 +153,44 @@ class AuthRepository(
         }
     }
 
-    suspend fun signIn(email: String, password: String): Result<SignInOutcome> {
+    /** [identifier] is a real email most of the time, but Firebase has no concept of a username
+     * at all, so anything without an "@" is resolved back to its account's email first — the one
+     * thing our own backend still knows that Firebase doesn't. A username that matches no account
+     * fails exactly the same way a wrong password does (see the doc comment further down), so the
+     * two cases can't be told apart from the outside. */
+    suspend fun signIn(identifier: String, password: String): Result<SignInOutcome> {
+        val trimmedIdentifier = identifier.trim()
+        val email = if (trimmedIdentifier.contains("@")) {
+            trimmedIdentifier
+        } else {
+            val lookup = resolveUsernameForLogin(trimmedIdentifier).getOrElse { return Result.failure(it) }
+            // No account has this username — deliberately the same failure a wrong password
+            // produces, not a distinct "username not found", for the same reason NeedsProfile
+            // already reports itself as a plain failed sign-in rather than routing anywhere that
+            // would let the difference be used to work out which usernames are actually taken.
+            lookup.email ?: return Result.failure(Exception("Incorrect email or password"))
+        }
         try {
             FirebaseAuth.getInstance().signInWithEmailAndPassword(email, password).await()
         } catch (ex: Exception) {
             return Result.failure(Exception(firebaseErrorMessage(ex) ?: "Something went wrong"))
         }
         return checkExistingProfile()
+    }
+
+    /** The one thing signing in by username needs that Firebase itself can't answer — see
+     * EmberApi.resolveUsernameForLogin's own doc comment. A separate function from [signIn]
+     * rather than inlined, since a network failure looking this up is a genuinely different
+     * outcome from "no account has this username" and each needs to be handled differently by
+     * the caller above. */
+    private suspend fun resolveUsernameForLogin(username: String): Result<UsernameLoginLookupDto> = safeCall {
+        val response = api.resolveUsernameForLogin(username)
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            Result.success(body)
+        } else {
+            Result.failure(Exception("Couldn't check that username"))
+        }
     }
 
     /**
@@ -181,6 +219,31 @@ class AuthRepository(
         return checkExistingProfile()
     }
 
+    /** Writes the same local echo [checkExistingProfile] writes for a sign-in/resumeSession
+     * discovering [SignInOutcome.NeedsVerification] — needed as its own call because a fresh
+     * sign-up (LoginViewModel.submitUsername, right after [signUp] returns) never goes through
+     * checkExistingProfile at all; it already has the completed profile in hand and decides
+     * [needsEmailVerification] from that directly. Without this second call site, force-quitting
+     * the app in the first few seconds after creating an account — before any sign-in/resumeSession
+     * check had ever run to populate this cache — still showed the same brief flash into the app
+     * shell this cache exists to prevent, just for a narrower window than the general case. */
+    suspend fun rememberPendingVerification(email: String, deadlineMillis: Long) {
+        FirebaseAuth.getInstance().currentUser?.uid?.let {
+            tokenStore.savePendingVerification(it, email, deadlineMillis)
+        }
+    }
+
+    /** The other half of [rememberPendingVerification]: called from
+     * [com.emigo.app.ui.auth.LoginViewModel.onEmailVerifiedContinue] the moment Firebase itself
+     * confirms `isEmailVerified`, since that path — unlike [checkExistingProfile] — never calls
+     * `GET /users/me` at all and so would otherwise leave the local echo claiming this account is
+     * still pending. Left uncleared, the *next* cold start would prime MainActivity's first frame
+     * straight onto the verification screen for an account that's actually already fully verified
+     * and sitting inside the app — a worse version of the exact flash this cache exists to fix. */
+    suspend fun forgetPendingVerification() {
+        tokenStore.clearPendingVerification()
+    }
+
     /** Firebase already confirmed who this is by the time [signIn] calls this — the open
      * questions are whether an Emigo profile exists yet for them, and (GET /users/me succeeds
      * either way — see FirebaseAuthenticationFilter's own allowlist for that endpoint
@@ -193,11 +256,23 @@ class AuthRepository(
         val response = api.getMyProfile()
         val body = response.body()
         when {
-            response.isSuccessful && body != null && needsEmailVerification(body) -> Result.success(
-                SignInOutcome.NeedsVerification(body.email, verificationDeadlineFor(body)),
-            )
+            response.isSuccessful && body != null && needsEmailVerification(body) -> {
+                val deadline = verificationDeadlineFor(body)
+                // Local echo of this exact outcome — see TokenStore.PendingVerification's own doc
+                // comment for why: it's what lets MainActivity's very first frame on a cold start
+                // already know to show this screen, rather than only finding out after this same
+                // network round trip runs again a moment later. Firebase's currentUser is never
+                // null here — getMyProfile() only ever succeeds with someone actually signed in.
+                FirebaseAuth.getInstance().currentUser?.uid?.let {
+                    tokenStore.savePendingVerification(it, body.email, deadline)
+                }
+                Result.success(SignInOutcome.NeedsVerification(body.email, deadline))
+            }
             response.isSuccessful && body != null -> {
                 tokenStore.saveDisplayName(body.displayName)
+                // Confirmed verified (or never needed to be) — the local echo above, if any, is
+                // now stale and must not keep claiming otherwise on some later cold start.
+                tokenStore.clearPendingVerification()
                 Result.success(SignInOutcome.SignedIn)
             }
             response.code() == 401 -> Result.success(

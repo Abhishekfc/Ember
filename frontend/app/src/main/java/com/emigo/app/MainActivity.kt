@@ -244,7 +244,29 @@ class MainActivity : ComponentActivity() {
         // the backdrop appeared alone, then everything else arrived a beat later.
         // Firebase's own SDK persists this across process restarts in its own storage — no
         // local read needed at all, synchronous or otherwise, unlike the custom JWT this replaced.
-        val hasSavedSession = FirebaseAuth.getInstance().currentUser != null
+        var hasSavedSession = FirebaseAuth.getInstance().currentUser != null
+        // TokenStore's own local echo of the last NeedsVerification outcome this device actually
+        // saw (see its own doc comment) — read synchronously, same as initialHomeCache just below,
+        // so a still-pending account's cold start can render the verification screen on frame one
+        // instead of the full app shell. Matched against the *current* signed-in uid specifically:
+        // a stale entry left over from a previous account on this same device (see
+        // TokenStore.clear's own doc comment for why sign-out clears it) must never apply to
+        // whoever's actually signed in now.
+        var pendingVerification = runBlocking { networkModule.tokenStore.readPendingVerification() }
+            ?.takeIf { it.firebaseUid == FirebaseAuth.getInstance().currentUser?.uid }
+        // An already-past deadline means EmailVerificationExpiryService is going to delete this
+        // account on its very next sweep, if it hasn't already — there's nothing left to resume.
+        // Re-priming the verification screen from this stale entry would just recompute straight
+        // to its own "Verification failed" dead end on frame one, with no way forward, exactly the
+        // restart behavior this is meant to avoid. Signing out locally, right here before the
+        // first frame, means a restart after the countdown has actually run out always lands on a
+        // clean Welcome screen instead — same as if this device had never signed into it.
+        if (pendingVerification != null && pendingVerification.deadlineMillis <= System.currentTimeMillis()) {
+            FirebaseAuth.getInstance().signOut()
+            runBlocking { networkModule.tokenStore.clear() }
+            hasSavedSession = false
+            pendingVerification = null
+        }
         var initialHomeCache = runBlocking {
             InitialHomeCache(
                 feedItems = localListCache.read<FeedItem>(LocalListCache.KEY_FEED) ?: emptyList(),
@@ -299,13 +321,23 @@ class MainActivity : ComponentActivity() {
                 val loginViewModel: LoginViewModel = viewModel(
                     key = "login-$loginSessionId",
                     factory = viewModelFactory {
-                        initializer { LoginViewModel(authRepository) }
+                        initializer {
+                            LoginViewModel(
+                                authRepository,
+                                initialPendingVerificationEmail = pendingVerification?.email,
+                                initialPendingVerificationDeadlineMillis = pendingVerification?.deadlineMillis,
+                            )
+                        }
                     },
                 )
-                // Seeded from the synchronous read in onCreate, so there's no "we don't know yet"
-                // state to render a placeholder for — a returning user gets Home on frame one and
-                // a signed-out user gets Login on frame one.
-                var authenticated by remember { mutableStateOf(hasSavedSession) }
+                // Seeded from the synchronous reads in onCreate, so there's no "we don't know yet"
+                // state to render a placeholder for — a returning, fully-verified user gets Home on
+                // frame one, a signed-out user gets Login on frame one, and a signed-in user who was
+                // last seen still needing to verify gets straight to that screen on frame one too
+                // (see pendingVerification's own doc comment) rather than a flash of the app shell
+                // first. resumeSession's own LaunchedEffect below still re-confirms all of this
+                // against a live network check — this is only ever the best guess before that.
+                var authenticated by remember { mutableStateOf(hasSavedSession && pendingVerification == null) }
                 var nestedScreen by remember { mutableStateOf<NestedScreen?>(null) }
                 var selectedProfileSubject by remember { mutableStateOf<ProfileSubject?>(null) }
                 // Where closing the friend profile should land, since `nestedScreen` holds one
@@ -449,6 +481,18 @@ class MainActivity : ComponentActivity() {
                     authenticated = false
                     nestedScreen = null
                     selectedProfileSubject = null
+                    // pendingVerification is onCreate's own one-time cold-start snapshot — read
+                    // once, before the first frame, and still captured by the loginViewModel
+                    // factory below for exactly that one first construction. Left uncleared here,
+                    // every LoginViewModel built after *this* point (including the very next one,
+                    // built right after this sign-out) kept being re-primed straight back onto the
+                    // same NEEDS_EMAIL_VERIFICATION step with the same already-expired deadline —
+                    // which is exactly what made "Try again later" look broken: tapping it signed
+                    // out, but the freshly (re)created screen immediately recomputed as expired
+                    // again, indistinguishable from having done nothing at all. Nulling it out here
+                    // means any account reached from here on — a fresh sign-up, a different sign-in,
+                    // or just backing out to Welcome — starts from a genuinely clean slate instead.
+                    pendingVerification = null
                 }
 
                 // The backend issues short-lived JWTs with no refresh flow yet, so a session
@@ -476,9 +520,37 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     if (!hasSavedSession) return@LaunchedEffect
                     authRepository.resumeSession().onSuccess { outcome ->
-                        if (outcome is SignInOutcome.NeedsVerification) {
-                            loginViewModel.showVerificationRequired(outcome)
-                            authenticated = false
+                        when (outcome) {
+                            is SignInOutcome.NeedsVerification -> {
+                                loginViewModel.showVerificationRequired(outcome)
+                                authenticated = false
+                            }
+                            is SignInOutcome.SignedIn -> {
+                                // Frame one guessed "still pending" from TokenStore's local echo
+                                // (see pendingVerification in onCreate) and this authoritative
+                                // check just proved that guess wrong — verification actually
+                                // completed somewhere this device didn't see happen itself (another
+                                // device, or the link opened outside this app). Without this branch
+                                // a genuinely verified account would be stuck looking at the
+                                // verification screen this same check just confirmed it no longer
+                                // belongs on.
+                                if (!authenticated) authenticated = true
+                            }
+                            is SignInOutcome.NeedsProfile -> {
+                                // Only acted on while this device is mid-verification-flow, not
+                                // whenever this outcome could theoretically occur elsewhere — see
+                                // the guard's own reasoning: hasSavedSession is true (checked
+                                // above) and authenticated is false at this exact point only when
+                                // onCreate's synchronous check believed this account still needed
+                                // to verify. Reaching here regardless means EmailVerificationExpiry
+                                // Service has since deleted the row entirely (the onCreate check
+                                // above only catches a deadline that had *already* passed before
+                                // this launch; this catches the same account tipping over that
+                                // same deadline, or getting swept, in the seconds since). Nothing
+                                // left to resume — a clean sign-out returns to Welcome instead of
+                                // leaving the verification screen's own dead end on screen.
+                                if (!authenticated) onSignOut()
+                            }
                         }
                     }
                 }

@@ -191,10 +191,11 @@ private fun LoginStep(viewModel: LoginViewModel, onAuthenticated: () -> Unit) {
         AuthTextField(
             value = viewModel.loginIdentifier,
             onValueChange = viewModel::onLoginIdentifierChange,
-            // Email only now, not "Email or username" — Firebase Authentication (which now owns
-            // sign-in, see LoginViewModel's own doc comment) has no concept of a username at all,
-            // so one typed here can no longer be resolved to an account the way it used to be.
-            placeholder = "Email",
+            // Firebase Authentication (which owns sign-in, see LoginViewModel's own doc comment)
+            // has no concept of a username at all, but AuthRepository.signIn resolves one back to
+            // its email via a small backend lookup before handing it to Firebase — so this field
+            // still accepts either, same as before the Firebase migration.
+            placeholder = "Email or username",
             keyboardType = KeyboardType.Email,
             imeAction = ImeAction.Next,
             modifier = Modifier.padding(top = 24.dp).focusRequester(emailFocus),
@@ -495,6 +496,11 @@ private fun RegisterUsernameStep(viewModel: LoginViewModel) {
  * reaching it (a fresh sign-up, or a returning sign-in that was never verified) differ in what
  * "Continue" does next. No back arrow: [onSignOut] is the only way off this screen, since going
  * "back" can't undo the Firebase identity that already exists by the time this shows. */
+// Firebase's own cooldown between consecutive sendEmailVerification calls to the same address —
+// see the doc comment where this is used, on the resend-cooldown countdown, for why the button
+// needs to know about it at all.
+private const val RESEND_COOLDOWN_MILLIS = 3 * 60 * 1000L
+
 @Composable
 private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Unit, onSignOut: () -> Unit) {
     val colors = AuthPalette
@@ -524,6 +530,26 @@ private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Un
         }
     }
     val hasExpired = remainingMillis <= 0L
+
+    // Sign-up already fires one verification email automatically (see AuthRepository.signUp) —
+    // tapping "Resend" moments later is really a *second* request to Firebase for the same
+    // address, and Firebase enforces its own short cooldown between them regardless of whether
+    // the first one was automatic. Without blocking the button here, tapping it early didn't fail
+    // quietly — it surfaced Firebase's own "too many attempts" message, confusing for someone who,
+    // from their own side, had never tapped Resend before. Derived from the same createdAt this
+    // screen's own countdown is built on (deadline minus the grace period it was added to), not a
+    // separately-started timer, so it can't drift from what the countdown itself represents.
+    val accountCreatedAtMillis = viewModel.pendingVerificationDeadlineMillis - EMAIL_VERIFICATION_GRACE_PERIOD_MILLIS
+    var resendCooldownRemainingMillis by remember(viewModel.pendingVerificationDeadlineMillis) {
+        mutableStateOf(accountCreatedAtMillis + RESEND_COOLDOWN_MILLIS - System.currentTimeMillis())
+    }
+    LaunchedEffect(viewModel.pendingVerificationDeadlineMillis) {
+        while (resendCooldownRemainingMillis > 0L) {
+            delay(1000)
+            resendCooldownRemainingMillis = accountCreatedAtMillis + RESEND_COOLDOWN_MILLIS - System.currentTimeMillis()
+        }
+    }
+    val canResend = resendCooldownRemainingMillis <= 0L
 
     AuthStepScaffold(onBack = null) {
         Icon(
@@ -616,9 +642,11 @@ private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Un
                     modifier = Modifier.padding(top = 12.dp),
                 )
             } else {
+                val resendCooldownSeconds = (resendCooldownRemainingMillis / 1000).coerceAtLeast(0)
                 AuthSecondaryButton(
-                    text = "Resend email",
+                    text = if (canResend) "Resend email" else "Resend in %d:%02d".format(resendCooldownSeconds / 60, resendCooldownSeconds % 60),
                     onClick = viewModel::resendVerificationEmail,
+                    enabled = canResend,
                     modifier = Modifier.padding(top = 12.dp),
                 )
             }
