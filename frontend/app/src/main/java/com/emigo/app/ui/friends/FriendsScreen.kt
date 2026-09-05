@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.data.remote.dto.PendingFriendRequestDto
-import com.emigo.app.ui.components.InviteFriendsRow
 import com.emigo.app.ui.components.TabScreenScaffold
 import com.emigo.app.ui.home.formatRelativeTime
 import com.emigo.app.ui.theme.EmberTheme
@@ -120,8 +119,10 @@ fun FriendsScreen(
         listState = listState,
     ) {
         // The search bar is the scaffold's own first list item, not a fixed sibling above it —
-        // it scrolls away with the rest of the list instead of staying pinned forever.
-        item(key = "search") {
+        // it scrolls away with the rest of the list instead of staying pinned forever. Hidden
+        // entirely with zero friends — there's nothing to search yet, and showing an input with
+        // no possible results read as broken rather than just empty.
+        if (viewModel.friends.isNotEmpty()) item(key = "search") {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -194,19 +195,16 @@ fun FriendsScreen(
                             )
                         }
                         if (!isSearching) {
-                            // Same invite row Find People's own idle state shows — genuinely
-                            // zero friends (not just a search filter with no matches) is exactly
-                            // the moment someone worth inviting might not be on Emigo yet either.
-                            // No separate "No friends yet" line above it any more — the invite
-                            // row already makes that obvious on its own.
+                            // Plain text only, nothing else — no invite row, no icons. The search
+                            // bar above is already hidden in this same state (see item("search")),
+                            // so this is deliberately the one thing on screen.
                             Text(
-                                text = "Not on Emigo yet? Invite them.",
+                                text = "No friends yet",
                                 fontFamily = typography.body,
-                                fontSize = 12.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = colors.mutedDim,
                             )
-                            InviteFriendsRow(modifier = Modifier.padding(top = 14.dp))
                         }
                     }
                 }
@@ -599,28 +597,31 @@ private fun FriendRow(
             )
         }
         when {
-            // A broken streak with a live restore window replaces the flame entirely — a pill,
-            // not another icon, since this is a real action (tap to restore), not a status.
-            // Deliberately minimal — no icon, no border, no background wash, just tinted text —
-            // so it doesn't compete with the invite/pin affordances already in this row, and
-            // doesn't reintroduce the colored-badge-behind-a-glyph look this app avoids elsewhere.
+            // A broken streak with a live restore window replaces the flame entirely — filled
+            // with the app's own accent (colors.glow), the same yellow the flame icon two rows up
+            // uses for this exact concept, with colors.accentText on top — the same dark-on-accent
+            // pairing every other filled button in the app already uses (AddActions' "Add",
+            // FriendProfileScreen's "Done"). An unrelated orange was tried here first and looked
+            // wrong precisely because it wasn't that color: the one accent this app actually has.
+            // Sized to sit quietly in the row rather than outshout the friend's own name next to it.
             isStreakRestoreAvailable -> {
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
+                        .background(colors.glow)
                         .clickable(enabled = !isRestoring, onClick = onRestoreStreakClick)
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 11.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (isRestoring) {
-                        CircularProgressIndicator(modifier = Modifier.size(11.dp), color = colors.glow, strokeWidth = 1.5.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(11.dp), color = colors.accentText, strokeWidth = 1.5.dp)
                     } else {
                         Text(
                             text = "Restore streak",
                             fontFamily = typography.body,
-                            fontSize = 11.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = colors.glow,
+                            color = colors.accentText,
                         )
                     }
                 }

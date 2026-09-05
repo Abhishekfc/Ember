@@ -23,6 +23,7 @@ import com.emigo.app.data.remote.dto.SubscriptionStatusDto
 import com.emigo.app.data.remote.dto.UpdateProfileRequestDto
 import com.emigo.app.data.remote.dto.EmailAvailabilityDto
 import com.emigo.app.data.remote.dto.UsernameAvailabilityDto
+import com.emigo.app.data.remote.dto.UsernameLoginLookupDto
 import com.emigo.app.data.remote.dto.UserProfileDto
 import okhttp3.MultipartBody
 import retrofit2.Response
@@ -56,6 +57,13 @@ interface EmberApi {
      * call once a password, name and username have all already been filled in. */
     @GET("auth/email-availability")
     suspend fun checkEmailAvailabilityPublic(@Query("email") email: String): Response<EmailAvailabilityDto>
+
+    /** Resolves a username typed into the login screen back to the email Firebase actually needs
+     * — see [com.emigo.app.data.remote.dto.UsernameLoginLookupDto]'s own doc comment for why this
+     * has to exist at all. Public/pre-auth for the same reason [checkEmailAvailabilityPublic] is:
+     * there's no token yet at the point sign-in needs this answer. */
+    @GET("auth/username-login-lookup")
+    suspend fun resolveUsernameForLogin(@Query("username") username: String): Response<UsernameLoginLookupDto>
 
     @GET("photos/feed")
     suspend fun getFeed(@Query("refresh") refresh: Boolean = false): Response<List<FeedItem>>

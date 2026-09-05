@@ -37,3 +37,13 @@ data class UsernameAvailabilityDto(
 data class EmailAvailabilityDto(
     val available: Boolean,
 )
+
+/** Firebase signs in by email only, no concept of a username at all — so a username typed into
+ * the login screen has to be resolved back to its email here before it can be handed to Firebase.
+ * A null [email] means no account has that username, and is treated exactly like a wrong password
+ * by the caller (see LoginViewModel.submitLogin), not a distinct "username not found" message —
+ * same reasoning [EmailAvailabilityDto] already follows for not revealing more than it has to. */
+@Serializable
+data class UsernameLoginLookupDto(
+    val email: String?,
+)

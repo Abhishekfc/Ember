@@ -37,9 +37,24 @@ enum class AuthStep { WELCOME, LOGIN, FORGOT_PASSWORD, REGISTER_EMAIL, REGISTER_
 private const val MIN_PASSWORD_LENGTH = 8
 private const val USERNAME_DEBOUNCE_MS = 400L
 
-class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
+/**
+ * [initialPendingVerificationEmail]/[initialPendingVerificationDeadlineMillis] seed [step] straight
+ * onto [AuthStep.NEEDS_EMAIL_VERIFICATION] before this ViewModel's very first composition, from
+ * TokenStore's synchronously-read local echo (see MainActivity's onCreate) — the whole reason this
+ * takes constructor params here rather than a plain no-arg init and a later call to
+ * [showVerificationRequired]: the async check that call would otherwise wait on is exactly what
+ * produced the original flash into the full app shell before bouncing back out to this screen.
+ * Null for every other case (a fresh WELCOME start, or a returning session with nothing pending).
+ */
+class LoginViewModel(
+    private val repository: AuthRepository,
+    initialPendingVerificationEmail: String? = null,
+    initialPendingVerificationDeadlineMillis: Long? = null,
+) : ViewModel() {
 
-    var step by mutableStateOf(AuthStep.WELCOME)
+    var step by mutableStateOf(
+        if (initialPendingVerificationEmail != null) AuthStep.NEEDS_EMAIL_VERIFICATION else AuthStep.WELCOME,
+    )
         private set
 
     /** Which direction the step transition animation should slide — stepping forward slides the
@@ -56,10 +71,10 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
     var email by mutableStateOf("")
         private set
 
-    /** The [LOGIN] step's own identifier field. Deliberately a real email only, unlike the old
-     * backend-driven flow this replaced: Firebase Authentication signs in by email, it has no
-     * concept of a username at all, so a username typed here can no longer be resolved to an
-     * account the way the old custom backend login could. */
+    /** The [LOGIN] step's own identifier field. Firebase Authentication itself signs in by email
+     * only, with no concept of a username at all — but AuthRepository.signIn resolves a username
+     * typed here back to its email via a small backend lookup before ever reaching Firebase, so
+     * this field accepts either, same as the old custom backend login did. */
     var loginIdentifier by mutableStateOf("")
         private set
     var password by mutableStateOf("")
@@ -71,13 +86,13 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
      * [submitUsername]'s own result on a fresh sign-up, or from [SignInOutcome.NeedsVerification]
      * on a returning sign-in; either way this is always the real backend-confirmed email for the
      * account actually being verified, never just whatever was last typed into a field. */
-    var pendingVerificationEmail by mutableStateOf("")
+    var pendingVerificationEmail by mutableStateOf(initialPendingVerificationEmail ?: "")
         private set
 
     /** The same deadline EmailVerificationExpiryService enforces server-side (epoch millis) —
      * VerifyEmailStep counts down to this, not a fresh independently-started timer, so leaving and
      * reopening this screen (or the app itself) can never reset it. */
-    var pendingVerificationDeadlineMillis by mutableStateOf(0L)
+    var pendingVerificationDeadlineMillis by mutableStateOf(initialPendingVerificationDeadlineMillis ?: 0L)
         private set
     var isResendingVerification by mutableStateOf(false)
         private set
@@ -247,8 +262,20 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
         // twice. Whichever request lost the race also gets to overwrite the outcome of the one
         // that won, so a successful sign-in could still end up showing an error.
         if (isLoading) return
-        if (!isLoginEmailValid || password.isBlank()) {
+        if (loginIdentifier.isBlank() || password.isBlank()) {
             errorMessage = "Please fill in every field"
+            return
+        }
+        // A separate check from the blank case above, and only for something that actually looks
+        // like an attempted email — AuthRepository.signIn accepts a username just as well (it
+        // resolves it back to an email itself, since Firebase has no concept of one), so this
+        // can't require email-shaped input from everyone the way it used to. It's still worth
+        // catching a malformed email specifically ("abc@") with its own message rather than
+        // letting it fall through to a network call that can only ever fail. Previously this
+        // fired for *anything* that wasn't a valid email, including a genuine username — showing
+        // "Please fill in every field" for someone who'd filled in both fields correctly.
+        if (loginIdentifier.contains("@") && !isLoginEmailValid) {
+            errorMessage = "Enter a valid email address"
             return
         }
         viewModelScope.launch {
@@ -426,6 +453,7 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
                         // compulsory from the moment the account exists.
                         pendingVerificationEmail = profile.email
                         pendingVerificationDeadlineMillis = verificationDeadlineFor(profile)
+                        repository.rememberPendingVerification(pendingVerificationEmail, pendingVerificationDeadlineMillis)
                         goTo(AuthStep.NEEDS_EMAIL_VERIFICATION)
                     } else {
                         // The widget is what this app actually is, so it's explained before anyone
@@ -492,7 +520,15 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
      *
      * [onAuthenticated] is only called for a *returning* sign-in (accountCreated false — see
      * [SignInOutcome.NeedsVerification]'s own handling); a fresh sign-up still has the widget/
-     * sharing onboarding steps ahead of it, same as it always did before this check existed. */
+     * sharing onboarding steps ahead of it, same as it always did before this check existed.
+     *
+     * Deliberately asks the backend too (via [AuthRepository.resumeSession]), not just Firebase's
+     * own local `isEmailVerified` — this button is only reachable before the countdown hits zero
+     * (VerifyEmailStep disables it once expired), but that guard is this screen's own wall-clock
+     * read, running on the device's own clock. The backend's answer is the one that actually
+     * decides whether a verification counted (see FirebaseAuthenticationFilter's own deadline
+     * check) — trusting Firebase alone here would let a clock skewed even slightly fast let
+     * someone through a request this same deadline was just built to refuse everywhere else. */
     fun onEmailVerifiedContinue(onAuthenticated: () -> Unit) {
         if (isCheckingVerification) return
         viewModelScope.launch {
@@ -502,8 +538,28 @@ class LoginViewModel(private val repository: AuthRepository) : ViewModel() {
             runCatching { user?.reload()?.await() }
             if (user?.isEmailVerified == true) {
                 runCatching { user.getIdToken(true).await() }
-                isCheckingVerification = false
-                if (accountCreated) goTo(AuthStep.REGISTER_WIDGET) else onAuthenticated()
+                val outcome = repository.resumeSession().getOrNull()
+                if (outcome is SignInOutcome.SignedIn) {
+                    repository.forgetPendingVerification()
+                    isCheckingVerification = false
+                    if (accountCreated) goTo(AuthStep.REGISTER_WIDGET) else onAuthenticated()
+                } else if (outcome is SignInOutcome.NeedsVerification) {
+                    // The backend disagrees — this verification either hasn't landed there yet
+                    // (rare timing gap right after clicking the link) or arrived too late to
+                    // count. Re-syncing to its own deadline rather than leaving this screen's
+                    // countdown at whatever it was already showing.
+                    pendingVerificationEmail = outcome.email
+                    pendingVerificationDeadlineMillis = outcome.verifyByEpochMillis
+                    isCheckingVerification = false
+                    verificationCheckError = "Still not verified. Check your inbox and spam folder."
+                } else {
+                    // A genuine network failure, or NeedsProfile (this account no longer exists —
+                    // EmailVerificationExpiryService already deleted it). Neither is "try again in
+                    // a second," so this reuses the same message rather than claiming to know
+                    // which one happened.
+                    isCheckingVerification = false
+                    verificationCheckError = "Still not verified. Check your inbox and spam folder."
+                }
             } else {
                 isCheckingVerification = false
                 verificationCheckError = "Still not verified. Check your inbox and spam folder."

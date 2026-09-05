@@ -30,8 +30,8 @@ android {
         applicationId = "com.emigo.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     buildFeatures {
@@ -138,10 +138,6 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     // Bridges FirebaseMessaging's/FirebaseAuth's Task-based APIs to a suspend call (.await()).
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.1")
-    // The classic (not Credential Manager) Google Sign-In client — still fully supported by
-    // Firebase, and simpler to get right than the newer Credential Manager API for the one thing
-    // this app needs from it: an ID token to hand to FirebaseAuth.
-    implementation("com.google.android.gms:play-services-auth:21.3.0")
 
     implementation("dev.chrisbanes.haze:haze:1.7.2")
 
