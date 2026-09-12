@@ -30,8 +30,8 @@ android {
         applicationId = "com.emigo.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
 
     buildFeatures {
@@ -140,6 +140,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.1")
 
     implementation("dev.chrisbanes.haze:haze:1.7.2")
+
+    // Google Play Billing — Emigo Gold subscription purchases (see data/BillingManager.kt). The
+    // library's own manifest contributes the com.android.vending.BILLING permission via the
+    // merger; it's also declared explicitly in AndroidManifest.xml so Play reliably detects that
+    // this build sells in-app products and unlocks subscription creation in the Console.
+    implementation("com.android.billingclient:billing:8.0.0")
 
     implementation("androidx.camera:camera-core:1.4.1")
     implementation("androidx.camera:camera-camera2:1.4.1")

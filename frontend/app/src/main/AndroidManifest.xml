@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Google Play Billing (Emigo Gold subscriptions). The billing library's own manifest also
+         declares this, but stating it here makes it unambiguous to Play that this build sells
+         in-app products. -->
+    <uses-permission android:name="com.android.vending.BILLING" />
     <!-- Android 13+ requires this even for a notification the OS shows on FCM's own behalf, let
          alone one EmberFirebaseMessagingService posts itself for a data-only NEW_PHOTO push. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

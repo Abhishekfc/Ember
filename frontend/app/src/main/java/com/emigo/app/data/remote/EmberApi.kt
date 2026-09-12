@@ -20,6 +20,7 @@ import com.emigo.app.data.remote.dto.RecipientListDto
 import com.emigo.app.data.remote.dto.ReportUserRequestDto
 import com.emigo.app.data.remote.dto.SentPhotoDto
 import com.emigo.app.data.remote.dto.SubscriptionStatusDto
+import com.emigo.app.data.remote.dto.SubscriptionVerifyRequestDto
 import com.emigo.app.data.remote.dto.UpdateProfileRequestDto
 import com.emigo.app.data.remote.dto.EmailAvailabilityDto
 import com.emigo.app.data.remote.dto.UsernameAvailabilityDto
@@ -175,6 +176,11 @@ interface EmberApi {
 
     @GET("subscription/status")
     suspend fun getSubscriptionStatus(): Response<SubscriptionStatusDto>
+
+    /** Called after Play returns a purchase token — the backend re-checks it with Google
+     * server-to-server and flips the account to Gold. Returns the same shape as [getSubscriptionStatus]. */
+    @POST("subscription/verify")
+    suspend fun verifySubscription(@Body request: SubscriptionVerifyRequestDto): Response<SubscriptionStatusDto>
 
     @POST("devices/register")
     suspend fun registerDevice(@Body request: DeviceTokenRequestDto): Response<Unit>
