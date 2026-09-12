@@ -62,6 +62,13 @@ class SubscriptionService(
         subscription.updatedAt = Instant.now()
         subscriptionRepository.save(subscription)
 
+        // Acknowledge only after the entitlement row is persisted, so we never tell Google we've
+        // delivered something we actually failed to grant. Without an acknowledgement Play
+        // auto-refunds the purchase after 3 days.
+        if (result.isActive && !result.isAcknowledged) {
+            playBillingVerificationService.acknowledge(productId, purchaseToken)
+        }
+
         return SubscriptionStatusResponse(
             status = subscription.status,
             plan = subscription.plan,

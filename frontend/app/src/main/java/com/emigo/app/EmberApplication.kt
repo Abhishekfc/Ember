@@ -13,6 +13,7 @@ import coil3.memory.MemoryCache
 import coil3.request.crossfade
 import com.emigo.app.data.ActivityRepository
 import com.emigo.app.data.AuthRepository
+import com.emigo.app.data.BillingManager
 import com.emigo.app.data.FriendRepository
 import com.emigo.app.data.PhotoRepository
 import com.emigo.app.data.SafetyRepository
@@ -71,6 +72,10 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
     val activityRepository by lazy { ActivityRepository(networkModule.api) }
     val userRepository by lazy { UserRepository(networkModule.api) }
     val subscriptionRepository by lazy { SubscriptionRepository(networkModule.api, this) }
+    // One Play Billing connection for the whole process (see BillingManager's own doc comment) —
+    // the Gold paywall is the only consumer, but a singleton keeps the connection warm between
+    // visits and matches how every other repository here is scoped.
+    val billingManager by lazy { BillingManager(this) }
     val safetyRepository by lazy { SafetyRepository(networkModule.api) }
     val themePreferenceStore by lazy { ThemePreferenceStore(this) }
     val appIconPreferenceStore by lazy { AppIconPreferenceStore(this) }

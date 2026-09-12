@@ -1,13 +1,10 @@
 package com.emigo.app.data
 
 import android.content.Context
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import com.emigo.app.data.local.emberDataStore
 import com.emigo.app.data.remote.EmberApi
 import com.emigo.app.data.remote.dto.ErrorResponse
 import com.emigo.app.data.remote.dto.SubscriptionStatusDto
-import kotlinx.coroutines.flow.first
+import com.emigo.app.data.remote.dto.SubscriptionVerifyRequestDto
 import kotlinx.serialization.json.Json
 
 class SubscriptionRepository(
@@ -15,7 +12,27 @@ class SubscriptionRepository(
     private val context: Context,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
-    private val lastKnownIsActiveKey = booleanPreferencesKey("subscription_last_known_is_active")
+
+    // Plain SharedPreferences, not DataStore — read synchronously so every Gold-gated
+    // ViewModel's very first composed frame can already show the right answer. DataStore's own
+    // read (the real getStatus() network call below) is a suspend function with a real gap
+    // before it resolves; every one of these ViewModels used to seed isGoldMember straight to a
+    // hardcoded `false` for that whole gap, which flashed a lock badge/upsell over a genuine
+    // subscriber's Gold features for a moment on every cold start before snapping back once the
+    // real check landed. Mirrors ThemePreferenceStore's own lastEffectiveThemeSync/
+    // saveEffectiveThemeSync — same problem, same fix, already proven elsewhere in this app.
+    private val syncPrefs = context.getSharedPreferences("ember_subscription_sync", Context.MODE_PRIVATE)
+    private val syncIsGoldMemberKey = "is_gold_member"
+
+    /** The value every Gold-gated ViewModel should seed its own `isGoldMember` state from at
+     * construction time, instead of a hardcoded `false`. Defaults to `false` only the very first
+     * time this ever runs for an account (nothing saved yet) — from then on it's always the last
+     * real answer [getStatus] confirmed, correct across restarts with no network needed. */
+    fun isGoldMemberSync(): Boolean = syncPrefs.getBoolean(syncIsGoldMemberKey, false)
+
+    private fun saveIsGoldMemberSync(isActive: Boolean) {
+        syncPrefs.edit().putBoolean(syncIsGoldMemberKey, isActive).apply()
+    }
 
     // Not mirroring a backend Redis TTL the way PhotoRepository's feedCache does (see TtlCache's
     // own doc comment) — subscription status has no server-side cache to match, since it changes
@@ -30,8 +47,9 @@ class SubscriptionRepository(
     /** Called on sign-out — this repository is a process-wide singleton that outlives any one
      * signed-in account (see PhotoRepository's own equivalent), so a different account signing in
      * within the cache window could otherwise be served the previous account's status. Doesn't
-     * touch [lastKnownIsActive] itself — that's persisted to disk, not this in-memory cache, and
-     * gets its own explicit clear from the same sign-out path (see MainActivity's onSignOut). */
+     * touch the synced last-known flag above — that's persisted to disk, not this in-memory
+     * cache, and gets its own explicit clear from the same sign-out path (see
+     * [clearLastKnownStatus] and MainActivity's own onSignOut). */
     fun clearCache() {
         statusCache.invalidateAll()
     }
@@ -55,12 +73,36 @@ class SubscriptionRepository(
             }.onSuccess {
                 statusCache.put(Unit, it)
                 // Persisted to disk (not just the in-memory cache above), specifically so
-                // isGoldMemberOrLastKnown below still has a real answer across a full app
-                // restart with no connectivity at all, not just within one still-running process.
-                context.emberDataStore.edit { prefs -> prefs[lastKnownIsActiveKey] = it.isActive }
+                // isGoldMemberOrLastKnown/isGoldMemberSync above still have a real answer across a
+                // full app restart with no connectivity at all, not just within one still-running
+                // process.
+                saveIsGoldMemberSync(it.isActive)
             }
         }
     }
+
+    /** Hands a Play purchase token to the backend, which re-verifies it with Google and grants (or
+     * doesn't) Gold. On success the fresh status is written straight into the same caches
+     * [getStatus] fills — the in-memory TTL one and the disk-persisted last-known flag — so every
+     * Gold-gated ViewModel that re-reads after this sees the new answer without its own network
+     * call. */
+    suspend fun verifyPurchase(productId: String, purchaseToken: String): Result<SubscriptionStatusDto> =
+        safeCall {
+            val response = api.verifySubscription(
+                SubscriptionVerifyRequestDto(purchaseToken = purchaseToken, productId = productId),
+            )
+            val body = response.body()
+            if (response.isSuccessful && body != null) {
+                statusCache.put(Unit, body)
+                saveIsGoldMemberSync(body.isActive)
+                Result.success(body)
+            } else {
+                val message = response.errorBody()?.string()?.let {
+                    runCatching { json.decodeFromString<ErrorResponse>(it).message }.getOrNull()
+                } ?: "Couldn't confirm your purchase (${response.code()})"
+                Result.failure(Exception(message))
+            }
+        }
 
     /** The one call every Gold-gated screen should actually use to decide `isGoldMember`, rather
      * than defaulting straight to "not Gold" the moment [getStatus] fails. A live check failing
@@ -73,12 +115,12 @@ class SubscriptionRepository(
     suspend fun isGoldMemberOrLastKnown(): Boolean =
         getStatus().fold(
             onSuccess = { it.isActive },
-            onFailure = { context.emberDataStore.data.first()[lastKnownIsActiveKey] ?: false },
+            onFailure = { isGoldMemberSync() },
         )
 
     /** Called on sign-out alongside [clearCache] — a different account signing in on the same
      * device must never inherit the previous account's last-known subscription status. */
-    suspend fun clearLastKnownStatus() {
-        context.emberDataStore.edit { it.remove(lastKnownIsActiveKey) }
+    fun clearLastKnownStatus() {
+        syncPrefs.edit().remove(syncIsGoldMemberKey).apply()
     }
 }

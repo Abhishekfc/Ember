@@ -90,6 +90,7 @@ import com.emigo.app.ui.settings.AppIconSwitcher
 import com.emigo.app.ui.settings.BlockedUsersScreen
 import com.emigo.app.ui.settings.BlockedUsersViewModel
 import com.emigo.app.ui.settings.EmberGoldScreen
+import com.emigo.app.ui.settings.EmberGoldViewModel
 import com.emigo.app.ui.settings.OtherSettingsScreen
 import com.emigo.app.ui.settings.SettingsScreen
 import com.emigo.app.ui.settings.WidgetSettingsScreen
@@ -178,6 +179,7 @@ class MainActivity : ComponentActivity() {
     private val activityRepository get() = emberApplication.activityRepository
     private val userRepository get() = emberApplication.userRepository
     private val subscriptionRepository get() = emberApplication.subscriptionRepository
+    private val billingManager get() = emberApplication.billingManager
     private val safetyRepository get() = emberApplication.safetyRepository
     private val themePreferenceStore get() = emberApplication.themePreferenceStore
     private val appIconPreferenceStore get() = emberApplication.appIconPreferenceStore
@@ -1417,7 +1419,23 @@ class MainActivity : ComponentActivity() {
                         enter = slideInVertically(initialOffsetY = { it }),
                         exit = slideOutVertically(targetOffsetY = { it }),
                     ) {
-                        EmberGoldScreen(onBack = { nestedScreen = null })
+                        val goldViewModel: EmberGoldViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer { EmberGoldViewModel(billingManager, subscriptionRepository) }
+                            },
+                        )
+                        EmberGoldScreen(
+                            viewModel = goldViewModel,
+                            onBack = { nestedScreen = null },
+                            onGoldActivated = {
+                                // The purchase already updated SubscriptionRepository's caches; this
+                                // just pulls the same "you're Gold now" answer into the app-wide
+                                // state the other screens read before they'd otherwise re-check.
+                                isGoldMember = true
+                                coroutineScope.launch { widgetPreferenceStore.setCachedIsGoldMember(true) }
+                                themeViewModel.reload()
+                            },
+                        )
                     }
                     }
                 }

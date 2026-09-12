@@ -6,6 +6,7 @@ import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.androidpublisher.AndroidPublisher
 import com.google.api.services.androidpublisher.AndroidPublisherScopes
+import com.google.api.services.androidpublisher.model.SubscriptionPurchasesAcknowledgeRequest
 import com.google.auth.http.HttpCredentialsAdapter
 import com.google.auth.oauth2.GoogleCredentials
 import org.slf4j.LoggerFactory
@@ -18,6 +19,10 @@ import java.time.Instant
 data class PlayPurchaseVerification(
     val isActive: Boolean,
     val expiresAt: Instant?,
+    /** True once Google has recorded that we've delivered this purchase. An unacknowledged
+     * purchase is auto-refunded by Play after 3 days, so [SubscriptionService.verify] acknowledges
+     * it right after granting the entitlement. */
+    val isAcknowledged: Boolean,
 )
 
 @Service
@@ -82,8 +87,36 @@ class PlayBillingVerificationService(private val playBillingProperties: PlayBill
 
         val expiryMillis = purchase.expiryTimeMillis
         val expiresAt = expiryMillis?.let { Instant.ofEpochMilli(it) }
-        val isActive = expiresAt?.isAfter(Instant.now()) == true
+        // paymentState: 0 = payment pending, 1 = received, 2 = free trial, 3 = pending deferred
+        // upgrade/downgrade. It's absent entirely once the subscription reaches a terminal
+        // (expired / fully cancelled) state, where the expiry check below is what actually governs.
+        // A pending payment (some carrier billing, cash, etc.) must NOT count as active yet.
+        val paymentPending = purchase.paymentState == 0
+        val isActive = expiresAt?.isAfter(Instant.now()) == true && !paymentPending
 
-        return PlayPurchaseVerification(isActive = isActive, expiresAt = expiresAt)
+        return PlayPurchaseVerification(
+            isActive = isActive,
+            expiresAt = expiresAt,
+            isAcknowledged = purchase.acknowledgementState == 1,
+        )
+    }
+
+    /** Best-effort — a purchase that's already acknowledged (a retry, or the client got there
+     * first) throws here too, which is harmless: the entitlement is granted either way, and this
+     * only exists to stop Play's 3-day auto-refund of an unacknowledged purchase. */
+    fun acknowledge(productId: String, purchaseToken: String) {
+        val client = androidPublisher ?: return
+        try {
+            client.purchases().subscriptions()
+                .acknowledge(
+                    playBillingProperties.packageName,
+                    productId,
+                    purchaseToken,
+                    SubscriptionPurchasesAcknowledgeRequest(),
+                )
+                .execute()
+        } catch (ex: Exception) {
+            logger.warn("Could not acknowledge purchase for product {}", productId, ex)
+        }
     }
 }
