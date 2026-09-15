@@ -258,7 +258,15 @@ class PhotoService(
      * time — unlike PhotoCleanupService's own scheduled pass, this doesn't wait for every
      * recipient's feed visibility to expire first) or the Camera outbox's Unsend (an unsaved,
      * recently-sent photo, gated below). Scoped to [ownerId] in the lookup itself (not just
-     * checked after loading) so one account can never delete another's photo by guessing an id. */
+     * checked after loading) so one account can never delete another's photo by guessing an id.
+     *
+     * Recipients (feed cache eviction, the push below) are read directly off whoever this photo
+     * was actually sent to, not inferred from [photo]'s own saved/unsaved state — a photo can be
+     * both saved to Memories *and* sent to recipients at once (see [addRecipients]), so "was this
+     * saved" is not a reliable stand-in for "does anyone else have this in their feed." Recipient
+     * ids are captured *before* the row is deleted — PhotoRecipient rows cascade-delete with
+     * their Photo, so this is the last point they're still readable at all. Empty for a photo
+     * that was never sent to anyone, which naturally no-ops the block below. */
     fun delete(ownerId: UUID, photoId: UUID) {
         val photo = photoRepository.findById(photoId).orElse(null) ?: return
         if (photo.sender.id != ownerId) {
@@ -276,8 +284,22 @@ class PhotoService(
                 throw UnsendWindowExpiredException()
             }
         }
+        val recipientIds = photoRecipientRepository.findAllByPhoto_Id(photoId).map { it.recipient.id }
         r2StorageService.delete(photo.storageKey)
         photoRepository.delete(photo)
+
+        if (recipientIds.isNotEmpty()) {
+            // Same reasoning as upload()'s own eviction — a recipient's feed (and the "latest
+            // sent photo" friends summary shows) must stop reflecting a photo that no longer
+            // exists, not just eventually age out on its own.
+            cacheManager.getCache("feed")?.let { cache -> recipientIds.forEach { cache.evict(it.toString()) } }
+            cacheManager.getCache("friends")?.let { cache -> recipientIds.forEach { cache.evict(it.toString()) } }
+            pushNotificationService.notifyPhotoDeleted(
+                photoId = photo.id,
+                senderId = ownerId,
+                recipientUserIds = recipientIds,
+            )
+        }
     }
 
     /** This account's own outbox — recently sent, unsaved photos still within their unsend
