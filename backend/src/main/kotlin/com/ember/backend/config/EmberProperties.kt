@@ -46,3 +46,23 @@ data class PlayBillingProperties(
     val serviceAccountCredentialsJson: String = "",
     val enabled: Boolean,
 )
+
+/** [alertEmail] blank means moderation alerts are simply off — [ReportService] checks this
+ * itself before ever touching [com.ember.backend.service.EmailService], so an unconfigured
+ * sender (the common state before this is set up) never has to fail loudly; reports keep saving
+ * to the DB either way, this is purely an added notification. */
+@ConfigurationProperties(prefix = "ember.moderation")
+data class ModerationProperties(
+    val alertEmail: String = "",
+)
+
+/** [apiKey] blank means [com.ember.backend.service.EmailService] itself is a no-op — same
+ * "unconfigured means silently off" shape as [ModerationProperties.alertEmail]. [fromEmail]
+ * defaults to Resend's own shared sandbox sender, which works with no domain setup on Resend's
+ * side at all; switch it to a verified `@emigo.live` address once that's set up there for a
+ * properly branded sender instead. */
+@ConfigurationProperties(prefix = "ember.resend")
+data class ResendProperties(
+    val apiKey: String = "",
+    val fromEmail: String = "Emigo <onboarding@resend.dev>",
+)
