@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.emigo.app.R
 import com.emigo.app.ui.auth.InviteTarget
 import com.emigo.app.ui.auth.rememberAppIcon
 import com.emigo.app.ui.auth.shareInvite
@@ -49,9 +50,9 @@ fun InviteFriendsRow(modifier: Modifier = Modifier) {
     val inviteMessage = "Come add me on Emigo — it puts my photos right on your home screen."
     val quickTargets = remember {
         listOf(
-            InviteTarget("Instagram", Icons.Filled.PhotoCamera, "com.instagram.android"),
-            InviteTarget("Snapchat", Icons.Filled.PhotoCamera, "com.snapchat.android"),
-            InviteTarget("WhatsApp", Icons.Filled.Chat, "com.whatsapp"),
+            InviteTarget("Instagram", Icons.Filled.PhotoCamera, "com.instagram.android", R.drawable.ic_invite_instagram),
+            InviteTarget("Snapchat", Icons.Filled.PhotoCamera, "com.snapchat.android", R.drawable.ic_invite_snapchat),
+            InviteTarget("WhatsApp", Icons.Filled.Chat, "com.whatsapp", R.drawable.ic_invite_whatsapp),
             InviteTarget("More", Icons.Filled.MoreHoriz, null),
         )
     }
@@ -63,12 +64,16 @@ fun InviteFriendsRow(modifier: Modifier = Modifier) {
     }
 }
 
-/** One app in the row — real launcher icon (or a plain glyph on the theme's own elevated panel
- * when that app isn't installed) with its name beneath. */
+/** Bundled brand artwork when the target has its own (see InviteTarget.drawableResId), the real
+ * launcher icon when it doesn't but the app happens to be installed, and a plain glyph on the
+ * theme's own elevated panel as the last resort. */
 @Composable
 private fun InviteQuickButton(target: InviteTarget, onClick: () -> Unit) {
     val colors = EmberTheme.colors
-    val appIcon = rememberAppIcon(target.packageName)
+    // Only actually looked up for a target with no bundled artwork of its own — see
+    // rememberAppIcon's own doc comment for why that lookup isn't trusted as the only source
+    // anymore.
+    val appIcon = if (target.drawableResId == null) rememberAppIcon(target.packageName) else null
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -77,7 +82,13 @@ private fun InviteQuickButton(target: InviteTarget, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 6.dp),
     ) {
-        if (appIcon != null) {
+        if (target.drawableResId != null) {
+            Image(
+                painter = androidx.compose.ui.res.painterResource(target.drawableResId),
+                contentDescription = null,
+                modifier = Modifier.size(56.dp).clip(CircleShape),
+            )
+        } else if (appIcon != null) {
             Image(bitmap = appIcon, contentDescription = null, modifier = Modifier.size(56.dp).clip(CircleShape))
         } else {
             Box(

@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -59,7 +60,6 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.data.remote.dto.RecipientListDto
-import com.emigo.app.ui.components.InviteFriendsRow
 import com.emigo.app.ui.components.NestedScreenHeader
 import com.emigo.app.ui.components.emberButtonBrush
 import com.emigo.app.ui.profile.EditDialogShell
@@ -72,6 +72,7 @@ fun RecipientPickerScreen(
     viewModel: RecipientPickerViewModel,
     onClose: () -> Unit,
     onConfirm: (Set<String>) -> Unit,
+    onAddFriend: () -> Unit,
 ) {
     val colors = EmberTheme.colors
     var screenSize by remember { mutableStateOf(Size.Zero) }
@@ -105,6 +106,10 @@ fun RecipientPickerScreen(
                     if (!isCreatingList) newListName = ""
                 },
                 onRequestDeleteList = { pendingDeleteList = it },
+            )
+            RecipientSearchField(
+                query = viewModel.searchQuery,
+                onQueryChange = viewModel::onSearchQueryChange,
             )
         }
 
@@ -141,7 +146,7 @@ fun RecipientPickerScreen(
 
                 // TopCenter, not Center — vertically centering this in the whole remaining screen
                 // left a large unexplained gap above it now that it carries a real, tappable
-                // invite row rather than one line of text.
+                // button rather than one line of text.
                 viewModel.friends.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
@@ -150,25 +155,36 @@ fun RecipientPickerScreen(
                             fontSize = 13.sp,
                             color = colors.muted,
                         )
-                        // Same invite row Find People/Friends' own empty states show.
-                        Text(
-                            text = "Not on Emigo yet? Invite them.",
-                            fontFamily = PublicSansFontFamily,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.mutedDim,
-                            modifier = Modifier.padding(top = 18.dp),
-                        )
-                        InviteFriendsRow(modifier = Modifier.padding(top = 14.dp))
+                        // Same solid-white pill Home's own "nothing to show" empty state uses
+                        // (see HomeScreen's onAddFriendClick button) — same look for the same
+                        // underlying action, wherever it shows up.
+                        Row(
+                            modifier = Modifier
+                                .padding(top = 18.dp)
+                                .clip(RoundedCornerShape(percent = 50))
+                                .background(Color.White)
+                                .clickable(onClick = onAddFriend)
+                                .padding(horizontal = 28.dp, vertical = 15.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = "Find friends",
+                                fontFamily = PublicSansFontFamily,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black,
+                            )
+                        }
                     }
                 }
 
                 // A saved list can end up empty (every member since unfriended) without the
-                // underlying friend list itself being empty — worth its own message rather than
-                // silently rendering nothing where a list used to be.
+                // underlying friend list itself being empty, and a search can just as easily miss
+                // everyone in whatever badge/list is active — both worth their own message rather
+                // than silently rendering nothing where a list used to be.
                 viewModel.visibleFriends.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "No one in this list",
+                        text = if (viewModel.searchQuery.isBlank()) "No one in this list" else "No one matches \"${viewModel.searchQuery}\"",
                         fontFamily = PublicSansFontFamily,
                         fontSize = 13.sp,
                         color = colors.muted,
@@ -275,6 +291,40 @@ private fun RecipientBadgeRow(
             )
         }
         AddListBadge(isActive = isCreatingList, onClick = onToggleCreateList)
+    }
+}
+
+/** Narrows the list below to a name/username match, on top of whatever badge/list is already
+ * active (see [RecipientPickerViewModel.visibleFriends]). Same quiet-surface look and copy as
+ * Friends' own search field (colors.surface, not colors.panel — an input sits apart from the rows
+ * below it rather than competing with them for the same visual weight), reused here for the same
+ * reason: finding a specific person in a list, not a different action needing its own language. */
+@Composable
+private fun RecipientSearchField(query: String, onQueryChange: (String) -> Unit) {
+    val colors = EmberTheme.colors
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .background(colors.surface, shape)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Search, contentDescription = "Search", tint = colors.mutedDim, modifier = Modifier.size(16.dp))
+        Box(modifier = Modifier.padding(start = 10.dp).fillMaxWidth()) {
+            if (query.isEmpty()) {
+                Text(text = "Search friends", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.mutedDim)
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = TextStyle(fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.cream),
+                cursorBrush = SolidColor(colors.glow),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 

@@ -59,8 +59,15 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         when (message.data["type"]) {
             "NEW_PHOTO" -> handleNewPhoto(message)
+            "PHOTO_DELETED" -> handlePhotoDeleted(message)
             "STREAK_BROKEN" -> handleStreakBroken(message)
+            "FRIEND_REQUEST_ACCEPTED", "FRIEND_REQUEST_RECEIVED" -> handleFriendsChanged()
         }
+    }
+
+    private fun handleFriendsChanged() {
+        val app = application as EmberApplication
+        app.notifyFriendsChanged()
     }
 
     private fun handleNewPhoto(message: RemoteMessage) {
@@ -87,6 +94,20 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
             if (app.notificationPreferenceStore.enabledNow()) {
                 showNewPhotoNotification(senderName)
             }
+        }
+    }
+
+    /** Someone unsent a photo — see PushNotificationService.notifyPhotoDeleted on the backend and
+     * WidgetPhotoSync.handlePhotoDeleted here for the actual logic; this is purely the same
+     * "unpack the data-only payload, hand it off" shape every other case in this handler already
+     * follows. No visible notification for this one (unlike NEW_PHOTO/STREAK_BROKEN) — a photo
+     * quietly disappearing from the widget isn't something worth interrupting anyone for. */
+    private fun handlePhotoDeleted(message: RemoteMessage) {
+        val photoId = message.data["photoId"] ?: return
+        val senderId = message.data["senderId"] ?: return
+        val app = application as EmberApplication
+        scope.launch {
+            WidgetPhotoSync.handlePhotoDeleted(app, deletedPhotoId = photoId, senderId = senderId)
         }
     }
 

@@ -19,6 +19,7 @@ import com.emigo.app.data.PhotoRepository
 import com.emigo.app.data.SafetyRepository
 import com.emigo.app.data.SubscriptionRepository
 import com.emigo.app.data.UserRepository
+import com.emigo.app.data.local.CameraHintPreferenceStore
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.local.NotificationPreferenceStore
 import com.emigo.app.data.local.AppIconPreferenceStore
@@ -81,6 +82,7 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
     val appIconPreferenceStore by lazy { AppIconPreferenceStore(this) }
     val notificationPreferenceStore by lazy { NotificationPreferenceStore(this) }
     val localListCache by lazy { LocalListCache(this) }
+    val cameraHintPreferenceStore by lazy { CameraHintPreferenceStore(this) }
 
     // Bridges EmberFirebaseMessagingService (a separate Android component with no direct
     // reference to whatever ViewModels/Activity happen to be alive) to a live HomeViewModel —

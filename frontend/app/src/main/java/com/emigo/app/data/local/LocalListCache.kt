@@ -16,13 +16,36 @@ import kotlinx.serialization.json.Json
 class LocalListCache(@PublishedApi internal val context: Context) {
     @PublishedApi internal val json = Json { ignoreUnknownKeys = true }
 
+    // A plain SharedPreferences mirror of the same JSON DataStore already holds — kept purely so
+    // readSync below can seed a ViewModel's very first frame with zero gap. DataStore's own read
+    // is a suspend Flow with at least one real dispatcher hop before it resolves, which is fine
+    // for the fresh-refetch-that-follows-right-after this cache was always designed around, but
+    // not for "must already be correct on the frame this ViewModel is constructed" — the same
+    // problem SubscriptionRepository's own syncPrefs already solved for isGoldMember, applied
+    // here generically for every key this cache holds instead of one bespoke flag. Written
+    // alongside every real write() below, so it can never drift out of sync with DataStore's own
+    // copy — there is no path that updates one without the other.
+    @PublishedApi internal val syncPrefs = context.getSharedPreferences("ember_local_list_cache_sync", Context.MODE_PRIVATE)
+
     suspend inline fun <reified T> read(key: String): List<T>? {
         val raw = context.emberDataStore.data.first()[stringPreferencesKey(key)] ?: return null
         return runCatching { json.decodeFromString<List<T>>(raw) }.getOrNull()
     }
 
+    /** The synchronous counterpart to [read] — for a ViewModel's own property initializer
+     * (construction time, not a coroutine), where a real suspend call can't run yet but a stale-
+     * until-the-real-fetch-lands answer is still far better than a hardcoded empty list. Reads
+     * whatever [write] last mirrored into SharedPreferences; never itself falls back to a network
+     * call the way [read] doesn't either — this is purely a fast first paint. */
+    inline fun <reified T> readSync(key: String): List<T>? {
+        val raw = syncPrefs.getString(key, null) ?: return null
+        return runCatching { json.decodeFromString<List<T>>(raw) }.getOrNull()
+    }
+
     suspend inline fun <reified T> write(key: String, value: List<T>) {
-        context.emberDataStore.edit { it[stringPreferencesKey(key)] = json.encodeToString(value) }
+        val raw = json.encodeToString(value)
+        context.emberDataStore.edit { it[stringPreferencesKey(key)] = raw }
+        syncPrefs.edit().putString(key, raw).apply()
     }
 
     /** Same idea as [read]/[write], for the one non-list case (the signed-in user's own
@@ -32,13 +55,23 @@ class LocalListCache(@PublishedApi internal val context: Context) {
         return runCatching { json.decodeFromString<T>(raw) }.getOrNull()
     }
 
+    /** The synchronous counterpart to [readObject] — see [readSync]'s own doc comment, same
+     * reasoning, just for the single-object case. */
+    inline fun <reified T> readObjectSync(key: String): T? {
+        val raw = syncPrefs.getString(key, null) ?: return null
+        return runCatching { json.decodeFromString<T>(raw) }.getOrNull()
+    }
+
     suspend inline fun <reified T> writeObject(key: String, value: T) {
-        context.emberDataStore.edit { it[stringPreferencesKey(key)] = json.encodeToString(value) }
+        val raw = json.encodeToString(value)
+        context.emberDataStore.edit { it[stringPreferencesKey(key)] = raw }
+        syncPrefs.edit().putString(key, raw).apply()
     }
 
     /** Called on sign-out — this cache isn't scoped per-account, so a different user signing in
      * on the same device must never briefly see the previous account's cached lists. */
     suspend fun clearAll() {
+        syncPrefs.edit().clear().apply()
         context.emberDataStore.edit {
             it.remove(stringPreferencesKey(KEY_FEED))
             it.remove(stringPreferencesKey(KEY_FRIENDS))

@@ -96,10 +96,12 @@ import com.emigo.app.ui.settings.SettingsScreen
 import com.emigo.app.ui.settings.WidgetSettingsScreen
 import com.emigo.app.ui.settings.WidgetSettingsViewModel
 import com.emigo.app.ui.theme.EmberAppTheme
+import com.emigo.app.ui.theme.EmberBackground
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.ThemeKey
 import com.emigo.app.ui.theme.ThemeScreen
 import com.emigo.app.ui.theme.ThemeViewModel
+import com.emigo.app.ui.theme.emberThemeDefinition
 import com.emigo.app.widget.EmberWidget
 import com.emigo.app.widget.WidgetPhotoStore
 import com.emigo.app.widget.WidgetPhotoSync
@@ -288,6 +290,21 @@ class MainActivity : ComponentActivity() {
             initialHomeCache.feedItems.firstOrNull()?.photos?.lastOrNull()?.photoUrl,
             targetWidthPx = resources.displayMetrics.widthPixels,
         )
+        // Same head start, for whichever theme's own background image is about to render behind
+        // the very first frame (see EmberAppTheme/EmberBackground.ImageBacked) — not every theme
+        // has one (several are plain gradients, nothing to preload for those), and never
+        // hardcoded to a specific theme: this reads whatever's actually persisted for this
+        // account, the same synchronous last-known-value read ThemeViewModel itself seeds from.
+        val lastTheme = themePreferenceStore.lastEffectiveThemeSync()
+        val lastThemeBackground = emberThemeDefinition(lastTheme).colors.background
+        if (lastThemeBackground is EmberBackground.ImageBacked) {
+            FirstPhotoPreloader.preloadDrawable(
+                applicationContext,
+                lastThemeBackground.drawableResId,
+                targetWidthPx = resources.displayMetrics.widthPixels,
+                targetHeightPx = resources.displayMetrics.heightPixels,
+            )
+        }
         setContent {
             val themeViewModel: ThemeViewModel = viewModel(
                 factory = viewModelFactory {
@@ -762,7 +779,15 @@ class MainActivity : ComponentActivity() {
                     // — see userScrollEnabled below) exists regardless of which page is current.
                     val cameraViewModel: CameraViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { CameraViewModel(friendRepository, photoRepository, subscriptionRepository, localListCache) }
+                            initializer {
+                                CameraViewModel(
+                                    friendRepository,
+                                    photoRepository,
+                                    subscriptionRepository,
+                                    localListCache,
+                                    emberApplication.cameraHintPreferenceStore,
+                                )
+                            }
                         },
                     )
 
@@ -845,7 +870,13 @@ class MainActivity : ComponentActivity() {
                     // any more (it's a plain page of this pager, not a modal screen), so this is
                     // now the only place that cleanup happens.
                     LaunchedEffect(pagerState.settledPage) {
-                        if (pagerState.settledPage != PAGE_CAMERA) cameraViewModel.discardCapture()
+                        if (pagerState.settledPage != PAGE_CAMERA) {
+                            cameraViewModel.discardCapture()
+                            // The user has now successfully swiped away from Camera at least
+                            // once — the whole thing the onboarding hint was there to teach.
+                            // Permanent, one-way, on-device (see CameraHintPreferenceStore).
+                            cameraViewModel.dismissSwipeHint()
+                        }
                     }
                     // Home's featured card has its own inner pager for cycling through photos —
                     // same swipe axis as this outer one, nested inside it. Compose doesn't always
@@ -1211,6 +1242,11 @@ class MainActivity : ComponentActivity() {
                             // already open.
                             LaunchedEffect(Unit) {
                                 recipientPickerViewModel.loadFriends()
+                                // Once per open, not on every recomposition — see
+                                // RecipientPickerViewModel.sortSnapshot's own doc comment for why
+                                // the sort order needs to freeze here instead of tracking the live
+                                // selection.
+                                recipientPickerViewModel.refreshSortSnapshot()
                                 emberApplication.friendsChangedEvents.collect { recipientPickerViewModel.loadFriends() }
                             }
                             RecipientPickerScreen(

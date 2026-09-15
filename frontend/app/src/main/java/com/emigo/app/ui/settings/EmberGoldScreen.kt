@@ -135,7 +135,6 @@ fun EmberGoldScreen(
         GoldPerk(Icons.Rounded.Palette, "Exclusive themes", "Unlock Cyber, Botanica, and Citrus looks"),
         GoldPerk(Icons.Rounded.PhotoLibrary, "Send from your gallery", "Share any photo, not just what you capture live"),
         GoldPerk(Icons.Rounded.Widgets, "Choose who's on your widget", "Pick exactly whose photos always show on your home screen"),
-        GoldPerk(Icons.Rounded.AppShortcut, "Custom app icon", "Personalize Emigo's icon on your home screen", badge = "Coming soon"),
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -191,7 +190,7 @@ fun EmberGoldScreen(
                 modifier = Modifier.padding(top = 20.dp),
             )
             Text(
-                text = if (state.isGold) "You're all set — thanks for supporting Emigo" else "A little extra glow for your favorite people",
+                text = if (state.isGold) "Thank you for being an Emigo Gold member" else "A little extra glow for your favorite people",
                 fontFamily = colors.body,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,

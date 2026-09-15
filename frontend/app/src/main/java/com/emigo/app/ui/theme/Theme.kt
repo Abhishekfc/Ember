@@ -494,6 +494,13 @@ object EmberTheme {
 @Composable
 fun EmberAppTheme(themeKey: ThemeKey, content: @Composable () -> Unit) {
     val definition = emberThemeDefinition(themeKey)
+    // Plain platform default overscroll — no LocalOverscrollFactory override at all. A custom
+    // rubber-band stretch, and later a narrower wrapper that only softened a flick's bounce, were
+    // both tried and fully reverted: confirmed (by removing it entirely and testing) that the
+    // wrapper itself — running on every scroll/swipe frame app-wide, including the tab pager —
+    // was the actual cause of a black flash while swiping to/from the Camera tab on at least one
+    // real test device, not anything about the camera code itself. Not worth reintroducing for a
+    // minor flick-bounce refinement; leave this unoverridden.
     CompositionLocalProvider(LocalEmberThemeDefinition provides definition) {
         val background = definition.colors.background
         // The Box is unconditional, and content() always sits in this one spot inside it, even

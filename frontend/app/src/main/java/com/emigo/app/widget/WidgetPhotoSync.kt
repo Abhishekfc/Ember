@@ -10,6 +10,7 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.size.Size
+import com.emigo.app.EmberApplication
 import com.emigo.app.data.remote.dto.FeedItem
 import java.io.File
 import java.io.FileOutputStream
@@ -36,7 +37,17 @@ object WidgetPhotoSync {
         val latest = candidates
             .mapNotNull { item -> item.photos.maxByOrNull { it.createdAt }?.let { photo -> Triple(item.friendId, item.displayName, photo) } }
             .maxByOrNull { (_, _, photo) -> photo.createdAt }
-            ?: return
+        if (latest == null) {
+            // Genuinely nothing qualifies any more (not a fetch failure — the caller only ever
+            // reaches here with a real, successfully-fetched feed) — most reachable today via
+            // handlePhotoDeleted below, where the one photo that qualified was the one just
+            // unsent. Clearing rather than leaving whatever was cached before is what stops a
+            // deleted (or newly-disqualified) photo from sitting on the widget forever with
+            // nothing left to ever replace it.
+            WidgetPhotoStore(context).clear()
+            EmberWidget().updateAll(context)
+            return
+        }
 
         val (friendId, senderName, photo) = latest
         applyLatestPhoto(
@@ -70,6 +81,30 @@ object WidgetPhotoSync {
             photoUrl = photoUrl,
             effectiveFriendIds = effectiveFriendIds,
         )
+    }
+
+    /** Called from EmberFirebaseMessagingService's data-only PHOTO_DELETED push — someone unsent
+     * a photo. Deliberately does nothing unless [deletedPhotoId] is the *exact* photo currently
+     * cached for the widget — unsending an older photo that already isn't what's showing has
+     * nothing here for this device to react to, matching how [syncFromPush] similarly ignores a
+     * push that wouldn't change anything. When it does match, this re-fetches the feed (the same
+     * call [WidgetUpdateWorker]'s own safety-net sync already makes) rather than guessing a
+     * replacement locally — the backend, not this device, is the one source of truth for what a
+     * friend's now-next-most-recent photo actually is. [senderId] (from the push payload) is
+     * what lets this honor the same featured-friend choice [syncFromPush] does, before ever
+     * spending a network round trip on a sender that wouldn't qualify anyway.
+     * [sync] then naturally either replaces the widget with whatever now qualifies as latest, or
+     * (see its own empty-candidates branch) clears it if genuinely nothing does. */
+    suspend fun handlePhotoDeleted(context: Context, deletedPhotoId: String, senderId: String) {
+        val current = WidgetPhotoStore(context).current() ?: return
+        if (current.photoId != deletedPhotoId) return
+
+        val effectiveFriendIds = effectiveFeaturedFriendIds(context)
+        if (effectiveFriendIds.isNotEmpty() && senderId !in effectiveFriendIds) return
+
+        val app = context.applicationContext as EmberApplication
+        val items = app.photoRepository.getFeed(forceRefresh = true).getOrNull() ?: return
+        sync(context, items)
     }
 
     /** The featured-friend set only actually applies while genuinely subscribed — a lapsed

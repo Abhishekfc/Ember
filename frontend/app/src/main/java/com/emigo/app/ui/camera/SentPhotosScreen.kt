@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -53,6 +54,7 @@ import com.emigo.app.R
 import com.emigo.app.data.remote.dto.SentPhotoDto
 import com.emigo.app.ui.components.NestedScreenHeader
 import com.emigo.app.ui.home.FEATURED_CARD_ASPECT_RATIO
+import com.emigo.app.ui.home.featuredCardSidePadding
 import com.emigo.app.ui.home.formatRelativeTime
 import com.emigo.app.ui.home.formatRemainingTime
 import com.emigo.app.ui.profile.EditDialogShell
@@ -131,15 +133,48 @@ fun SentPhotosScreen(
                     contentPadding = PaddingValues(bottom = 10.dp),
                 ) {
                     items(viewModel.photos, key = { it.photoId }) { photo ->
-                        AsyncImage(
-                            model = photo.photoUrl,
-                            contentDescription = "Sent ${formatRelativeTime(photo.createdAt)}",
-                            contentScale = ContentScale.Crop,
+                        // Same card recipe as Moments' own grid (MomentGridCard in HomeScreen.kt)
+                        // — rounded corners, elevatedPanel behind the image, a bottom scrim with
+                        // a label — rather than a bare clipped AsyncImage with nothing else.
+                        // Relative send time takes the label's place here since there's no
+                        // friend name to show (this is this account's own outbox, everything on
+                        // it was sent by the same person).
+                        Box(
                             modifier = Modifier
                                 .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
-                                .clip(RoundedCornerShape(EmberRadii.image))
-                                .clickable { selectedPhoto = photo },
-                        )
+                                .clip(RoundedCornerShape(EmberRadii.card))
+                                .background(colors.elevatedPanel)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { selectedPhoto = photo },
+                                ),
+                        ) {
+                            AsyncImage(
+                                model = photo.photoUrl,
+                                contentDescription = "Sent ${formatRelativeTime(photo.createdAt)}",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))),
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    text = formatRelativeTime(photo.createdAt),
+                                    fontFamily = PublicSansFontFamily,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -189,12 +224,20 @@ private fun SentPhotoViewer(
                     indication = null,
                     onClick = onDismiss,
                 ),
+            contentAlignment = Alignment.Center,
         ) {
+            // Same card form as everywhere else this photo could already be shown (the outbox
+            // grid tile, Moments' own grid/overlay) — a rounded, side-inset, fixed-aspect card,
+            // not a bare edge-to-edge image with black letterbox bars top and bottom.
             AsyncImage(
                 model = photo.photoUrl,
                 contentDescription = "Sent photo",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = featuredCardSidePadding())
+                    .aspectRatio(FEATURED_CARD_ASPECT_RATIO)
+                    .clip(RoundedCornerShape(EmberRadii.card)),
             )
         }
 

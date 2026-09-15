@@ -9,6 +9,7 @@ import com.emigo.app.data.FriendRepository
 import com.emigo.app.data.SubscriptionRepository
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.widget.WidgetPreferenceStore
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /** A generously high ceiling for "give me every friend to choose from" — not a real pagination
@@ -28,10 +29,13 @@ class WidgetSettingsViewModel(
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
-    /** Defaults to false until the real check resolves — same reasoning as every other Gold
-     * check in this app (CameraViewModel/ThemeViewModel): never let a gated action briefly look
-     * available before snapping shut once the real answer lands. */
-    var isGoldMember by mutableStateOf(false)
+    /** Seeded synchronously from the last resolved value (see
+     * SubscriptionRepository.isGoldMemberSync), not a hardcoded false — this is still exactly as
+     * safe against a non-subscriber briefly seeing a gated action look available: a real
+     * non-subscriber's last-known answer is itself false, so this only ever changes what a real
+     * subscriber sees, correctly starting unlocked instead of flashing locked for a moment on
+     * every cold start. */
+    var isGoldMember by mutableStateOf(subscriptionRepository.isGoldMemberSync())
         private set
 
     /** Staged, not yet persisted — mirrors ThemeScreen's own stage-then-apply shape. Starts from
@@ -46,6 +50,12 @@ class WidgetSettingsViewModel(
         }
         viewModelScope.launch {
             isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
+        }
+        // See SubscriptionRepository.isGoldMemberFlow's own doc comment — without this, a
+        // purchase made from the Ember Gold screen wouldn't unlock this screen's Save action
+        // until the next full app restart.
+        viewModelScope.launch {
+            subscriptionRepository.isGoldMemberFlow.collect { isGoldMember = it }
         }
         loadFriends()
     }

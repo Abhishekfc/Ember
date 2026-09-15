@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.emigo.app.data.SubscriptionRepository
 import com.emigo.app.data.local.AppIconPreferenceStore
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class AppIconViewModel(
@@ -18,10 +19,12 @@ class AppIconViewModel(
     var selectedIcon by mutableStateOf(AppIconKey.DEFAULT)
         private set
 
-    /** Defaults to false (not Gold) until the real check resolves — same reasoning as
-     * ThemeViewModel's own isGoldMember: a locked icon should never briefly look selectable
-     * before snapping back once the real answer lands. */
-    var isGoldMember by mutableStateOf(false)
+    /** Seeded synchronously from the last resolved value (see
+     * SubscriptionRepository.isGoldMemberSync), not a hardcoded false — the real check in [init]
+     * is a suspend call with a real gap before it resolves, and defaulting to false for that gap
+     * flashed a locked icon's own lock badge over a genuine subscriber's unlocked icon for a
+     * moment on every cold start before snapping back once the real answer landed. */
+    var isGoldMember by mutableStateOf(subscriptionRepository.isGoldMemberSync())
         private set
 
     init {
@@ -32,6 +35,13 @@ class AppIconViewModel(
             // subscription lapses — same reasoning ThemeViewModel.reload applies to a persisted
             // theme, and the same reason selectIcon below re-checks before persisting a new one.
             selectedIcon = if (persisted.locked && !isGoldMember) AppIconKey.DEFAULT else persisted
+        }
+        // Outlives any single screen visit (viewModel(...) isn't re-keyed per visit here) —
+        // without this, a purchase made from the Ember Gold screen wouldn't unlock icons here
+        // until the next full app restart. See SubscriptionRepository.isGoldMemberFlow's own doc
+        // comment.
+        viewModelScope.launch {
+            subscriptionRepository.isGoldMemberFlow.collect { isGoldMember = it }
         }
     }
 

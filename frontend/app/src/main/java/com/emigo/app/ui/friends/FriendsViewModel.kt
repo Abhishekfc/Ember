@@ -10,6 +10,7 @@ import com.emigo.app.data.SubscriptionRepository
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.data.remote.dto.PendingFriendRequestDto
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /** Matches the backend's own default `limit` for this endpoint — kept as one named constant,
@@ -31,7 +32,12 @@ class FriendsViewModel(
     // real endpoint or redirect to the Gold screen instead. This is purely a UX fast-path: the
     // endpoint itself re-checks server-side regardless (see FriendService.restoreStreak), so a
     // stale/wrong value here can only ever produce an unnecessary Gold redirect, never a bypass.
-    var isGoldMember by mutableStateOf(false)
+    //
+    // Seeded synchronously from the last resolved value (see
+    // SubscriptionRepository.isGoldMemberSync), not a hardcoded false, so a real subscriber's
+    // "Restore streak" doesn't briefly redirect to the Gold upsell on cold start before the real
+    // check lands a moment later.
+    var isGoldMember by mutableStateOf(subscriptionRepository.isGoldMemberSync())
         private set
 
     /** Friendship ids with a restore currently in flight — mirrors [acceptingRequestIds]'s
@@ -107,6 +113,12 @@ class FriendsViewModel(
         }
         viewModelScope.launch {
             isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
+        }
+        // See SubscriptionRepository.isGoldMemberFlow's own doc comment — without this, a
+        // purchase made from the Ember Gold screen wouldn't unlock "Restore streak" here until
+        // the next full app restart.
+        viewModelScope.launch {
+            subscriptionRepository.isGoldMemberFlow.collect { isGoldMember = it }
         }
     }
 

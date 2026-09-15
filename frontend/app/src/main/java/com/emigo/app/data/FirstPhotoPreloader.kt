@@ -45,4 +45,29 @@ object FirstPhotoPreloader {
             )
         }
     }
+
+    /** Same reasoning as [preload], for the *other* thing that used to visibly pop in a beat
+     * after cold start: an image-backed theme's own full-screen background (see
+     * EmberAppTheme/EmberBackground.ImageBacked in Theme.kt) — a local drawable resource, not a
+     * remote URL, but Coil decodes it exactly the same way, off the main thread and on its own
+     * schedule, so it's equally worth a head start called this early. [drawableResId] is read by
+     * the caller from whichever theme is actually persisted (see ThemePreferenceStore's own
+     * lastEffectiveThemeSync) — never hardcoded to one specific theme here, since which drawable
+     * this needs to be depends entirely on which theme the signed-in account last had applied.
+     *
+     * Sized to the real screen width *and height*, not a square like [preload] — the real
+     * AsyncImage this is warming the cache for fills the whole screen with ContentScale.Crop, so
+     * a square request here would decode at the wrong size and simply miss that request's own
+     * cache entry, defeating the point. */
+    fun preloadDrawable(context: Context, drawableResId: Int, targetWidthPx: Int, targetHeightPx: Int) {
+        val appContext = context.applicationContext
+        scope.launch {
+            appContext.imageLoader.enqueue(
+                ImageRequest.Builder(appContext)
+                    .data(drawableResId)
+                    .size(Size(targetWidthPx, targetHeightPx))
+                    .build(),
+            )
+        }
+    }
 }
