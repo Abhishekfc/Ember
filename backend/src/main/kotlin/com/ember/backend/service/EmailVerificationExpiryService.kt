@@ -36,16 +36,18 @@ val UNVERIFIED_ACCOUNT_GRACE_PERIOD: Duration = Duration.ofMinutes(10)
  * version doesn't, on request — the deadline shown on screen is now the real deadline, with no
  * grace once it's passed.
  *
- * Runs every 10 seconds, not once a minute like an earlier version of this class, so a deleted
- * account actually disappears from the database within a handful of seconds of its own deadline
- * rather than up to a full minute later — access was already cut off exactly at the deadline
- * regardless (see FirebaseAuthenticationFilter), so this interval only ever affected how long a
- * technically-inaccessible row kept existing, never who could get in. Safe to run this often
- * without costing more: the query itself is backed by a partial index (see the V14 migration) that
- * stays tiny regardless of how large the users table grows, since normally zero or a small handful
- * of rows are ever actually pending at once — and the one real external cost, the Firebase Admin
- * delete call in [UserService.deleteAccount], only ever fires once per account that's genuinely
- * being deleted, so checking more often doesn't multiply it; it only finds each one sooner.
+ * Runs once a day (staggered after StreakBreakDetectionService/PhotoCleanupService's own midnight
+ * jobs), not every 10 seconds like an earlier version of this class. Access was already cut off
+ * exactly at the deadline regardless (see FirebaseAuthenticationFilter), so this interval only
+ * ever affects how long a technically-inaccessible row keeps existing, never who can get in — the
+ * query cost argument an earlier version of this doc comment made for running every 10 seconds was
+ * real (a tiny, index-backed query, see the V14 migration) but missed the actual cost: Neon bills
+ * for wall-clock time its compute is awake, not query cost, and *any* connection — including one
+ * that finds nothing to do — resets its idle-suspend timer. A job every 10 seconds never gave Neon
+ * a large enough gap to ever suspend, which is the same "billed 24 hours a day for an app with
+ * almost no traffic" problem the datasource's own hikari.minimum-idle=0 setting exists to prevent
+ * (see application.yml), just via a different path. Once a day closes that gap without changing
+ * anything about who can access the app.
  */
 @Service
 class EmailVerificationExpiryService(
@@ -54,7 +56,7 @@ class EmailVerificationExpiryService(
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    @Scheduled(fixedRate = 10_000)
+    @Scheduled(cron = "0 15 0 * * *", zone = "UTC")
     fun expireUnverifiedAccounts() {
         val cutoff = Instant.now().minus(UNVERIFIED_ACCOUNT_GRACE_PERIOD)
         val candidates = runCatching { userRepository.findByEmailVerificationRequiredTrueAndCreatedAtBefore(cutoff) }
