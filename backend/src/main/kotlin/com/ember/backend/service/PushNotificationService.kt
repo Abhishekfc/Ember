@@ -107,6 +107,36 @@ class PushNotificationService(
         }
     }
 
+    /** Data-only, same reasoning as [notifyNewPhoto]: the client has to check "is this the exact
+     * photo currently cached on my widget?" and, if so, quietly replace or clear it — that only
+     * happens if `onMessageReceived` actually runs, which FCM skips for a backgrounded app
+     * whenever a message carries a `notification` payload directly. No `photoUrl`/timestamp
+     * needed here unlike [notifyNewPhoto]: the client only ever needs to compare [photoId]
+     * against whatever it already has cached, never render anything new from this payload
+     * itself. [senderId] travels along so the client can decide whether to fall back to that
+     * same friend's next-most-recent remaining photo, once it re-fetches the feed, rather than
+     * just clearing to nothing. */
+    fun notifyPhotoDeleted(photoId: UUID, senderId: UUID, recipientUserIds: List<UUID>) {
+        val app = firebaseApp ?: return
+        val tokens = deviceTokenRepository.findAllByUserIdIn(recipientUserIds).map { it.fcmToken }
+        if (tokens.isEmpty()) return
+
+        val message = MulticastMessage.builder()
+            .putData("type", "PHOTO_DELETED")
+            .putData("photoId", photoId.toString())
+            .putData("senderId", senderId.toString())
+            .setAndroidConfig(AndroidConfig.builder().setPriority(AndroidConfig.Priority.HIGH).build())
+            .addAllTokens(tokens)
+            .build()
+
+        try {
+            val response = FirebaseMessaging.getInstance(app).sendEachForMulticast(message)
+            recordSendResult(response, tokens, "PHOTO_DELETED")
+        } catch (ex: Exception) {
+            logger.error("Failed to send FCM push", ex)
+        }
+    }
+
     /** Data-only, same reasoning as [notifyNewPhoto]: the client has to build this notification
      * itself (with a "Restore streak" action button attached), and that only happens if
      * `onMessageReceived` actually runs, which FCM skips whenever the app is backgrounded and the

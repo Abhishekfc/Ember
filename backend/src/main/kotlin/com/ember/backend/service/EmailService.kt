@@ -25,8 +25,13 @@ class EmailService(
      * this without its own try/catch; a failed or unconfigured send just logs a warning and
      * returns, so an email problem can never turn into a 500 for whatever real action triggered
      * it. [ResendProperties.apiKey] blank means this is simply unconfigured — the common state
-     * before Resend is actually set up. */
-    fun send(to: String, subject: String, body: String) {
+     * before Resend is actually set up.
+     *
+     * [html] is what every real email client actually renders; [text] is sent alongside it only
+     * as the fallback a handful of plain-text-only clients read instead — Resend (like every
+     * other transactional provider) accepts both in the same request for exactly this reason. A
+     * caller with nothing worth formatting can just pass the same plain string for both. */
+    fun send(to: String, subject: String, html: String, text: String) {
         if (resendProperties.apiKey.isBlank()) return
         try {
             val payload = objectMapper.writeValueAsString(
@@ -34,7 +39,8 @@ class EmailService(
                     "from" to resendProperties.fromEmail,
                     "to" to listOf(to),
                     "subject" to subject,
-                    "text" to body,
+                    "html" to html,
+                    "text" to text,
                 ),
             )
             val request = HttpRequest.newBuilder()
