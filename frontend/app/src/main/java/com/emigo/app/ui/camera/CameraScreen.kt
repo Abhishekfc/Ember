@@ -15,13 +15,16 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -57,9 +60,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Cameraswitch
+import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
@@ -168,7 +171,14 @@ fun CameraScreen(
     // Reviewing a shot? Back retakes instead of leaving the camera.
     BackHandler(enabled = captured != null) { viewModel.discardCapture() }
 
+    // Guards launch() itself, not just what happens after — the system picker takes a moment to
+    // actually appear on screen, and a fast double/triple tap in that gap used to call launch()
+    // once per tap, stacking that many picker instances on the back stack. Reset the moment the
+    // picker returns a result (picked or cancelled, either way it's done), not tied to whether a
+    // photo actually came back.
+    var galleryPickerInFlight by remember { mutableStateOf(false) }
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        galleryPickerInFlight = false
         if (uri != null) {
             val file = File(context.cacheDir, "ember_pick_${System.currentTimeMillis()}.jpg")
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -339,21 +349,31 @@ fun CameraScreen(
                             .clip(cardShape)
                             .background(Color.Black),
                     ) {
-                        // Plain, instant swap — no fade. A Crossfade here was tried (twice: first
-                        // keyed on a boolean that re-read viewModel.capturedFile live inside the
-                        // lambda, which crashed the app on retake — both the outgoing and incoming
-                        // slots saw the same already-null value and both tried to mount
-                        // LiveCameraStage at once, and two AndroidViews can't share CameraSession's
-                        // one singleton PreviewView; then keyed on the File? itself instead, which
-                        // fixed the crash but meant an instant-preview snapshot silently getting
-                        // replaced by the real photo triggered a second fade through this Box's
-                        // black background, reading as a flicker) and explicitly rejected both
-                        // times — no animation, no intermediate frame, just the real photo the
-                        // moment it's ready.
+                        // LiveCameraStage is unconditional now, not one arm of an if/else —
+                        // CapturedPreview draws as a plain opaque overlay on top of it instead of
+                        // replacing it, specifically so sending a photo (captured going back to
+                        // null) no longer disposes and recreates LiveCameraStage's AndroidView,
+                        // which used to force the camera's surface to reattach and briefly show
+                        // black. This was tried once before as part of a larger change (also
+                        // switching the preview's rendering mode) that caused a real, separate
+                        // regression (choppy pager flings) — that mode switch was reverted, this
+                        // overlay-only piece is being reapplied on its own, since it had no
+                        // observed downside by itself. A Crossfade here was tried before too
+                        // (twice: first keyed on a boolean that re-read viewModel.capturedFile
+                        // live inside the lambda, which crashed the app on retake — both the
+                        // outgoing and incoming slots saw the same already-null value and both
+                        // tried to mount a *second* LiveCameraStage, and two AndroidViews can't
+                        // share CameraSession's one singleton PreviewView; then keyed on the
+                        // File? itself instead, which fixed the crash but meant an instant-preview
+                        // snapshot silently getting replaced by the real photo triggered a second
+                        // fade through this Box's black background, reading as a flicker) and
+                        // explicitly rejected both times. This overlay approach can't hit either
+                        // of those: there is only ever one LiveCameraStage, never toggled or
+                        // duplicated, and CapturedPreview draws the real photo the instant it's
+                        // ready with no animation of its own, same as before.
+                        LiveCameraStage(isReviewing = captured != null)
                         if (captured != null) {
                             CapturedPreview(viewModel = viewModel, file = captured)
-                        } else {
-                            LiveCameraStage()
                         }
                     }
 
@@ -371,12 +391,31 @@ fun CameraScreen(
                                 CaptureControls(
                                     viewModel = viewModel,
                                     onPickFromGallery = {
-                                        viewModel.onGalleryClick {
-                                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                        if (!galleryPickerInFlight) {
+                                            viewModel.onGalleryClick {
+                                                galleryPickerInFlight = true
+                                                galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                            }
                                         }
                                     },
                                 )
                             }
+                        }
+
+                        // New-user-only, gone for good the instant they ever swipe once — see
+                        // CameraViewModel.showSwipeHint's own doc comment. captured == null
+                        // (still live, not reviewing a shot) since the point is teaching that
+                        // the rest of the app is a swipe away, which isn't relevant mid-review.
+                        AnimatedVisibility(
+                            visible = viewModel.showSwipeHint && captured == null,
+                            exit = fadeOut(tween(220)),
+                        ) {
+                            // AVATAR_ROW_TOP_GAP, not a one-off dp guessed for just this — the
+                            // same named gap Home already uses below its own featured card, so
+                            // this reads as one consistent design-system value (and stays correct
+                            // on every device, the same way that one already does) rather than a
+                            // fresh magic number nobody else's spacing agrees with.
+                            SwipeHint(modifier = Modifier.padding(top = AVATAR_ROW_TOP_GAP))
                         }
                     }
                 }
@@ -538,9 +577,13 @@ private fun OutboxButton(sendAnimState: SendAnimState, lastSentPhotoUrl: String?
     }
 }
 
-/** Live viewfinder inside the card. */
+/** Live viewfinder inside the card. Kept mounted even while [isReviewing] a just-sent photo (see
+ * the call site's own doc comment on why) — [isReviewing] exists purely to stop this composable's
+ * own pinch-to-zoom gesture from acting on a two-finger pinch performed over the reviewed photo,
+ * which used to be a no-op (this whole composable didn't exist yet in that state) and would
+ * otherwise now silently change the hidden live camera's zoom in the background. */
 @Composable
-private fun LiveCameraStage() {
+private fun LiveCameraStage(isReviewing: Boolean = false) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -614,7 +657,7 @@ private fun LiveCameraStage() {
                             awaitFirstDown(requireUnconsumed = false)
                             do {
                                 val event = awaitPointerEvent()
-                                if (event.changes.size >= 2) {
+                                if (event.changes.size >= 2 && !isReviewing) {
                                     val gestureZoom = event.calculateZoom()
                                     val camera = CameraSession.camera
                                     val zoomState = camera?.cameraInfo?.zoomState?.value
@@ -981,20 +1024,6 @@ private fun CaptureControls(
             icon = Icons.Rounded.Image,
             contentDescription = "Pick from gallery",
             onClick = onPickFromGallery,
-            badge = if (!viewModel.isGoldMember) {
-                {
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(colors.glow)
-                            .border(2.dp, Color(0xFF0E0B16), CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Filled.Lock, contentDescription = "Emigo Gold", tint = colors.accentText, modifier = Modifier.size(10.dp))
-                    }
-                }
-            } else null,
         )
 
         // The cream ring is the stationary anchor — only the gradient fill inside it shrinks on
@@ -1039,6 +1068,54 @@ private fun CaptureControls(
                     CameraSelector.LENS_FACING_BACK
                 }
             },
+        )
+    }
+}
+
+/** A brand-new user's only hint that Camera is a page of a larger pager, not a standalone screen
+ * — Home, Friends, Activity and Settings are all a swipe away in either direction, with no other
+ * affordance (no tab bar label, no arrow) pointing that out otherwise. The two chevrons nudge
+ * outward and back on a slow, continuous loop — same idea as any "swipe me" gesture hint, subtle
+ * enough not to look like an ad for itself. Gone permanently after the first real swipe (see
+ * CameraViewModel.showSwipeHint) — this composable itself doesn't know or care why it's still
+ * visible or not, that's entirely the caller's own AnimatedVisibility. */
+@Composable
+private fun SwipeHint(modifier: Modifier = Modifier) {
+    val colors = EmberTheme.colors
+    val infiniteTransition = rememberInfiniteTransition(label = "swipeHint")
+    val nudge by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "swipeHintNudge",
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier,
+    ) {
+        Icon(
+            Icons.Rounded.ChevronLeft,
+            contentDescription = null,
+            tint = colors.mutedDim,
+            modifier = Modifier.size(16.dp).graphicsLayer { translationX = -nudge * 5.dp.toPx() },
+        )
+        Text(
+            text = "Swipe to explore",
+            fontFamily = PublicSansFontFamily,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.3.sp,
+            color = colors.mutedDim,
+        )
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = colors.mutedDim,
+            modifier = Modifier.size(16.dp).graphicsLayer { translationX = nudge * 5.dp.toPx() },
         )
     }
 }

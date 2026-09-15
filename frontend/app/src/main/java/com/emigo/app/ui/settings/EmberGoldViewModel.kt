@@ -50,7 +50,13 @@ class EmberGoldViewModel(
     private val subscriptionRepository: SubscriptionRepository,
 ) : ViewModel() {
 
-    var uiState by mutableStateOf(GoldUiState())
+    // isGold seeded synchronously from the last resolved value (subscriptionRepository's own
+    // disk-persisted flag), not the GoldUiState default of false — refresh() below is a suspend
+    // call (Play Billing + a backend round trip) with a real gap before it resolves, and
+    // defaulting to false for that gap flashed the paywall's "Upgrade to Gold" button over a
+    // genuine subscriber's own "Manage subscription" one for a moment on every single open of
+    // this screen. Same fix already applied to every other Gold-gated ViewModel in the app.
+    var uiState by mutableStateOf(GoldUiState(isGold = subscriptionRepository.isGoldMemberSync()))
         private set
 
     private var collectingEvents = false

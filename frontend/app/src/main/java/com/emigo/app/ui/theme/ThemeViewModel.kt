@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.emigo.app.data.SubscriptionRepository
 import com.emigo.app.data.local.ThemePreferenceStore
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class ThemeViewModel(
@@ -22,14 +23,23 @@ class ThemeViewModel(
     var selectedTheme by mutableStateOf(store.lastEffectiveThemeSync())
         private set
 
-    /** Defaults to false (not Gold) until the real check resolves — same reasoning as
-     * CameraViewModel's own isGoldMember: a locked theme should never briefly look applied
-     * before snapping back once the real answer lands. */
-    var isGoldMember by mutableStateOf(false)
+    /** Seeded synchronously from the last resolved value (see
+     * SubscriptionRepository.isGoldMemberSync), not a hardcoded false — the real check in [reload]
+     * is a suspend call with a real gap before it resolves, and defaulting to false for that gap
+     * flashed a locked theme's own lock badge over a genuine subscriber's applied theme for a
+     * moment on every cold start before snapping back once the real answer landed. */
+    var isGoldMember by mutableStateOf(subscriptionRepository.isGoldMemberSync())
         private set
 
     init {
         reload()
+        // This ViewModel is constructed once at the top of the whole Compose tree and outlives
+        // any single screen visit — without this, a purchase made from the Ember Gold screen
+        // wouldn't unlock a theme here until the next full app restart. See
+        // SubscriptionRepository.isGoldMemberFlow's own doc comment.
+        viewModelScope.launch {
+            subscriptionRepository.isGoldMemberFlow.collect { isGoldMember = it }
+        }
     }
 
     /** Re-runs the same persisted-theme + Gold-status resolution [init] does — this ViewModel is

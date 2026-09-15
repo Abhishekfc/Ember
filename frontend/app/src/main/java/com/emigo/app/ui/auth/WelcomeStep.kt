@@ -31,8 +31,7 @@ import com.emigo.app.ui.theme.CourgetteFontFamily
 /** [AuthStep.WELCOME] — the app's true entry point, its own dedicated screen (not sharing a
  * composable with [LoginStep]/[RegisterEmailStep]/etc.): the mockup, wordmark, and tagline, then
  * exactly two ways forward — "Create an account" (primary) into the register flow, "Sign in"
- * (a plain link, not a button) into the ordinary [LoginStep]. No Google button here — that
- * lives on [LoginStep] itself instead, next to the returning-user fields it actually pairs with.
+ * (a plain link, not a button) into the ordinary [LoginStep].
  *
  * Takes plain values/callbacks rather than [LoginViewModel] directly, rather than the ViewModel
  * itself — decouples it from needing a real `AuthRepository`/`TokenStore` just to construct,

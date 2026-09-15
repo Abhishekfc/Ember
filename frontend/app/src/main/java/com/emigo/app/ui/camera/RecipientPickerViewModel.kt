@@ -16,16 +16,37 @@ class RecipientPickerViewModel(
     private val repository: FriendRepository,
     private val localCache: LocalListCache,
     initialSelectedFriendIds: Set<String>,
+    // CameraViewModel's own already-known friend list — fetched once, lazily, the first time the
+    // Camera page is ever visited, well before Send is ever tapped. Seeding straight from this
+    // instead of an empty list means a brand-new account with genuinely zero friends can show
+    // "Find friends" the instant this screen opens, with no spinner-then-content flash: the
+    // answer was already known in memory, this just reuses it instead of asking the server again
+    // for the exact same thing. loadFriends() below still re-checks in the background regardless
+    // (see its own doc comment), so this is purely about what the very first frame shows.
+    initialFriends: List<FriendSummaryDto> = emptyList(),
 ) : ViewModel() {
 
-    var friends by mutableStateOf<List<FriendSummaryDto>>(emptyList())
+    var friends by mutableStateOf(initialFriends)
         private set
-    var isLoading by mutableStateOf(true)
+    var isLoading by mutableStateOf(initialFriends.isEmpty())
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
     var selectedFriendIds by mutableStateOf(initialSelectedFriendIds)
         private set
+
+    /** What [visibleFriends] actually sorts by — a frozen snapshot of [selectedFriendIds], not
+     * that live property itself. Refreshed once per picker *open* (see [refreshSortSnapshot],
+     * called from MainActivity's own per-open LaunchedEffect, right alongside loadFriends()), and
+     * never again until the next open — this ViewModel is a single long-lived instance reused
+     * across every open (same store as CameraViewModel), so without this the "float selected rows
+     * to the top" behavior would live-react to every tap and every badge switch during a single
+     * session, reshuffling the list under the user's finger while they're still mid-selection.
+     * Snapchat's own recipient list only reorders between sends, never while you're actively
+     * picking — this is the same shape: whoever was selected the moment this screen opened (e.g.
+     * carried over from the last real send) sorts to the top, and stays exactly there — new taps
+     * this session only toggle a checkmark in place. */
+    private var sortSnapshot by mutableStateOf(initialSelectedFriendIds)
 
     /** Who the last real send actually went to (see CameraViewModel.sendCaptured) — the
      * "Recent" badge's target selection. Empty until a send has ever gone out. */
@@ -59,17 +80,51 @@ class RecipientPickerViewModel(
     var activeFilterId by mutableStateOf<String?>(null)
         private set
 
+    /** Typed into the search box below the badge row — narrows [visibleFriends] on top of
+     * whatever badge/list is already active, rather than replacing that filter, since the point
+     * of searching here is "find someone within what I'm already looking at", not "start over
+     * from everyone" (unlike Friends' own search, which has no badge/list layer to sit under). */
+    var searchQuery by mutableStateOf("")
+        private set
+
+    fun onSearchQueryChange(value: String) {
+        searchQuery = value
+    }
+
     /** The rows the list actually shows. Only a saved custom list actually narrows this — Recent
      * still shows every friend (with just the recent ones checked), since the point of tapping
      * Recent is "start from who I sent to last" while still being free to add or drop people, not
      * "I only ever want to see these people again." A custom list is the opposite: the whole
      * reason to save one is to jump straight to that fixed group without the rest of the list in
-     * the way. */
+     * the way. [searchQuery] then narrows whichever of those this resolves to even further.
+     *
+     * Whatever that resolves to, rows selected as of [sortSnapshot] (not the live selection —
+     * see its own doc comment) float to the top — Recent in particular can pre-check several
+     * people scattered anywhere in a long alphabetical-ish list, and without this you'd have to
+     * scroll the whole thing just to see who you're actually about to send to. `sortedByDescending`
+     * is a stable sort, so it only ever moves those rows up as a group; it never reorders anything
+     * within either group on its own. */
     val visibleFriends: List<FriendSummaryDto>
         get() {
-            val filterIds = customLists.firstOrNull { it.id == activeFilterId }?.friendIds?.toSet() ?: return friends
-            return friends.filter { it.friendId in filterIds }
+            val filterIds = customLists.firstOrNull { it.id == activeFilterId }?.friendIds?.toSet()
+            val badgeFiltered = if (filterIds == null) friends else friends.filter { it.friendId in filterIds }
+            val searched = if (searchQuery.isBlank()) {
+                badgeFiltered
+            } else {
+                badgeFiltered.filter {
+                    it.displayName.contains(searchQuery, ignoreCase = true) ||
+                        it.username.contains(searchQuery, ignoreCase = true)
+                }
+            }
+            return searched.sortedByDescending { it.friendId in sortSnapshot }
         }
+
+    /** Called once per picker open (see [sortSnapshot]'s own doc comment) — captures whatever's
+     * selected right now as the order [visibleFriends] sorts by for this whole session, so later
+     * taps and badge switches this same session can't reshuffle the list further. */
+    fun refreshSortSnapshot() {
+        sortSnapshot = selectedFriendIds
+    }
 
     init {
         // Same instant-on-reopen cache Friends' own tab already reads (LocalListCache.KEY_FRIENDS)
@@ -80,7 +135,12 @@ class RecipientPickerViewModel(
         // corrects it — which is what makes a list created on a *different* device actually show
         // up here instead of only ever reflecting whatever this one phone last saved locally.
         viewModelScope.launch {
-            localCache.read<FriendSummaryDto>(LocalListCache.KEY_FRIENDS)?.let { friends = it }
+            // Guarded on friends still being empty — if the constructor's own initialFriends
+            // already seeded a real (possibly empty-for-real-reasons) list, this on-disk snapshot
+            // must not clobber it with something potentially staler.
+            if (friends.isEmpty()) {
+                localCache.read<FriendSummaryDto>(LocalListCache.KEY_FRIENDS)?.let { friends = it }
+            }
             recentIds = localCache.read<String>(LocalListCache.KEY_LAST_RECIPIENT_IDS).orEmpty().toSet()
             localCache.read<RecipientListDto>(LocalListCache.KEY_RECIPIENT_LISTS)?.let { customLists = it }
             // Seeds the initial view to match whatever CameraViewModel actually defaulted the
@@ -99,17 +159,25 @@ class RecipientPickerViewModel(
         }
     }
 
+    /** Called on every picker open (see MainActivity's own doc comment on why), which used to mean
+     * a visible spinner-then-content flash every single time, even when the list already had
+     * perfectly good data on screen from the last open. Now mirrors FriendsViewModel's own
+     * refreshSilently: the loading/error UI is reserved for the genuine first load (nothing to
+     * show yet); once there's already a list on screen, this just quietly replaces it in the
+     * background, and a failure leaves that existing list alone rather than interrupting it with
+     * an error banner over data that's still perfectly usable. */
     fun loadFriends() {
+        val isFirstLoad = friends.isEmpty()
         viewModelScope.launch {
-            isLoading = true
-            errorMessage = null
+            if (isFirstLoad) {
+                isLoading = true
+                errorMessage = null
+            }
             repository.getFriends(limit = ALL_FRIENDS_LIMIT).fold(
                 onSuccess = { page -> friends = page.items },
-                // A failed refresh must not wipe out whatever the cache (or a previous successful
-                // fetch this session) already populated — only the error banner reflects it.
-                onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
+                onFailure = { if (isFirstLoad) errorMessage = it.message ?: "Couldn't load your friends" },
             )
-            isLoading = false
+            if (isFirstLoad) isLoading = false
         }
     }
 

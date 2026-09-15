@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -94,6 +95,7 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -240,6 +242,54 @@ fun HomeScreen(
     // both screens, instead of Home's card sitting lower just because this row exists above it.
     var sharePromptHeightPx by remember { mutableStateOf(0f) }
 
+    // The Home/Moments pill's own collapse state — 0f fully expanded, -sharePromptHeightPx fully
+    // collapsed. Driven by pillCollapseNestedScrollConnection below rather than reading the
+    // Moments grid's own LazyGridState directly, since the pill sits *outside* that grid (a
+    // sibling, not a header the grid itself owns) — nested scroll is what lets a sibling react to
+    // a descendant's scroll gestures. Same shape as Material3's own collapsing-app-bar
+    // implementation (heightOffset clamped to [-limit, 0]), reused here since this is the same
+    // problem: intercept scroll *before* the scrollable child consumes it, so dragging up both
+    // collapses this pill *and* scrolls the grid in the same continuous gesture, rather than the
+    // pill only reacting once the grid has nothing left to consume.
+    var pillHeightOffsetPx by remember { mutableStateOf(0f) }
+    val pillCollapseFraction = if (sharePromptHeightPx > 0f) -pillHeightOffsetPx / sharePromptHeightPx else 0f
+    val pillCollapseNestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            // Only ever collapses here (delta < 0, i.e. scrolling down through content) — pre-
+            // scroll runs before the Moments grid itself gets a chance to consume anything, so
+            // this claims scroll delta first on the way down, exactly like a collapsing header
+            // should.
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // Read directly off the ViewModel, not a locally-captured val — this connection
+                // object is created once (remember) and reused across recompositions, so a
+                // captured val would freeze at whatever mode was active the first time this ran.
+                // MOMENTS-only: HOME mode's own content doesn't scroll (see topFoldMaxHeightDp),
+                // so this must stay inert there rather than reacting to the pull-to-refresh
+                // gesture's own scroll delta on HOME's content.
+                if (viewModel.homeViewMode != HomeViewMode.MOMENTS) return Offset.Zero
+                if (sharePromptHeightPx <= 0f || available.y >= 0f) return Offset.Zero
+                val previousOffset = pillHeightOffsetPx
+                pillHeightOffsetPx = (previousOffset + available.y).coerceIn(-sharePromptHeightPx, 0f)
+                return Offset(0f, pillHeightOffsetPx - previousOffset)
+            }
+
+            // Only ever re-expands here (delta > 0, i.e. scrolling back up), and only from
+            // whatever the grid itself couldn't consume — post-scroll runs after the grid has
+            // already had first claim on a positive (scroll-up) delta, so the grid finishes
+            // scrolling its own content back to its own top *first*; only once it's genuinely out
+            // of room does the leftover start re-expanding the pill. Without this split (both
+            // directions living in onPreScroll instead), scrolling down even slightly while deep
+            // in the grid would instantly pop the pill back open before the grid had moved at all.
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (viewModel.homeViewMode != HomeViewMode.MOMENTS) return Offset.Zero
+                if (sharePromptHeightPx <= 0f || available.y <= 0f) return Offset.Zero
+                val previousOffset = pillHeightOffsetPx
+                pillHeightOffsetPx = (previousOffset + available.y).coerceIn(-sharePromptHeightPx, 0f)
+                return Offset(0f, pillHeightOffsetPx - previousOffset)
+            }
+        }
+    }
+
     // Whether this device's card+avatar fold can afford the roomy spacing scale or needs the
     // compact one — see homeFoldMetricsFor for why this is derived from real available space
     // rather than a screen-size threshold. Computed once here, at the top, because two separate
@@ -295,6 +345,13 @@ fun HomeScreen(
     // Which of Home's two views is showing — read from the ViewModel (see HomeViewMode's own doc
     // comment for why local Compose state here isn't enough to survive navigating away and back).
     val homeViewMode = viewModel.homeViewMode
+
+    // Switching mode always lands back on a fully-expanded pill, regardless of how far it was
+    // scrolled away in whichever mode was just left — otherwise switching to MOMENTS after
+    // scrolling HOME mode's own carousel content away (or the reverse) could strand the pill
+    // collapsed with nothing left to scroll to bring it back, since HOME mode's content doesn't
+    // scroll far enough to ever re-expand it on its own.
+    LaunchedEffect(homeViewMode) { pillHeightOffsetPx = 0f }
 
     // A tapped Moments grid card, grown into its own featured overlay — see MomentFocusState's
     // own doc comment for why this stays a separate, locally-hoisted state rather than reusing
@@ -470,13 +527,35 @@ fun HomeScreen(
                 // behind FocusShield, or blurred behind Memories' own day-card) never needed to
                 // keep scrolling underneath it either, and letting it scroll is what let a swipe
                 // that ran out of photos in Memories' viewer leak into scrolling the grid behind it.
+                //
+                // nestedScroll must come before verticalScroll in this chain — it needs to see a
+                // scroll gesture (from the Moments grid further down, or this Column's own scroll)
+                // before this Column's own verticalScroll consumes it, so the pill has first claim
+                // on the delta to animate its own collapse before whatever's left over actually
+                // scrolls the page.
+                .nestedScroll(pillCollapseNestedScrollConnection)
+                // Back to the original condition — gating this on homeViewMode == MOMENTS too
+                // (to stop the pill collapsing from a drag on HOME's own content, which doesn't
+                // scroll to begin with) also disabled pull-to-refresh on HOME, since
+                // PullToRefreshBox needs an enabled scrollable descendant to detect the pull
+                // gesture at all. The HOME-only collapse fix now lives inside
+                // pillCollapseNestedScrollConnection itself instead, where it can't take
+                // anything else down with it.
                 .verticalScroll(scrollState, enabled = !isPhotoFocused),
         ) {
             // Header + greeting blur as one contiguous block instead of three separately
             // blurred pieces — blurring each element on its own left visible hard-edged
             // rectangles floating over crisp background between them, which read as broken
             // rather than as one soft, de-emphasized backdrop.
-            FocusShield(active = isPhotoFocused, onDismiss = onDismissFocus) {
+            // active on EITHER kind of photo focus, not just isPhotoFocused (HOME mode's own
+            // featured-card viewer) — momentFocusState.isOpen (MOMENTS grid's separate tap-to-
+            // open viewer) used to have no shield of its own at all here, so its own blur on the
+            // grid left the pill above it still fully tappable, letting a tap on "Home" switch
+            // the whole screen away mid-focus with the blur still showing.
+            FocusShield(
+                active = isPhotoFocused || momentFocusState.isOpen,
+                onDismiss = { if (momentFocusState.isOpen) momentFocusState.isOpen = false else onDismissFocus() },
+            ) {
             Column(
                 modifier = Modifier
                     .onGloballyPositioned { headerHeightPx = it.size.height.toFloat() }
@@ -551,6 +630,13 @@ fun HomeScreen(
             // Wrapped in the same pull-to-refresh shift as the title/subtitle Column above, so
             // the featured card and everything below it moves down together with them as one
             // unit while HomeBrandHeader alone stays put.
+            //
+            // The pill just below gets its own FocusShield (separate from the header's own above,
+            // which closes right after HomeBrandHeader) so it can't be tapped to switch
+            // HOME/MOMENTS mode while a photo is focused. Scoped to just the pill rather than this
+            // whole block — wrapping the featured card/pager here too used to swallow the pager's
+            // own horizontal swipes into this shield's dismiss-overlay instead of letting the
+            // pager handle them, which broke swiping between photos while one was focused.
             Column(modifier = Modifier.graphicsLayer { translationY = pullOffsetFraction * PULL_REFRESH_CONTENT_OFFSET_DP.dp.toPx() }) {
 
             // Outside the when{} below, so it renders in every state rather than only alongside a
@@ -559,21 +645,71 @@ fun HomeScreen(
             // than the real one, and CameraScreen had no single Home position to match against.
             // Switching to MOMENTS only actually changes anything inside the real-feed branch
             // below; the other branches (loading/error/empty) render the same regardless of mode.
+            // Collapses (and fades) the pill toward the top as pillCollapseNestedScrollConnection
+            // reports more scroll, instead of the pill staying pinned forever above whatever's
+            // scrolled beneath it — this outer Box is what actually shrinks, letting the grid
+            // below it grow into the reclaimed space (see topFoldMaxHeightDp's own comment); the
+            // pill itself, inside, keeps reporting its own true natural height via
+            // onGloballyPositioned so that measurement stays correct regardless of how collapsed
+            // this wrapper currently is. clipToBounds so the pill's own content doesn't visibly
+            // overflow this box's shrinking bounds mid-collapse.
+            val pillCollapseDensity = LocalDensity.current
+            FocusShield(
+                active = isPhotoFocused || momentFocusState.isOpen,
+                onDismiss = { if (momentFocusState.isOpen) momentFocusState.isOpen = false else onDismissFocus() },
+            ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (sharePromptHeightPx > 0f) {
+                            Modifier.height(with(pillCollapseDensity) { (sharePromptHeightPx * (1f - pillCollapseFraction)).toDp() })
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .clipToBounds(),
+            ) {
             HomeViewModeToggleRow(
                 mode = homeViewMode,
                 onModeChange = { viewModel.setHomeViewMode(it) },
                 metrics = foldMetrics,
                 modifier = Modifier
                     .fillMaxWidth()
+                    // Forces this row to always measure at its own natural height, ignoring
+                    // whatever (shrinking) height constraint the wrapping Box above imposes as it
+                    // collapses. Without this, the row itself got compressed to fit the shrinking
+                    // Box — which fed straight back into sharePromptHeightPx below, which is what
+                    // both that Box's own target height *and* topFoldMaxHeightDp are computed
+                    // from, so the measured height, the collapse math and the grid's own bound all
+                    // chased each other every frame instead of the row just holding still at its
+                    // one true size while its container clips around it. That circular dependency
+                    // was the actual cause of the grid jittering/blinking on scroll, not the
+                    // nested-scroll math itself.
+                    .wrapContentHeight(unbounded = true, align = Alignment.Top)
                     .onGloballyPositioned { sharePromptHeightPx = it.size.height.toFloat() }
                     // Sits between the header and the card and should read as belonging to
                     // neither — slightly tighter than the card's own gap, since the header is the
                     // stronger anchor of the two. Scales with the fold for the same reason the
                     // pill's own padding does.
-                    .padding(top = foldMetrics.toggleTopGap, start = 22.dp, end = 22.dp)
+                    //
+                    // Half of toggleTopGap, not the full value — HomeBrandHeader now carries its
+                    // own bottom = 12.dp (matching TabScreenHeader), so the full toggleTopGap on
+                    // top of that stacked into a noticeably bigger gap than intended. Must stay
+                    // in sync with HomeViewModeToggleHeightTwin's own copy of this same value.
+                    .padding(top = foldMetrics.toggleTopGap / 2, start = 22.dp, end = 22.dp)
                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
-                    .graphicsLayer { alpha = chromeFade },
+                    .graphicsLayer {
+                        // Shifted up by exactly how much the wrapping Box's own height has
+                        // shrunk by, so — combined with that Box's clipToBounds — the pill reads
+                        // as sliding upward and being tucked away behind the fixed header above
+                        // it, rather than just shrinking in place from the bottom.
+                        translationY = -(pillCollapseFraction * sharePromptHeightPx)
+                        alpha = chromeFade * (1f - pillCollapseFraction)
+                    },
             )
+            }
+            }
 
             when {
                 // !hasCompletedFirstSync is what keeps this scoped to "we've never gotten a real
@@ -820,8 +956,13 @@ fun HomeScreen(
                     // measurements are in — it appears once, already at its correct final size,
                     // instead of appearing wrong and then correcting itself.
                     if (screenSize != Size.Zero && headerHeightPx > 0f && sharePromptHeightPx > 0f) {
+                    // sharePromptHeightPx scaled by (1 - pillCollapseFraction), not the pill's
+                    // full static height — as the pill collapses toward the header above it, this
+                    // fold (and so the Moments grid inside it, which is bounded to exactly this
+                    // height) grows to reclaim the space the pill gives up, instead of leaving a
+                    // dead gap where the pill used to be.
                     val topFoldMaxHeightDp = with(density) {
-                        (screenSize.height - statusBarPx - headerHeightPx - sharePromptHeightPx - navDockHeightPx).toDp()
+                        (screenSize.height - statusBarPx - headerHeightPx - sharePromptHeightPx * (1f - pillCollapseFraction) - navDockHeightPx).toDp()
                     }
                     // heightIn(max = ...) bounds this whole region to the real remaining space
                     // (screenSize, minus the status bar, minus the header's own real measured
@@ -940,7 +1081,7 @@ fun HomeScreen(
                 }
             }
             }
-        }
+            }
         }
 
     // Rendered from this screen's own true full-screen Box, same reasoning as Memories' own
@@ -1084,9 +1225,11 @@ private fun HomeBrandHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            // top = 0.dp — sits flush right against the status bar (via the parent's own
-            // statusBarsPadding()), no extra gap above it.
-            .padding(top = 0.dp, start = 22.dp, end = 22.dp),
+            // Matches TabScreenHeader exactly (top = 0, bottom = 12.dp) — that component's own
+            // doc comment says it was built to mirror this row, so this row should equally mirror
+            // it back rather than the two drifting apart. Icon size already matched (both use
+            // 44dp circles for their trailing controls); this was the one remaining gap.
+            .padding(top = 0.dp, bottom = 12.dp, start = 22.dp, end = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -1204,7 +1347,8 @@ internal fun HomeViewModeToggleHeightTwin(metrics: HomeFoldMetrics = HomeFoldRoo
         mode = HomeViewMode.HOME,
         onModeChange = {},
         metrics = metrics,
-        modifier = Modifier.fillMaxWidth().padding(top = metrics.toggleTopGap, start = 22.dp, end = 22.dp),
+        // Half of toggleTopGap — must match the real call site's own copy of this exactly.
+        modifier = Modifier.fillMaxWidth().padding(top = metrics.toggleTopGap / 2, start = 22.dp, end = 22.dp),
     )
 }
 

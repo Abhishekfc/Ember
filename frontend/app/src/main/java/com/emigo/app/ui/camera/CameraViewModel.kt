@@ -19,11 +19,13 @@ import androidx.lifecycle.viewModelScope
 import com.emigo.app.data.FriendRepository
 import com.emigo.app.data.PhotoRepository
 import com.emigo.app.data.SubscriptionRepository
+import com.emigo.app.data.local.CameraHintPreferenceStore
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.ui.home.FEATURED_CARD_ASPECT_RATIO
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -42,6 +44,11 @@ private const val RECIPIENT_PICKER_FRIENDS_LIMIT = 500
  * [CameraViewModel.markSendComplete]. */
 private const val SEND_ANIM_COMPLETE_HOLD_MS = 1200L
 
+/** Confirmed good on-device (2026-09-16) — left as a named constant rather than deleted outright,
+ * so re-testing a future change to the hint is a one-line flip again instead of re-deriving this
+ * whole mechanism from scratch. */
+private const val SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING = false
+
 /** Drives the Camera outbox button's own send animation (see CameraScreen's OutboxButton) —
  * SENDING from the moment [CameraViewModel.sendCaptured] queues the upload, flipped to COMPLETE by
  * [CameraViewModel.markSendComplete] once the real upload has actually landed (MainActivity
@@ -56,11 +63,48 @@ class CameraViewModel(
     private val photoRepository: PhotoRepository,
     private val subscriptionRepository: SubscriptionRepository,
     private val localCache: LocalListCache,
+    private val cameraHintPreferenceStore: CameraHintPreferenceStore,
 ) : ViewModel() {
 
-    var friends by mutableStateOf<List<FriendSummaryDto>>(emptyList())
+    // Seeded synchronously (see CameraHintPreferenceStore's own doc comment) so a returning user
+    // who already dismissed this never sees it flash on for even a frame. Only ever goes true ->
+    // false, once, for the life of this account on this device (dismissSwipeHint below).
+    var showSwipeHint by mutableStateOf(SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING || !cameraHintPreferenceStore.isDismissed())
         private set
-    var selectedRecipientIds by mutableStateOf<Set<String>>(emptySet())
+
+    /** Called once, the first time the user ever navigates away from Camera (see MainActivity's
+     * own pagerState.settledPage effect) — permanently hides the hint from here on, on this
+     * device. A no-op every time after the first, both for a cheap early-out and so this can't
+     * re-write the same true -> false transition to disk on every single later page change. */
+    fun dismissSwipeHint() {
+        if (SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING) return
+        if (!showSwipeHint) return
+        showSwipeHint = false
+        cameraHintPreferenceStore.dismiss()
+    }
+
+    // Both seeded synchronously, together, from LocalListCache's own synchronous mirror
+    // (readSync) — not the emptyList()/emptySet() this used to default to while the real,
+    // suspend localCache.read + friendRepository fetch was still in flight. Resolved with the
+    // exact same pinned-friend-first-else-last-sent priority applyFriends itself already
+    // establishes below, computed once here so the two land together on frame one instead of
+    // friends populating on one recomposition and the selection (and so the recipient badge)
+    // catching up a moment later — see applyFriends' own doc comment for why "land together"
+    // specifically was already worth writing carefully once, this just moves that same care to
+    // also cover the very first frame, not only the moment the real fetch resolves.
+    private val initialFriendsAndSelection: Pair<List<FriendSummaryDto>, Set<String>> = run {
+        val cachedFriends = localCache.readSync<FriendSummaryDto>(LocalListCache.KEY_FRIENDS).orEmpty()
+        val pinnedIds = cachedFriends.filter { it.pinnedByMe }.map { it.friendId }.toSet()
+        val selection = pinnedIds.ifEmpty {
+            val lastUsedIds = localCache.readSync<String>(LocalListCache.KEY_LAST_RECIPIENT_IDS).orEmpty().toSet()
+            lastUsedIds.filterTo(mutableSetOf()) { id -> cachedFriends.any { friend -> friend.friendId == id } }
+        }
+        cachedFriends to selection
+    }
+
+    var friends by mutableStateOf(initialFriendsAndSelection.first)
+        private set
+    var selectedRecipientIds by mutableStateOf(initialFriendsAndSelection.second)
         private set
 
     /** True only for the brief local step (baking the caption in, moving the file into durable
@@ -141,7 +185,11 @@ class CameraViewModel(
     /** Gallery picking is an Ember Gold perk; free accounts are limited to the live camera.
      * Defaults to false (not Gold) until the subscription check resolves, so the upsell never
      * flashes a free feature open before snapping shut. */
-    var isGoldMember by mutableStateOf(false)
+    // Seeded synchronously from the last resolved value (see SubscriptionRepository.isGoldMemberSync)
+    // rather than a hardcoded false — the real check below is a suspend call with a real gap
+    // before it resolves, and defaulting to false for that gap flashed the gallery button's lock
+    // badge over a genuine subscriber's own unlocked feature for a moment on every cold start.
+    var isGoldMember by mutableStateOf(subscriptionRepository.isGoldMemberSync())
         private set
     var showGoldUpsell by mutableStateOf(false)
         private set
@@ -212,6 +260,13 @@ class CameraViewModel(
                 if (friends.isEmpty()) applyFriends(cached)
             }
             isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
+        }
+        // Camera is a pager page, not a screen only created on demand — this instance lives for
+        // the whole app session, so without this it would never see a purchase made later from
+        // the Ember Gold screen until the next full app restart. See
+        // SubscriptionRepository.isGoldMemberFlow's own doc comment.
+        viewModelScope.launch {
+            subscriptionRepository.isGoldMemberFlow.collect { isGoldMember = it }
         }
     }
 

@@ -5,6 +5,9 @@ import com.emigo.app.data.remote.EmberApi
 import com.emigo.app.data.remote.dto.ErrorResponse
 import com.emigo.app.data.remote.dto.SubscriptionStatusDto
 import com.emigo.app.data.remote.dto.SubscriptionVerifyRequestDto
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 
 class SubscriptionRepository(
@@ -30,8 +33,20 @@ class SubscriptionRepository(
      * real answer [getStatus] confirmed, correct across restarts with no network needed. */
     fun isGoldMemberSync(): Boolean = syncPrefs.getBoolean(syncIsGoldMemberKey, false)
 
+    /** Live, app-wide mirror of the same value — every Gold-gated ViewModel (Camera, Theme,
+     * AppIcon, WidgetSettings, Friends) collects this alongside seeding from [isGoldMemberSync]
+     * above, so the instant a purchase is verified on the Ember Gold screen, every other
+     * already-alive screen unlocks immediately too, instead of only picking up the change on its
+     * own next cold start. Without this, each ViewModel's `isGoldMember` was a one-shot read that
+     * never changed again for the life of that instance — since Camera/Theme/etc. are long-lived,
+     * app-session-scoped ViewModels, that meant a full app restart was the only way to see a
+     * just-completed purchase reflected anywhere outside the Gold screen itself. */
+    private val _isGoldMemberFlow = MutableStateFlow(isGoldMemberSync())
+    val isGoldMemberFlow: StateFlow<Boolean> = _isGoldMemberFlow.asStateFlow()
+
     private fun saveIsGoldMemberSync(isActive: Boolean) {
         syncPrefs.edit().putBoolean(syncIsGoldMemberKey, isActive).apply()
+        _isGoldMemberFlow.value = isActive
     }
 
     // Not mirroring a backend Redis TTL the way PhotoRepository's feedCache does (see TtlCache's
@@ -122,5 +137,6 @@ class SubscriptionRepository(
      * device must never inherit the previous account's last-known subscription status. */
     fun clearLastKnownStatus() {
         syncPrefs.edit().remove(syncIsGoldMemberKey).apply()
+        _isGoldMemberFlow.value = false
     }
 }

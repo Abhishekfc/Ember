@@ -19,3 +19,13 @@
 # classes that only ever matter at compile time (e.g. @CanIgnoreReturnValue) — safe to ignore at
 # runtime, and R8 otherwise refuses to proceed since it can't verify the annotation classes exist.
 -dontwarn com.google.errorprone.annotations.**
+
+# WorkManager's own internal Room database (WorkDatabase_Impl) is instantiated reflectively by
+# Room's generated code at runtime — R8 stripped its no-arg constructor as "unused" since nothing
+# calls it directly in source, crashing every release build on launch with
+# NoSuchMethodException: WorkDatabase_Impl.<init> (debug builds are unminified and never hit this).
+# General rule, not just this one class, since any future direct Room usage would hit the same trap.
+-keep class * extends androidx.room.RoomDatabase {
+    <init>(...);
+}
+-keep class androidx.work.impl.WorkDatabase_Impl { *; }

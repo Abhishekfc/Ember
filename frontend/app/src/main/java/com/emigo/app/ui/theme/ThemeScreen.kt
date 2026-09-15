@@ -1,5 +1,6 @@
 package com.emigo.app.ui.theme
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,13 +17,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -38,6 +37,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
@@ -92,44 +93,26 @@ fun ThemeScreen(
             )
         }
 
-        // Free themes first, Gold themes after — with the app's actual default (Citrus, shown as
-        // "Ember") pinned to the very first slot of the first group, since that's the one theme
-        // every account already opens in and the one this picker should lead with rather than bury
-        // wherever it happened to land in the enum.
-        val freeThemes = remember { listOf(ThemeKey.CITRUS) + ThemeKey.entries.filter { !it.locked && it != ThemeKey.CITRUS } }
-        val goldThemes = remember { ThemeKey.entries.filter { it.locked } }
+        // One flat list, Citrus (shown as "Ember") pinned first since it's the app's actual
+        // default — the one theme every account already opens in, so the picker should lead with
+        // it rather than bury it wherever it happened to land in the enum. No Free/Gold split:
+        // the padlock on each chip already says which is which, a separate section for it is
+        // more structure than nine themes need.
+        val orderedThemes = remember { listOf(ThemeKey.CITRUS) + ThemeKey.entries.filter { it != ThemeKey.CITRUS } }
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 20.dp),
+            contentPadding = PaddingValues(20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
             modifier = Modifier.weight(1f),
         ) {
-            item(key = "free-header", span = { GridItemSpan(maxLineSpan) }) {
-                ThemeSectionLabel(text = "FREE", modifier = Modifier.padding(top = 16.dp, bottom = 2.dp))
-            }
-            items(freeThemes, key = { it.name }) { option ->
+            items(orderedThemes, key = { it.name }) { option ->
                 ThemeChip(
                     option = option,
                     isSelected = option == pendingTheme,
                     isGoldMember = viewModel.isGoldMember,
                     isDefault = option == ThemeKey.DEFAULT,
-                    onClick = {
-                        pendingTheme = option
-                        onPreview(option)
-                    },
-                )
-            }
-            item(key = "gold-header", span = { GridItemSpan(maxLineSpan) }) {
-                ThemeSectionLabel(text = "EMIGO GOLD", modifier = Modifier.padding(top = 20.dp, bottom = 2.dp))
-            }
-            items(goldThemes, key = { it.name }) { option ->
-                ThemeChip(
-                    option = option,
-                    isSelected = option == pendingTheme,
-                    isGoldMember = viewModel.isGoldMember,
-                    isDefault = false,
                     onClick = {
                         pendingTheme = option
                         onPreview(option)
@@ -186,6 +169,7 @@ private fun ThemeChip(
     option: ThemeKey,
     isSelected: Boolean,
     isGoldMember: Boolean,
+    isDefault: Boolean,
     onClick: () -> Unit,
 ) {
     val activeColors = EmberTheme.colors
@@ -193,6 +177,15 @@ private fun ThemeChip(
     val optionColors = optionDefinition.colors
     val chipShape = RoundedCornerShape(16.dp)
     var chipSizePx by remember { mutableStateOf(Size(110f, 110f)) }
+    val isLocked = option.locked && !isGoldMember
+
+    // EmberBackground.asBrush() is deliberately transparent for ImageBacked themes — the real app
+    // draws that image once at the root, behind everything, not per component (see
+    // EmberAppTheme). A preview chip has no such root to borrow from, so relying on asBrush() here
+    // left every image-backed theme showing whatever happened to be behind it — the *actual* live
+    // theme's own background bleeding through for whichever chip matched it, and plain emptiness
+    // for the rest. This chip draws its own copy of the image directly instead.
+    val imageBacked = optionColors.background as? EmberBackground.ImageBacked
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
@@ -201,55 +194,71 @@ private fun ThemeChip(
                 .aspectRatio(1f)
                 .onSizeChanged { chipSizePx = Size(it.width.toFloat(), it.height.toFloat()) }
                 .clip(chipShape)
-                .background(optionColors.background.asBrush(chipSizePx))
+                .background(if (imageBacked != null) SolidColor(imageBacked.base) else optionColors.background.asBrush(chipSizePx))
                 .border(
                     width = if (isSelected) 2.5.dp else 1.dp,
                     color = if (isSelected) optionColors.glow else Color.White.copy(alpha = 0.14f),
                     shape = chipShape,
                 )
                 .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
         ) {
-            // Only an *inaccessible* Gold theme gets the padlock — a confirmed subscriber sees
-            // every theme the same way, with nothing left implying they still don't have it.
-            if (option.locked && !isGoldMember) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.4f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
+            if (imageBacked != null) {
+                Image(
+                    painter = painterResource(imageBacked.drawableResId),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            // A trio of this theme's own accent dots — cream, glow, glow2 — sitting on the swatch
+            // the same way a streak ring or CTA button actually blends between them elsewhere in
+            // the app. Turns "a flat color square" into something that hints at what the theme
+            // actually looks like once applied, not just its background tone.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
+            ) {
+                listOf(optionColors.cream, optionColors.glow, optionColors.glow2).forEach { dot ->
+                    Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(dot))
                 }
             }
-            if (isSelected) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(optionColors.glow),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.Check, contentDescription = "Selected", tint = optionColors.accentText, modifier = Modifier.size(14.dp))
-                }
+
+            // A locked theme dims as a whole, honest state — not a colored badge sitting behind
+            // the padlock, which would need its own separate contrast tuning per theme. The plain
+            // white glyph reads clearly against the dimmed swatch on every theme without one.
+            if (isLocked) {
+                Box(modifier = Modifier.fillMaxSize().clip(chipShape).background(Color.Black.copy(alpha = 0.32f)))
+                Icon(
+                    Icons.Filled.Lock,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(14.dp),
+                )
             }
         }
 
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            Text(
+                text = option.displayName,
+                fontFamily = PublicSansFontFamily,
+                fontSize = 12.5.sp,
+                fontWeight = if (isDefault) FontWeight.Bold else FontWeight.Medium,
+                color = activeColors.cream,
+            )
+        }
         Text(
-            text = option.displayName,
-            fontFamily = PublicSansFontFamily,
-            fontSize = 12.5.sp,
-            color = activeColors.cream,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Text(
-            text = if (option.locked) "Emigo Gold" else "Free",
+            text = when {
+                isDefault -> "Default"
+                option.locked -> "Emigo Gold"
+                else -> "Free"
+            },
             fontFamily = PublicSansFontFamily,
             fontSize = 10.5.sp,
-            color = if (option.locked) optionColors.glow else activeColors.mutedDim,
+            color = when {
+                isDefault -> optionColors.glow
+                option.locked -> optionColors.glow
+                else -> activeColors.mutedDim
+            },
             modifier = Modifier.padding(top = 1.dp),
         )
     }
