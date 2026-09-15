@@ -81,6 +81,18 @@ ember:
     service-account-credentials-json: ${PLAY_SERVICE_ACCOUNT_CREDENTIALS_JSON:}
     enabled: ${PLAY_BILLING_ENABLED:true}
 
+  moderation:
+    # Blank disables the alert email entirely (ReportService checks this itself) — set to the
+    # inbox that should hear about reported users.
+    alert-email: ${MODERATION_ALERT_EMAIL:}
+
+  resend:
+    # Blank disables EmailService entirely — get this from resend.com's dashboard.
+    api-key: ${RESEND_API_KEY:}
+    # Resend's own shared sandbox sender, works immediately with no domain setup. Switch to a
+    # verified @emigo.live address once that's set up on Resend's side for real branding.
+    from-email: ${RESEND_FROM_EMAIL:Emigo <onboarding@resend.dev>}
+
 logging:
   level:
     # INFO, not DEBUG — these fallbacks are what a deployed instance runs with unless the host
