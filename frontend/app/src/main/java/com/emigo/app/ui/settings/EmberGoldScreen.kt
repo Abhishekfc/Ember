@@ -132,7 +132,7 @@ fun EmberGoldScreen(
 
     val perks = listOf(
         GoldPerk(Icons.Rounded.Restore, "Restore your streak", "Bring back a streak that slipped past midnight"),
-        GoldPerk(Icons.Rounded.Palette, "Exclusive themes", "Unlock Cyber, Botanica, and Citrus looks"),
+        GoldPerk(Icons.Rounded.Palette, "Exclusive themes", "Unlock Aurora, Cyber, Botanica, and Frost looks"),
         GoldPerk(Icons.Rounded.PhotoLibrary, "Send from your gallery", "Share any photo, not just what you capture live"),
         GoldPerk(Icons.Rounded.Widgets, "Choose who's on your widget", "Pick exactly whose photos always show on your home screen"),
     )
