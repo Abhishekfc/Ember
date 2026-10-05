@@ -58,6 +58,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
+    // Lint runs in CI. The baseline holds the findings that already existed when lint was adopted,
+    // so only new problems fail a build. Regenerate with `./gradlew :app:updateLintBaseline` after
+    // fixing old ones, so the file only ever shrinks.
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
+
     buildTypes {
         // Previously there was no buildTypes block at all, meaning every variant — including
         // "release" — used AGP's implicit defaults (isMinifyEnabled = false, no ProGuard/R8) and
