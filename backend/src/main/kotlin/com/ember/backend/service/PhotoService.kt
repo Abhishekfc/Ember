@@ -25,35 +25,31 @@ import java.util.UUID
 
 private val ALLOWED_CONTENT_TYPES = setOf("image/jpeg", "image/png", "image/webp")
 
-// See PhotoRecipientRepository.findVisibleFeedPhotos: a sender's latest photo never expires on
-// its own; this is how long an OLDER photo of theirs stays up after being superseded by that
-// newer one, not a fixed age limit on the photo itself.
+// See PhotoRecipientRepository.findVisibleFeedPhotos: a sender's latest photo never expires on its
+// own. This is how long an OLDER photo of theirs stays up after a newer one supersedes it, not a
+// fixed age limit on the photo.
 private const val PHOTO_GRACE_PERIOD_HOURS = 24L
 
-/** Not enforced anywhere before — an unbounded `recipientIds` list meant a single request could
- * drive an arbitrarily large number of sequential DB round-trips (and, before batching, one
- * friendship check + one user lookup + one insert *per recipient*). No real send in this app
- * needs more than a modest fraction of a friend list at once. */
+/** Caps `recipientIds`. Without a cap, one request could drive an arbitrarily large number of
+ * sequential DB round trips. No real send needs more than a modest part of a friend list. */
 private const val MAX_RECIPIENTS_PER_PHOTO = 50
 
 /**
- * Widest date range a single Memories request may span. Anything wider is narrowed to this rather
- * than rejected.
+ * Widest date range a single Memories request may span. A wider request is narrowed to this, not
+ * rejected.
  *
- * `start`/`end` arrive straight off the query string with no count limit behind them, so
- * `start=1970&end=3000` would return every saved photo an account has ever had in one response,
- * repeatable as fast as the caller likes. That still needs a bound.
+ * `start` and `end` come straight off the query string, so `start=1970&end=3000` would return every
+ * photo an account has ever saved in one response, as often as the caller likes. That needs a bound.
  *
- * Two things were wrong with the first attempt at one. It assumed the client only ever asks for a
- * single calendar month and capped the span at 366 days — but on first load, before the account's
- * creation date is known, the client deliberately asks for the last
- * `MEMORIES_HISTORY_LIMIT_YEARS` (5) years in one go, so the cap rejected the app's own opening
- * request. And it rejected rather than clamped, turning that into a 400 the client surfaces as
- * "Couldn't connect" — a hard failure of the whole screen over a parameter the server could
- * simply have narrowed.
+ * The first attempt capped the span at 366 days on the assumption that the client asks for one
+ * calendar month. But on first load, before the account's creation date is known, the client asks
+ * for the last `MEMORIES_HISTORY_LIMIT_YEARS` (5) years at once, so the cap rejected the app's own
+ * opening request. It also rejected instead of clamping, turning that into a 400 the client shows
+ * as "Couldn't connect": a hard failure of the whole screen over a parameter the server could have
+ * narrowed.
  *
- * Ten years both comfortably clears that five-year request and is longer than this app has
- * existed, so clamping can never actually drop a photo anyone has; it only stops an absurd range.
+ * Ten years clears that five-year request and is longer than this app has existed, so clamping can't
+ * drop a photo anyone has; it only stops an absurd range.
  */
 private const val MAX_MEMORIES_RANGE_DAYS = 3650L
 
@@ -72,17 +68,16 @@ class PhotoService(
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    /** Not `@Transactional` any more — the DB writes have their own short transaction in
-     * [PhotoWriteService], separate from the R2 upload (and the FCM push after it), neither of
-     * which has any timeout configured and both of which used to run while a pooled DB
-     * connection was checked out for the whole method. A burst of uploads during a storage/FCM
-     * slowdown could exhaust the entire connection pool and take down unrelated requests along
-     * with it — this way, a slow external call blocks only its own request. */
+    /** Not `@Transactional`: the DB writes run in their own short transaction in
+     * [PhotoWriteService], separate from the R2 upload and the FCM push. Neither external call has
+     * a timeout, and when they shared the method's transaction they held a pooled DB connection for
+     * its whole duration. A burst of uploads during a storage or FCM slowdown could exhaust the
+     * pool and take down unrelated requests. This way a slow external call blocks only its own
+     * request. */
     fun upload(senderId: UUID, file: MultipartFile, recipientIds: List<UUID>, save: Boolean): PhotoUploadResponse {
         val distinctRecipientIds = recipientIds.distinct()
-        // A photo needs somewhere to go: at least one recipient, or an explicit save (the
-        // camera's bookmark button, no one selected to send to) — never neither, or this
-        // request wouldn't do anything at all.
+        // A photo needs somewhere to go: at least one recipient, or an explicit save (the camera's
+        // bookmark button with no one selected). Never neither.
         if (distinctRecipientIds.isEmpty() && !save) {
             throw InvalidFriendRequestException("Select a recipient or save to Memories")
         }
@@ -93,36 +88,32 @@ class PhotoService(
         if (contentType == null || contentType !in ALLOWED_CONTENT_TYPES) {
             throw InvalidFriendRequestException("Unsupported content type: $contentType")
         }
-        // Read once and reused. `MultipartFile.getBytes()` re-materializes the entire upload every
-        // time it's called (from disk, for anything past Spring's in-memory threshold), and this
-        // method used to call it twice — sniff, then compress — so a burst of 25MB uploads moved
-        // twice as many bytes and held twice the peak heap as it needed to.
+        // Read once and reused: `MultipartFile.getBytes()` re-materializes the whole upload on every
+        // call (from disk, past Spring's in-memory threshold). This used to be called twice (sniff,
+        // then compress), doubling the bytes moved and the peak heap for large uploads.
         val uploadedBytes = file.bytes
         val detectedType = ImageContentSniffer.detect(uploadedBytes)
         if (detectedType == null || detectedType !in ALLOWED_CONTENT_TYPES) {
             throw InvalidFriendRequestException("File content doesn't match a supported image type")
         }
-        // Re-encodes down to a sane size/format before anything gets stored, so every future
-        // fetch of this photo — from any screen, any client — is reasonably sized regardless of
-        // what was actually uploaded. See PhotoCompressionService's own doc comment for why this
-        // is conservative (an already-small JPEG passes through untouched).
+        // Re-encodes to a sane size and format before storing, so every later fetch is reasonably
+        // sized whatever was uploaded. Conservative: an already-small JPEG passes through untouched
+        // (see PhotoCompressionService).
         val compressed = PhotoCompressionService.compress(uploadedBytes, detectedType)
 
         val sender = userRepository.findById(senderId)
             .orElseThrow { ResourceNotFoundException("User not found") }
 
-        // Skipped entirely for a save-only upload — an empty recipientIds list means there's
-        // nothing to check a friendship for.
+        // Skipped for a save-only upload: with no recipients there are no friendships to check.
         val recipients = if (distinctRecipientIds.isNotEmpty()) {
             validateAcceptedFriends(senderId, distinctRecipientIds)
         } else {
             emptyList()
         }
 
-        // Stored using the type actually being stored (post-compression), not whatever the
-        // client's multipart part claimed — a client can label any content "image/jpeg" in the
-        // request, and that declared type used to be trusted all the way through to what gets
-        // served back.
+        // The extension follows the type actually stored (after compression), not what the client's
+        // multipart part claimed: a client can label any content "image/jpeg", and that declared
+        // type used to be trusted all the way through to what gets served back.
         val extension = when (compressed.contentType) {
             "image/png" -> "png"
             "image/webp" -> "webp"
@@ -146,17 +137,17 @@ class PhotoService(
             photo.id, sender.id, sender.email, distinctRecipientIds, save, file.size, compressed.bytes.size,
         )
 
-        // A new photo changes each recipient's feed, and the exchange-timestamp-derived streak
-        // on both sides of every sender/recipient pair — the sender's own feed is unaffected
-        // (it never includes photos they sent themselves). Both loops are no-ops for a save-only
-        // upload, since distinctRecipientIds is empty.
+        // A new photo changes each recipient's feed and the streak on both sides of every
+        // sender/recipient pair. The sender's own feed is unaffected (it never includes their own
+        // photos). All of this is a no-op for a save-only upload, since distinctRecipientIds is
+        // empty.
         cacheManager.getCache("feed")?.let { cache -> distinctRecipientIds.forEach { cache.evict(it.toString()) } }
         cacheManager.getCache("friends")?.let { cache ->
             cache.evict(senderId.toString())
             distinctRecipientIds.forEach { cache.evict(it.toString()) }
         }
-        // Recipients get a new PHOTO_RECEIVED event; the sender's own streak-expiring risk can
-        // also change the moment they send (today's exchange is now covered), so both sides.
+        // Recipients get a new PHOTO_RECEIVED event, and the sender's own streak-expiring risk can
+        // change the moment they send (today's exchange is now covered), so evict both sides.
         cacheManager.getCache("activity")?.let { cache ->
             cache.evict(senderId.toString())
             distinctRecipientIds.forEach { cache.evict(it.toString()) }
@@ -171,10 +162,10 @@ class PhotoService(
         )
     }
 
-    // Shared by upload() and addRecipients() — every accepted-friend check and existence lookup
-    // a set of recipient ids needs before they can be attached to a photo, one way or another.
+    // Shared by upload() and addRecipients(): the accepted-friend and existence checks any set of
+    // recipient ids needs before it can be attached to a photo.
     private fun validateAcceptedFriends(senderId: UUID, distinctRecipientIds: List<UUID>): List<User> {
-        // One query for every recipient instead of one query per recipient (see
+        // One query for all recipients instead of one per recipient (see
         // FriendshipRepository.findAllWithStatusBetween).
         val acceptedFriendships = friendshipRepository.findAllWithStatusBetween(senderId, distinctRecipientIds, FriendshipStatus.ACCEPTED)
         val acceptedOtherPartyIds = acceptedFriendships.mapTo(mutableSetOf()) {
@@ -192,13 +183,12 @@ class PhotoService(
         return found
     }
 
-    /** Flips an already-uploaded photo's saved_at on, with no re-upload — the counterpart to
-     * [addRecipients] below. Together these two are what let the camera's bookmark and Send
-     * actions share one real upload instead of each independently uploading the same file when
-     * both get tapped for the same capture (see CameraViewModel.queueUpload's own doc comment on
-     * the client side, and AttachPhotoWorker for how the two get chained via WorkManager so this
-     * only ever runs once the original upload has actually landed). Idempotent — a photo that's
-     * already saved is left alone rather than re-stamping the timestamp. */
+    /** Turns an already-uploaded photo's saved_at on, with no re-upload; the counterpart to
+     * [addRecipients]. Together they let the camera's bookmark and Send actions share one real
+     * upload instead of each uploading the same file when both are tapped for one capture (see
+     * CameraViewModel.queueUpload on the client, and AttachPhotoWorker, which chains the two so
+     * this only runs once the original upload has landed). Idempotent: a photo that is already
+     * saved keeps its original timestamp. */
     fun markSaved(ownerId: UUID, photoId: UUID) {
         val photo = photoRepository.findById(photoId).orElse(null) ?: throw ResourceNotFoundException("Photo not found")
         if (photo.sender.id != ownerId) {
@@ -210,12 +200,11 @@ class PhotoService(
         }
     }
 
-    /** Adds recipients to an already-uploaded photo, with no re-upload — see [markSaved]'s own
-     * doc comment for the fuller reasoning. Silently dedupes against whoever the photo was
-     * already sent to (a recipient list edited between the two taps, or a retried request,
-     * should never create a second PhotoRecipient row for the same person) and only pushes/
-     * evicts caches for whoever's actually new — someone already notified about this same photo
-     * shouldn't be notified about it twice. */
+    /** Adds recipients to an already-uploaded photo, with no re-upload (see [markSaved]). People the
+     * photo was already sent to are skipped, so an edited recipient list or a retried request never
+     * creates a second PhotoRecipient row for the same person. Only the genuinely new recipients
+     * get a push and a cache eviction: someone already notified about this photo shouldn't be
+     * notified twice. */
     fun addRecipients(ownerId: UUID, photoId: UUID, recipientIds: List<UUID>) {
         val photo = photoRepository.findById(photoId).orElse(null) ?: throw ResourceNotFoundException("Photo not found")
         if (photo.sender.id != ownerId) {
@@ -254,30 +243,27 @@ class PhotoService(
         }
     }
 
-    /** Real, immediate deletion — either Memories' own delete (a saved photo, unrestricted, any
-     * time — unlike PhotoCleanupService's own scheduled pass, this doesn't wait for every
-     * recipient's feed visibility to expire first) or the Camera outbox's Unsend (an unsaved,
-     * recently-sent photo, gated below). Scoped to [ownerId] in the lookup itself (not just
-     * checked after loading) so one account can never delete another's photo by guessing an id.
+    /** Immediate, real deletion: either Memories' delete (a saved photo, any time; unlike
+     * PhotoCleanupService's scheduled pass, it doesn't wait for every recipient's feed visibility to
+     * expire) or the Camera outbox's Unsend (an unsaved, recently sent photo, gated below). The
+     * lookup is scoped to [ownerId] itself, not just checked after loading, so one account can
+     * never delete another's photo by guessing an id.
      *
-     * Recipients (feed cache eviction, the push below) are read directly off whoever this photo
-     * was actually sent to, not inferred from [photo]'s own saved/unsaved state — a photo can be
-     * both saved to Memories *and* sent to recipients at once (see [addRecipients]), so "was this
-     * saved" is not a reliable stand-in for "does anyone else have this in their feed." Recipient
-     * ids are captured *before* the row is deleted — PhotoRecipient rows cascade-delete with
-     * their Photo, so this is the last point they're still readable at all. Empty for a photo
-     * that was never sent to anyone, which naturally no-ops the block below. */
+     * Recipients (for cache eviction and the push below) are read from whoever the photo was
+     * actually sent to, not inferred from its saved state: a photo can be both saved to Memories
+     * and sent to recipients (see [addRecipients]), so "was it saved" says nothing about whether
+     * anyone else has it in their feed. The ids are captured before the delete because PhotoRecipient
+     * rows cascade-delete with their Photo; this is the last point they can be read. Empty for a
+     * photo that was never sent, which naturally skips the block below. */
     fun delete(ownerId: UUID, photoId: UUID) {
         val photo = photoRepository.findById(photoId).orElse(null) ?: return
         if (photo.sender.id != ownerId) {
             throw ResourceNotFoundException("Photo not found")
         }
-        // Only a real restriction for an unsaved photo — a saved one is Memories' own permanent-
-        // delete flow (see this method's own outer doc comment) and was never subject to this.
-        // Same PHOTO_GRACE_PERIOD_HOURS window that decides how long a photo keeps appearing in
-        // the outbox list in the first place (see PhotoRepository's own query) — once it's aged
-        // out of that list, it's aged out of being unsendable too, so this can never reject
-        // something the list itself would still be showing.
+        // A real restriction only for an unsaved photo; a saved one is Memories' permanent-delete
+        // flow and was never subject to it. It uses the same PHOTO_GRACE_PERIOD_HOURS window that
+        // decides how long a photo stays in the outbox list (see PhotoRepository's query), so
+        // anything the list still shows can always be unsent.
         if (photo.savedAt == null) {
             val unsendDeadline = photo.createdAt.plus(PHOTO_GRACE_PERIOD_HOURS, ChronoUnit.HOURS)
             if (Instant.now().isAfter(unsendDeadline)) {
@@ -289,9 +275,8 @@ class PhotoService(
         photoRepository.delete(photo)
 
         if (recipientIds.isNotEmpty()) {
-            // Same reasoning as upload()'s own eviction — a recipient's feed (and the "latest
-            // sent photo" friends summary shows) must stop reflecting a photo that no longer
-            // exists, not just eventually age out on its own.
+            // Same as upload()'s eviction: a recipient's feed (and the "latest sent photo" in the
+            // friends summary) must stop reflecting a deleted photo at once, not age out later.
             cacheManager.getCache("feed")?.let { cache -> recipientIds.forEach { cache.evict(it.toString()) } }
             cacheManager.getCache("friends")?.let { cache -> recipientIds.forEach { cache.evict(it.toString()) } }
             pushNotificationService.notifyPhotoDeleted(
@@ -302,38 +287,34 @@ class PhotoService(
         }
     }
 
-    /** This account's own outbox — recently sent, unsaved photos still within their unsend
-     * window. See PhotoRepository's own query for why "last 24 hours" (not the feed's more
-     * permissive "still visible to a recipient" rule) is the right bound: this list exists to
-     * offer Unsend, and a photo that's aged out of being unsendable (see [delete] above) has no
-     * reason to keep showing here either. */
+    /** This account's outbox: recently sent, unsaved photos still inside their unsend window. The
+     * bound is the last 24 hours (not the feed's more permissive "still visible to a recipient"
+     * rule) because this list exists to offer Unsend, and a photo past that window (see [delete])
+     * has no reason to keep showing. */
     fun getRecentSent(userId: UUID): List<SentPhoto> {
         val since = Instant.now().minus(PHOTO_GRACE_PERIOD_HOURS, ChronoUnit.HOURS)
         return photoRepository.findBySenderIdAndSavedAtIsNullAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(userId, since)
             .map { SentPhoto(photoId = it.id, photoUrl = r2StorageService.publicUrl(it.storageKey), createdAt = it.createdAt) }
     }
 
-    /** Every photo a friend sent in the last 24 hours, Snapchat-style — not just their latest
-     * one. Photos older than the window simply stop appearing here (consistent with the
-     * deliberate no-Memories/no-resurfacing-old-photos stance); nothing is deleted from storage.
-     * Cached per-user (see [upload]'s eviction) since this is the single most repeatedly-fetched
-     * query in the app — Home refetches it on every open, pull-to-refresh, and post-send sync.
+    /** The photos friends sent [userId] that are still visible: each sender's latest photo, plus
+     * their older ones for [PHOTO_GRACE_PERIOD_HOURS] after a newer one superseded them (see
+     * PhotoRecipientRepository.findVisibleFeedPhotos). A photo that stops showing is not deleted
+     * from storage. Cached per user (see the evictions in [upload]) because this is the app's most
+     * repeatedly fetched query: Home refetches it on every open, pull-to-refresh and post-send sync.
      *
-     * [forceRefresh] (set from Home's pull-to-refresh gesture, not the silent post-send reload)
-     * skips the cache *read* but still writes the fresh result back — a plain `@Cacheable` can't
-     * express "bypass on read, always repopulate on write" in one annotation, so this is done by
-     * hand against the Cache directly rather than declaratively. Without this, pulling to refresh
-     * within the TTL window would silently hand back the same stale snapshot the gesture is
-     * meant to override. */
+     * [forceRefresh] (Home's pull-to-refresh, not the silent post-send reload) skips the cache read
+     * but still writes the fresh result back. A plain `@Cacheable` can't express "bypass on read,
+     * always repopulate on write", so this works on the Cache directly. Without it, pulling to
+     * refresh inside the TTL would hand back the same stale snapshot it is meant to override. */
     fun getFeed(userId: UUID, forceRefresh: Boolean = false): List<FeedItem> {
         val cache = cacheManager.getCache("feed")
         val cacheKey = userId.toString()
         if (!forceRefresh) {
-            // A cache read failing (e.g. a value that no longer deserializes cleanly — seen in
-            // practice with an empty-list result, which GenericJackson2JsonRedisSerializer's
-            // polymorphic type-wrapping doesn't round-trip reliably) must never fail the request
-            // itself — it's equivalent to a miss, so fall through and recompute instead of letting
-            // a corrupt/incompatible cache entry surface as a 500.
+            // A failing cache read (for example a value that no longer deserializes, seen with an
+            // empty-list result that GenericJackson2JsonRedisSerializer's polymorphic type wrapping
+            // doesn't round-trip reliably) must never fail the request. It counts as a miss: fall
+            // through and recompute instead of letting a bad cache entry become a 500.
             runCatching { cache?.get(cacheKey, List::class.java) }.getOrNull()?.let {
                 @Suppress("UNCHECKED_CAST")
                 return it as List<FeedItem>
@@ -349,7 +330,7 @@ class PhotoService(
             .filter { it.senderId in acceptedFriendIds }
 
         val rowsBySender = rows.groupBy { it.senderId }
-        // One query covering every sender in today's feed instead of one query per sender.
+        // One query for every sender in the feed instead of one per sender.
         val timestampsBySender = if (rowsBySender.isEmpty()) {
             emptyMap()
         } else {
@@ -387,39 +368,33 @@ class PhotoService(
         return feed
     }
 
-    /** Marks a single photo as viewed by [userId] specifically — scoped to that one (photo,
-     * recipient) row, so this never touches any other recipient's own viewed state for the same
-     * photo (see [PhotoRecipientRepository.markViewed]). The feed is cached, so a mark-seen has
-     * to evict [userId]'s entry or the next [getFeed] call would keep handing back the
-     * now-stale (still-unseen) snapshot for the rest of the cache's TTL.
+    /** Marks one photo as viewed by [userId] only: it touches just that (photo, recipient) row, never
+     * another recipient's viewed state for the same photo (see
+     * [PhotoRecipientRepository.markViewed]). The feed is cached, so this evicts [userId]'s entry;
+     * otherwise [getFeed] would keep returning the still-unseen snapshot for the rest of the TTL.
      *
-     * `@Transactional` is required here, not optional — [PhotoRecipientRepository.markViewed] is
-     * a `@Modifying` update query, and Hibernate throws `TransactionRequiredException` executing
-     * one outside a transaction. Every other write in this class goes through [upload], which is
-     * already `@Transactional`; this was the first standalone write and needed its own. */
+     * `@Transactional` is required: [PhotoRecipientRepository.markViewed] is a `@Modifying` update,
+     * and Hibernate throws `TransactionRequiredException` when one runs outside a transaction.
+     * [upload] doesn't need it because its DB writes run inside [PhotoWriteService]'s transaction;
+     * this method writes directly, so it needs its own. */
     @Transactional
     fun markSeen(userId: UUID, photoId: UUID) {
         photoRecipientRepository.markViewed(photoId, userId, Instant.now())
         cacheManager.getCache("feed")?.evict(userId.toString())
     }
 
-    /** Everything for the Memories grid within one date range (one calendar month, computed
-     * client-side in local time and passed here as UTC instants) — deliberately a separate query
-     * from [getFeed] rather than reusing it, since the Home feed's short window is its own
-     * intentional "don't resurface old photos there" choice, not a limitation to work around.
-     * Received photos deliberately don't belong here — Memories is this user's own saved
-     * history, not an archive of everyone else's, and not even everything this user has ever
-     * sent any more (see Photo.savedAt) — only what was explicitly saved. Not cached: unlike the
-     * feed/friends hot paths, this is only fetched when a given month is actually opened, and the
-     * client caches each month's result itself for the rest of the session once fetched. No
-     * total-count cap unlike the old top-200-then-paginate approach — a single month is naturally
-     * small, so nothing here needs bounding, and a long-time user's history further back stays
-     * fully reachable. */
+    /** Photos [userId] saved within [start, end) (UTC instants), newest first, for the Memories
+     * grid. A separate query from [getFeed] on purpose: the feed's short window is its own choice
+     * not to resurface old photos on Home, not a limit to work around. Received photos don't belong
+     * here: Memories is this user's own saved history, and only what was explicitly saved (see
+     * Photo.savedAt), not everything they ever sent. Not cached, since it is only fetched when
+     * Memories loads, unlike the feed and friends hot paths. The range is bounded by
+     * MAX_MEMORIES_RANGE_DAYS, which is the only limit; there is no count cap, so a long-time user's
+     * full history stays reachable. */
     fun getMemoriesInRange(userId: UUID, start: Instant, end: Instant): List<MemoryPhoto> {
         if (!end.isAfter(start)) return emptyList()
-        // Narrowed, not refused — see MAX_MEMORIES_RANGE_DAYS. A request wider than the bound is
-        // answered with the most recent slice of it rather than an error, so an over-wide range can
-        // never break the screen.
+        // Narrowed, not refused (see MAX_MEMORIES_RANGE_DAYS): an over-wide request gets the most
+        // recent slice of the range instead of an error, so it can never break the screen.
         val earliest = end.minus(MAX_MEMORIES_RANGE_DAYS, ChronoUnit.DAYS)
         val boundedStart = if (start.isBefore(earliest)) earliest else start
         return photoRepository.findBySenderIdAndSavedAtIsNotNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(userId, boundedStart, end)

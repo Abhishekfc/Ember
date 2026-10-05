@@ -106,14 +106,12 @@ fun MyProfileScreen(
     var showUsernameDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showFullScreenAvatar by remember { mutableStateOf(false) }
-    // Same pattern Home's own MomentFocusState and Memories' DayFocusState already use for their
-    // "focused overlay" — without this, the system back gesture skips past the open avatar
-    // viewer straight to closing the whole Profile screen instead of just the overlay on top.
+    // Same pattern as Home's MomentFocusState and Memories' MemoryFocusState: without it, the
+    // system back gesture skips the open avatar viewer and closes the whole Profile screen.
     BackHandler(enabled = showFullScreenAvatar) { showFullScreenAvatar = false }
-    // Non-null while a just-picked photo is being cropped, before it's ever uploaded — the
-    // gallery hands back whatever aspect ratio the original photo was, and every other profile
-    // photo picker (WhatsApp, Instagram, Telegram) makes you confirm a square crop before
-    // accepting it, rather than silently using the untouched original.
+    // Non-null while a just-picked photo is being cropped, before it is uploaded. The gallery
+    // returns the photo in its original aspect ratio; other apps (WhatsApp, Instagram, Telegram)
+    // make you confirm a square crop first, so this does too.
     var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
 
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -145,9 +143,8 @@ fun MyProfileScreen(
         ) {
             NestedScreenHeader(onBack = onClose)
 
-            // Centered avatar + name + username, no "Profile" title above it any more — the avatar
-            // and name together already say what this page is, the same way a contact card doesn't
-            // need its own label repeating "this is a contact."
+            // Centered avatar, name and username, with no "Profile" title: they already say what
+            // this page is.
             Column(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -157,10 +154,8 @@ fun MyProfileScreen(
                         .size(100.dp)
                         .clip(CircleShape)
                         .background(colors.elevatedPanel)
-                        // Opens the photo full size — changing it lives in its own dedicated
-                        // "Profile picture" row below, so tapping the photo itself is purely to
-                        // look at it, the same split every comparable app (WhatsApp, Instagram)
-                        // makes between "view" and "edit" on an avatar.
+                        // Opens the photo full size. Changing it is the separate "Profile
+                        // picture" row below, the same view/edit split WhatsApp and Instagram use.
                         .clickable { showFullScreenAvatar = true },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -191,9 +186,8 @@ fun MyProfileScreen(
                     }
                 }
 
-                // Bold italic display font — the one place on this screen that reads like a proper
-                // signature/nameplate rather than a settings label, same spirit as the reference this
-                // redesign follows.
+                // Bold italic display font: the one place on this screen that reads like a
+                // nameplate rather than a settings label.
                 Text(
                     text = viewModel.profile?.displayName.orEmpty(),
                     fontFamily = typography.display,
@@ -212,11 +206,8 @@ fun MyProfileScreen(
                 )
             }
 
-            // Flat, straight on the screen's own background — no panel/card/dividers, matching the
-            // rest of the app's own established design language (see Settings/Friends: "clarity
-            // comes from generous spacing and one consistent accent per row, not a card boundary").
-            // This used to be a bordered panel card, a deliberate one-off that had drifted from
-            // every other screen's look — that's the "old design" this replaces.
+            // Flat rows straight on the screen background, with no card or dividers, like Settings
+            // and Friends: clarity comes from spacing and one accent per row, not a card boundary.
             SectionLabel(text = stringResource(R.string.profile_section_account), modifier = Modifier.padding(top = 28.dp, bottom = 2.dp))
             FlatProfileRow(label = stringResource(R.string.profile_row_name)) {
                 viewModel.openNameEditor()
@@ -234,9 +225,9 @@ fun MyProfileScreen(
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
 
-            // Deliberately not styled like the rows above — this is account reference info, not
-            // part of "what friends see," so it stays quiet and separate rather than implying it's
-            // one more editable identity field.
+            // Deliberately not styled like the rows above: this is account reference info, not
+            // part of what friends see, so it stays quiet instead of looking like another
+            // editable field.
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp, start = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -295,9 +286,8 @@ fun MyProfileScreen(
     }
 }
 
-/** Tapping the avatar shows it big, the way WhatsApp/Instagram/Telegram all do — a dim scrim plus
- * the photo itself at a large size, tap anywhere to dismiss. No crop/edit affordance here at all;
- * that's the separate "Profile picture" row's job, so this stays a pure "look at it" view. */
+/** The avatar shown big, as WhatsApp, Instagram and Telegram do: a dim scrim, the photo large, tap
+ * anywhere to dismiss. No crop or edit here; that is the separate "Profile picture" row's job. */
 @Composable
 private fun AvatarFullScreenViewer(photoUrl: String?, initial: String, onDismiss: () -> Unit) {
     val colors = EmberTheme.colors
@@ -332,9 +322,9 @@ private fun AvatarFullScreenViewer(photoUrl: String?, initial: String, onDismiss
     }
 }
 
-/** One flat account row — same 56dp-floor, no-card language every other screen's list rows use
- * now (see FlatSettingsRow in SettingsScreen.kt). Label only, no value preview: the avatar/name/
- * username above already show the live values, and password never previews its own value. */
+/** One flat account row, with the same 56dp minimum height and no card as every other list row
+ * (see FlatSettingsRow in SettingsScreen.kt). Label only, no value preview: the avatar, name and
+ * username above already show the live values, and a password never previews its value. */
 @Composable
 private fun FlatProfileRow(label: String, onClick: () -> Unit) {
     val colors = EmberTheme.colors
@@ -363,12 +353,10 @@ private fun FlatProfileRow(label: String, onClick: () -> Unit) {
     }
 }
 
-/** Every color these dialogs use — hand-picked hex values, not a reference into any theme's
- * tonal ladder, fixed or otherwise. [AuthPalette] was tried first (same fixed palette the login
- * flow uses) and was still too bright/washed for a modal floating over arbitrary photo content:
- * its `elevatedPanel` ultimately traces back to Ember New's own theme definition, proportionally
- * derived from that theme's `panel`, so it inherits whatever that theme happens to be tuned to
- * rather than being an independent choice. These values answer to nothing but this screen. */
+/** Every color these dialogs use: fixed hex values, independent of any theme's surface ladder.
+ * [AuthPalette] was tried first and was still too bright for a modal floating over arbitrary photo
+ * content, because its `elevatedPanel` is derived from a theme's `panel` and inherits whatever that
+ * theme is tuned to. These values answer to nothing but this screen. */
 private object DialogPalette {
     val card = Color(0xFF19181A)
     val cardBorder = Color(0x1AFFFFFF)
@@ -381,33 +369,25 @@ private object DialogPalette {
     val onLight = Color(0xFF16151A)
 }
 
-/** Shared chrome for every popup on this screen — sized by content rather than the platform's
- * default (narrower) dialog width. Internal, not private — reused as-is by FriendProfileScreen's
- * own Block-confirm and Report dialogs, rather than a second near-identical shell hand-copied
- * there.
+/** Shared chrome for every popup on this screen, sized by content instead of the platform's
+ * narrower default dialog width. Internal because FriendProfileScreen reuses it for its Block and
+ * Report dialogs instead of copying a second shell.
  *
- * Colors come from [DialogPalette] above — fixed hex values, not [EmberTheme] or even the
- * fixed-but-still-theme-derived [AuthPalette]. Editing
- * your name/username/password is a small return to that same front-door identity surface, and
- * the live theme's own `elevatedPanel`/`panel` tiers turned out to sit almost on top of each
- * other in at least one theme, rendering the whole dialog as a flat gray blob with no contrast
- * between card, fields, and buttons — a fixed, known-good palette sidesteps that entirely rather
- * than trying to patch every theme's tonal ladder to cooperate.
+ * Colors come from [DialogPalette], not [EmberTheme] or [AuthPalette]. The live theme's
+ * `elevatedPanel` and `panel` sat almost on top of each other in at least one theme, rendering the
+ * whole dialog as a flat gray blob with no contrast between card, fields and buttons; a fixed,
+ * known-good palette avoids patching every theme's ladder.
  *
- * `elevatedPanel`, one tier up from the plain `panel` fields sit on inside it — a modal is the
- * single most prominent surface on screen the moment it's open. Fades and scales in from 92% on
- * first composition rather than snapping into place — `Dialog` itself has no built-in transition,
- * so this is done by hand the same way [AuthPhoneFrame]'s own border fade-in is: animate on
- * entry, touch nothing on the way out. */
+ * `Dialog` has no built-in transition, so it fades and scales in from 92% on first composition by
+ * hand (the same way [AuthPhoneFrame]'s border fade-in works) and does nothing on the way out. */
 @Composable
 internal fun EditDialogShell(
     title: String,
     onDismiss: () -> Unit,
     subtitle: String? = null,
-    // A transient banner near the top of the dialog window, not inline text inside the card —
-    // errors here are momentary ("that password's wrong"), not a permanent fact about the form,
-    // so they get a toast that appears and clears itself rather than layout that sits there
-    // until the next successful edit.
+    // A transient banner near the top of the dialog window, not inline text in the card. These
+    // errors are momentary ("that password's wrong"), so they clear themselves instead of sitting
+    // in the layout until the next successful edit.
     errorToast: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -422,11 +402,11 @@ internal fun EditDialogShell(
     )
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        // Compose's Dialog opens its own separate Android Window with its own view hierarchy —
-        // MainActivity's own autofill-exclusion fix (see its own doc comment, applied once to
-        // the Activity's root ComposeView) never reaches it, which is why typing into these
-        // password fields still triggered Google Password Manager's "Save password?" prompt
-        // after the dialog closed. Same fix, applied to *this* window's own root view instead.
+        // A Compose Dialog opens its own Android Window with its own view hierarchy, so
+        // MainActivity's autofill exclusion (applied once to the Activity's root ComposeView) never
+        // reaches it. That is why typing into these password fields still triggered Google
+        // Password Manager's "Save password?" prompt after the dialog closed. The same fix is
+        // applied here to this window's root view.
         val dialogView = LocalView.current
         LaunchedEffect(dialogView) {
             dialogView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
@@ -470,15 +450,13 @@ internal fun EditDialogShell(
     }
 }
 
-/** A solid white pill with black text — not the plain colored text every other status message on
- * this screen uses, since this one has to read clearly floating over an arbitrary photo/backdrop
- * behind the dialog's scrim rather than sitting on a known dark surface. Purely a display: it has
- * no way to clear the message itself (the ViewModel owns that state), so the caller is
- * responsible for nulling it out after a beat — see each dialog's own
- * `LaunchedEffect(errorNonce) { delay(...); clearXError() }`. Pure position slide down on arrival
- * and back up on the way out — no fade paired with it. Fade-plus-slide together was what read as
- * the pill shrinking (fading and moving at once tricks the eye into seeing it get smaller); a
- * slide on its own has no size or opacity component, so it just moves, cleanly, both ways. */
+/** A solid white pill with black text, not the plain colored text other status messages use,
+ * because it has to read clearly over an arbitrary photo or backdrop behind the dialog's scrim.
+ * Display only: the ViewModel owns the message, so the caller must clear it after a beat (see each
+ * dialog's `LaunchedEffect(errorNonce) { delay(...); clearXError() }`).
+ *
+ * It only slides down on arrival and back up on exit, with no fade. Fade plus slide read as the
+ * pill shrinking, because fading and moving at once tricks the eye into seeing it get smaller. */
 @Composable
 private fun DialogTopToast(message: String?, modifier: Modifier = Modifier) {
     AnimatedVisibility(
@@ -514,10 +492,9 @@ private fun DialogTextField(value: String, onValueChange: (String) -> Unit, pref
     val isFocused by interactionSource.collectIsFocusedAsState()
     val borderAlpha by animateFloatAsState(if (isFocused) 1f else 0f, label = "fieldFocusBorder")
 
-    // Filled a shade lighter than the card behind it — reads as a recessed input, the same
-    // relationship a text field usually has to its surrounding surface. The focus border is a
-    // plain white outline, not the brand yellow — a focus ring is functional (shows which field
-    // is active), not a brand moment, so it stays neutral like everything else in this palette.
+    // Filled a shade lighter than the card, so it reads as a recessed input. The focus border is a
+    // plain white outline, not the brand yellow: a focus ring is functional (shows which field is
+    // active), not a brand moment.
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -543,9 +520,8 @@ private fun DialogTextField(value: String, onValueChange: (String) -> Unit, pref
     }
 }
 
-/** Same recessed-field treatment as [DialogTextField], obscured by default with a trailing
- * show/hide toggle — the standard password-field pattern every major app uses, rather than a
- * permanently-masked field with no way to double check what was typed. */
+/** Same recessed field as [DialogTextField], masked by default with a trailing show/hide toggle, so
+ * what was typed can be double-checked. */
 @Composable
 private fun PasswordDialogTextField(value: String, onValueChange: (String) -> Unit, placeholder: String) {
     val colors = DialogPalette
@@ -591,9 +567,8 @@ private fun PasswordDialogTextField(value: String, onValueChange: (String) -> Un
     }
 }
 
-/** A small status badge — icon plus tinted pill, not plain colored text — for a field's live
- * validation state (username availability today). Reads as a proper status indicator rather than
- * a stray line of colored text. */
+/** A small status badge (icon on a tinted pill) for a field's live validation state, username
+ * availability today. */
 @Composable
 private fun StatusPill(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(50)
@@ -616,12 +591,10 @@ private fun StatusPill(text: String, icon: androidx.compose.ui.graphics.vector.I
     }
 }
 
-/** Cancel stays a plain text tap — no box, no border — so the one filled, solid-color control on
- * screen is unambiguously the actual action; a boxed Cancel next to a boxed Save reads as two
- * options of equal weight, when they're not. Save fills solid white/dark-text rather than any
- * accent color — a neutral, high-contrast pill is the "billion-dollar app" primary-button
- * convention (iOS action sheets, most polished onboarding flows), where the accent color is spent
- * elsewhere (badges, live states) rather than on every button. */
+/** Cancel is plain text, with no box or border, so the one filled control is unambiguously the
+ * action: a boxed Cancel beside a boxed Save reads as two options of equal weight. Save is a solid
+ * white pill with dark text instead of an accent color, a neutral high-contrast primary button;
+ * accent colors are kept for badges and live states. */
 @Composable
 private fun DialogActions(
     canSave: Boolean,
@@ -671,9 +644,9 @@ private fun DialogActions(
 
 @Composable
 private fun NameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> Unit) {
-    // Keyed on the nonce, not the error string — two failures in a row can carry the identical
-    // message, and keying on that would silently fail to restart this timer on the second one
-    // (see nameErrorNonce's own doc comment in MyProfileViewModel).
+    // Keyed on the nonce, not the error string: two failures in a row can carry the identical
+    // message, and keying on that would fail to restart this timer on the second one (see
+    // nameErrorNonce in MyProfileViewModel).
     LaunchedEffect(viewModel.nameErrorNonce) {
         if (viewModel.nameError != null) {
             delay(2600)
@@ -702,7 +675,7 @@ private fun UsernameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> U
     val check = viewModel.usernameCheck
     val unchanged = viewModel.usernameDraft == viewModel.profile?.username
 
-    // Keyed on the nonce, not the error string — see nameErrorNonce's doc comment.
+    // Keyed on the nonce, not the error string; see nameErrorNonce.
     LaunchedEffect(viewModel.usernameErrorNonce) {
         if (viewModel.usernameError != null) {
             delay(2600)
@@ -745,9 +718,8 @@ private fun UsernameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> U
                 )
             }
             check is UsernameCheckState.Taken -> {
-                // The app's one other established fixed danger red, reused here rather than
-                // inventing a second one — a distinct color from the "Available" state's yellow,
-                // which the two states need to actually look different from each other.
+                // The app's other fixed danger red, reused instead of inventing a second. It must
+                // look different from the yellow "Available" state.
                 StatusPill(
                     text = stringResource(R.string.profile_username_taken),
                     icon = Icons.Filled.Close,
@@ -760,12 +732,9 @@ private fun UsernameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> U
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         check.suggestions.forEach { suggestion ->
-                            // Same faint warm tint the nav dock uses for its active tab — the
-                            // established "this is glowing/tappable" signal in this app, rather
-                            // than a plain neutral chip. Bold label to match the identical chip
-                            // in the signup flow's own username step (RegisterUsernameStep) —
-                            // this one was missing the weight, the one visible difference between
-                            // the two.
+                            // Same faint warm tint the nav dock uses for its active tab, the app's
+                            // "glowing, tappable" signal, with a bold label to match the identical
+                            // chip in the signup flow's username step (RegisterUsernameStep).
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
@@ -803,22 +772,21 @@ private fun PasswordChangeDialog(viewModel: MyProfileViewModel, onDismiss: () ->
     val context = LocalContext.current
     val autofillManager = remember { context.getSystemService(AutofillManager::class.java) }
 
-    // Google Password Manager's save-prompt heuristic fires on the window closing while a
-    // password-shaped field held a value — it has no idea whether the change actually succeeded.
-    // A wrong-current-password error (dialog stays open) followed by Cancel, or Cancel/tap-
-    // outside/back on their own, all count as "closed" to Autofill just as much as a real
-    // success does. `cancel()` explicitly tells it not to offer a save for this session; it's a
-    // safe no-op if no session is active. Routed through every non-success exit (this becomes
-    // both EditDialogShell's onDismiss — covering tap-outside and back — and DialogActions'
-    // onCancel below) so the prompt only ever has a chance to fire from the one real success
-    // path, which deliberately calls the *original* onDismiss instead of this one.
+    // Google Password Manager offers to save a password when the window closes while a
+    // password-shaped field held a value, with no idea whether the change succeeded. A wrong
+    // current password (dialog stays open) then Cancel, or Cancel, tap-outside or back on their own,
+    // all count as "closed" to Autofill just like a success. `cancel()` tells it not to offer a
+    // save for this session (a safe no-op if none is active). Every non-success exit goes through
+    // this (it is both EditDialogShell's onDismiss, covering tap-outside and back, and
+    // DialogActions' onCancel), so the prompt can only fire from the one real success path, which
+    // deliberately calls the original onDismiss instead.
     val cancelAndDismiss: () -> Unit = {
         autofillManager?.cancel()
         onDismiss()
     }
 
-    // Keyed on the nonce, not the error string — see nameErrorNonce's doc comment. This is the
-    // dialog most likely to actually hit the collision (retrying an identical wrong password).
+    // Keyed on the nonce, not the error string; see nameErrorNonce. This dialog is the most likely
+    // to hit the collision (retrying an identical wrong password).
     LaunchedEffect(viewModel.passwordErrorNonce) {
         if (viewModel.passwordError != null) {
             delay(2600)
@@ -856,10 +824,9 @@ private fun PasswordChangeDialog(viewModel: MyProfileViewModel, onDismiss: () ->
                 viewModel.confirmPasswordDraft.isNotEmpty(),
             isSaving = viewModel.isSavingPassword,
             onCancel = cancelAndDismiss,
-            // Name/username changes are self-evidently confirmed — the new value shows up on
-            // screen the instant the dialog closes. A password change has nothing visible to
-            // show for itself, so without an explicit confirmation here there's no way to tell
-            // the save actually landed versus silently doing nothing.
+            // A new name or username shows on screen the moment the dialog closes. A password
+            // change has nothing visible to show, so this explicit confirmation is the only way to
+            // tell the save landed.
             onSave = {
                 viewModel.savePassword(onSaved = {
                     Toast.makeText(context, passwordChangedMessage, Toast.LENGTH_SHORT).show()

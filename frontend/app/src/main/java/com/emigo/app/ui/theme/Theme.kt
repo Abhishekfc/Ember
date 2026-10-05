@@ -25,71 +25,56 @@ import coil3.compose.AsyncImage
 import com.emigo.app.R
 
 /**
- * Every theme Emigo ships, in the exact order and lock state defined by the
- * THEMES object in ember-complete-app.jsx. Cream, Dusk, Blaze, Noir and Citrus
- * are free; the rest are Emigo Gold (locked behind subscription).
+ * Every theme Emigo ships. Cream, Dusk, Blaze, Noir and Ember are free; Aurora, Cyber, Botanica
+ * and Frost are Emigo Gold.
  *
- * The enum constants deliberately keep their original names while the display labels don't:
- * [ThemePreferenceStore] persists a theme by `name`, so renaming a constant would silently
- * reset every device that had it selected back to [DEFAULT]. Only the user-facing label needs
- * to change to drop the old brand.
+ * Never rename a constant: [ThemePreferenceStore] saves a theme by `name`, so a rename would reset
+ * every device that had it selected back to [DEFAULT]. Only the display label (the string
+ * resource) may change, which is why EMBER shows as "Cream" and CITRUS as "Ember".
  */
 enum class ThemeKey(@StringRes val displayNameRes: Int, val locked: Boolean) {
     EMBER(R.string.theme_name_cream, locked = false),
-    // Same background, panel, and overlayPanel (nav dock) as EMBER, pixel-for-pixel — only the
-    // accent trio (glow/glow2/violet, a user-supplied purple/blue/green gradient) and the
-    // camera/featured-card fill change. See emberNewDefinition's own comment for the full reasoning.
+    // Same background, panel and nav dock as EMBER; only the accent colors and the camera and
+    // featured-card fill differ (see emberNewDefinition).
     EMBER_NEW(R.string.theme_name_dusk, locked = false),
-    // The original warm-orange/violet "Ember" look, kept as its own free theme under a new name
-    // once EMBER itself became the icon-matched cream/black look instead — nothing was deleted,
-    // just renamed and given its own slot alongside it.
+    // The original warm-orange/violet look, kept as its own free theme after EMBER became the
+    // cream and black look.
     BLAZE(R.string.theme_name_blaze, locked = false),
     NOIR(R.string.theme_name_noir, locked = false),
     AURORA(R.string.theme_name_aurora, locked = true),
     CYBER(R.string.theme_name_cyber, locked = true),
     BOTANICA(R.string.theme_name_botanica, locked = true),
-    // Free, and the app's default (see [ThemeKey.DEFAULT]) — moved out of Gold deliberately, not
-    // an oversight: the theme every new account actually opens the app in can't be one they're
-    // locked out of. Displayed as "Ember" (renamed from "Citrus") since this is the theme the app
-    // actually opens in for everyone — the enum constant keeps its original name regardless, per
-    // this enum's own top-of-file doc comment, so nobody's persisted selection resets.
+    // The app's default (see [DEFAULT]), so it must stay free: the theme every new account opens
+    // in can't be one they're locked out of.
     CITRUS(R.string.theme_name_ember, locked = false),
-    // Added directly against a user-supplied accent color (#A9D7FF, a pale icy blue) rather than
-    // from the ember-complete-app.jsx reference this enum's own doc comment describes — not in
-    // that file, a deliberate one-off addition.
+    // Added from a supplied accent color (a pale icy blue), not from the original design reference.
     FROST(R.string.theme_name_frost, locked = true),
     ;
 
     companion object {
-        /** The one place the app's default theme is decided — every fallback that needs "whatever
-         * a brand-new account, a signed-out device, or a lapsed subscription should land on" reads
-         * this rather than naming a theme itself (see ThemePreferenceStore's own two fallbacks and
-         * ThemeViewModel's lapsed-Gold/reset paths). Changing the default is this one line.
+        /** The one place the default theme is decided. Every fallback (new account, signed-out
+         * device, lapsed subscription) reads this instead of naming a theme.
          *
-         * Must always be an unlocked theme — a locked default would be immediately overridden by
-         * ThemeViewModel's own lapsed-subscription guard, which falls back to exactly this value. */
+         * Must be an unlocked theme: ThemeViewModel's lapsed-subscription guard falls back to this
+         * value, so a locked default would be overridden immediately. */
         val DEFAULT = CITRUS
     }
 }
 
-/** Mirrors the JSX theme's `bg` CSS gradient string, resolved lazily against draw size. Its
- * `panelBg` counterpart was never actually wired into any screen — dropped in favor of the
- * flat-color surface ladder below, which is what every screen has always read from instead. */
+/** A theme's screen backdrop, resolved against the draw size. The design reference also had a
+ * `panelBg`; it was never used, because screens read the flat surface ladder below instead. */
 sealed interface EmberBackground {
     data class Linear(val colors: List<Color>) : EmberBackground
     data class Radial(val colors: List<Color>, val centerXFraction: Float, val centerYFraction: Float) : EmberBackground
 
     /**
-     * A real image as the screen backdrop rather than a gradient. Drawn once at the app root by
-     * [EmberAppTheme] — not per screen — so it stays fixed behind everything and never scrolls or
-     * shifts with content, and so a single decode is shared by the whole app instead of every
-     * screen loading its own copy.
+     * A real image as the backdrop instead of a gradient. [EmberAppTheme] draws it once at the app
+     * root, so it stays fixed behind everything and one decode is shared by the whole app.
      *
-     * [asBrush] deliberately resolves to transparent for this variant: every screen paints
-     * `colors.background.asBrush(...)` across itself, and any opaque color there would cover the
-     * image the root just drew. [base] is what the root fills behind the image, so any area the
-     * image doesn't cover (a different aspect ratio than the device) still matches the theme
-     * rather than showing through to the bare window.
+     * [asBrush] is transparent for this variant on purpose: every screen paints
+     * `colors.background.asBrush(...)` across itself, and an opaque color there would cover the
+     * image. [base] is what the root fills behind the image, so any area it doesn't cover (a
+     * different aspect ratio) still matches the theme.
      */
     data class ImageBacked(val drawableResId: Int, val base: Color) : EmberBackground
 
@@ -104,12 +89,10 @@ sealed interface EmberBackground {
     }
 
     /**
-     * The single flat color this backdrop is built around — a gradient's own first stop, or an
-     * image-backed theme's [ImageBacked.base]. For anything that needs an *opaque* surface in the
-     * theme's own backdrop tone: [asBrush] can't serve that, since it's a gradient for some themes
-     * and deliberately transparent for image-backed ones. Used by surfaces that have to block the
-     * backdrop behind them (see Memories' own card) while still looking native to the theme rather
-     * than like a grey panel dropped on top of it.
+     * The single flat color this backdrop is built around: a gradient's first stop, or
+     * [ImageBacked.base]. Use it for surfaces that must be opaque in the backdrop's tone, since
+     * [asBrush] is a gradient for some themes and transparent for image-backed ones (see
+     * Memories' card).
      */
     fun baseColor(): Color = when (this) {
         is Linear -> colors.first()
@@ -118,19 +101,14 @@ sealed interface EmberBackground {
     }
 }
 
-/** Every theme's tonal ladder — the surfaces a screen is actually built from, background to
- * foreground:
+/** A theme's surface ladder, from background to foreground:
  *
- * [background] (the gradient screen backdrop) → [surface] (a quiet in-between layer — search
- * bars, input fields, anything that should sit apart from raw background without being a full
- * card) → [panel] (the standard card/row/chip tone nearly every screen already uses) →
- * [elevatedPanel] (for a card that needs to visibly outrank its siblings — a hero card among
- * plain rows) → [overlayPanel] (dialogs, bottom sheets, anything genuinely floating above
- * everything else).
+ * [background] (the screen backdrop) → [surface] (search bars, input fields: apart from the
+ * background but not a card) → [panel] (the standard card, row and chip tone) → [elevatedPanel]
+ * (a card that must outrank its siblings) → [overlayPanel] (dialogs, sheets, the nav dock).
  *
- * [surface]/[elevatedPanel]/[overlayPanel] are derived, not hand-picked (see
- * [deriveSurfaceLadder]) — each theme only hand-tunes [background] and [panel], the same two
- * anchors it always has. */
+ * [surface], [elevatedPanel] and [overlayPanel] are derived (see [deriveSurfaceLadder]); each
+ * theme hand-tunes only [background] and [panel]. */
 data class EmberColors(
     val background: EmberBackground,
     val surface: Color,
@@ -162,12 +140,8 @@ data class EmberThemeDefinition(
 private fun whiteBorder(alpha: Float) = Color(red = 1f, green = 1f, blue = 1f, alpha = alpha)
 private fun blackBorder(alpha: Float) = Color(red = 0f, green = 0f, blue = 0f, alpha = alpha)
 
-// Fraunces is a variable font (weights 400-700 used); each entry pins the wght axis.
-// Bold(700) added for headline moments (Home's hero line) that need real premium weight —
-// the font already supports it, this just registers it alongside the existing weights.
-// internal, not private — the auth/onboarding flow (see ui/auth/AuthPalette.kt) deliberately
-// pins its own typography to this family rather than reading the active EmberTheme, and reuses
-// this exact FontFamily instance instead of re-declaring the same Font(...) loading a second time.
+// Variable font; each entry pins the wght axis. internal because the auth flow (AuthPalette)
+// deliberately pins its own typography to this family and reuses this instance.
 internal val FrauncesFontFamily = FontFamily(
     Font(R.font.fraunces, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.fraunces, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
@@ -175,7 +149,7 @@ internal val FrauncesFontFamily = FontFamily(
     Font(R.font.fraunces, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
 
-// Inter is a variable font (weights 400-700 used).
+// Variable font; weights 400-700 used.
 internal val InterFontFamily = FontFamily(
     Font(R.font.inter, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.inter, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
@@ -183,7 +157,7 @@ internal val InterFontFamily = FontFamily(
     Font(R.font.inter, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
 
-// Space Grotesk is a variable font (weights 500-700 used).
+// Variable font; weights 500-700 used.
 private val SpaceGroteskFontFamily = FontFamily(
     Font(R.font.space_grotesk, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
     Font(R.font.space_grotesk, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
@@ -194,16 +168,11 @@ private val DmSerifDisplayFontFamily = FontFamily(
     Font(R.font.dm_serif_display, FontWeight.Normal),
 )
 
-// The icon-matched look: cream (sampled from the app icon, frontend/app Icon/emberAppIcon.png)
-// and black/neutral-charcoal ONLY — no purple, no gradient. glow and glow2 are set to the exact
-// same value on purpose: every shared button component blends between them
-// (Brush.horizontalGradient(listOf(colors.glow, colors.glow2))), and an identical pair renders
-// as a genuinely flat fill rather than needing a separate "is this a gradient theme" code path
-// threaded through every one of those components.
-// Exact background hex specified directly by the user (#0F0F0F) — flat, both gradient stops the
-// same color, rather than the radial falloff every other theme uses. panel/surface/elevated/
-// overlay are all still derived from this exact value via deriveSurfaceLadder, so the tonal
-// hierarchy gap holds automatically without needing its own separate re-tuning.
+// The icon-matched look: cream (sampled from the app icon) on neutral charcoal, no purple and no
+// gradient. glow and glow2 are identical on purpose: every shared button blends between them, so
+// an identical pair renders a flat fill without a "gradient theme" special case in each component.
+// The background is flat too (both stops the same). panel, surface, elevated and overlay are all
+// derived from it by deriveSurfaceLadder, so the tonal gaps hold without separate tuning.
 private val emberBackgroundBase = Color(0xFF121212)
 private val emberPanel = Color(0xFF424242)
 private val emberLadder = deriveSurfaceLadder(emberBackgroundBase, emberPanel, accent = Color(0xFFEDEAE0))
@@ -220,9 +189,8 @@ private val emberDefinition = EmberThemeDefinition(
         mutedDim = Color(0xFF6E6A61).ensureLightnessGap(emberPanel, minGap = 0.26f, awayFromWhite = false),
         glow = Color(0xFFEDEAE0),
         glow2 = Color(0xFFEDEAE0),
-        // The streak ring's third "blaze" color at 7+ streak — a dark neutral rather than the
-        // usual violet slot's purple, so the high-streak sweep stays inside the cream/black
-        // family instead of introducing a hue that isn't part of this theme at all.
+        // The streak ring's third color at 7+ streak: a dark neutral instead of purple, so the
+        // sweep stays inside this theme's cream and black.
         violet = Color(0xFF2A2A2A),
         accentText = Color(0xFF17150F),
         border = whiteBorder(0.08f),
@@ -231,37 +199,28 @@ private val emberDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
 )
 
-// Reuses emberLadder directly (not a fresh deriveSurfaceLadder call) so surface/overlayPanel come
-// out pixel-identical to EMBER's own — deriveSurfaceLadder nudges elevatedPanel/overlayPanel a few
-// percent toward whatever accent it's given, and the whole point here is that the nav dock's own
-// background (overlayPanel) must not shift toward the new purple/blue accent at all. Only the
-// accent trio (glow/glow2/violet) and elevatedPanel (the camera/featured-card fill, the one
-// "detail" surface actually meant to change) differ from EMBER.
+// Reuses emberLadder instead of a fresh deriveSurfaceLadder call: that function nudges
+// elevatedPanel and overlayPanel toward the accent, and the nav dock (overlayPanel) must not shift
+// toward this theme's purple and blue. Only the accent colors differ from EMBER.
 private val emberNewDefinition = EmberThemeDefinition(
     key = ThemeKey.EMBER_NEW,
     colors = EmberColors(
         background = EmberBackground.Radial(listOf(emberBackgroundBase, emberBackgroundBase), 0.20f, 0.0f),
         surface = emberLadder.surface,
         panel = emberPanel,
-        // Dark, same as EMBER's own — this was a near-white (0xFFF6F3E9) for a while, set to make
-        // one specific surface white, but elevatedPanel isn't a one-surface token: it's what every
-        // avatar placeholder circle and every secondary button (Pin as partner, Decline, Cancel
-        // request) is filled with. At near-white those all turned white, and since `cream` is pure
-        // white in this theme, their labels became white-on-white and vanished entirely.
+        // Dark like EMBER's. A near-white value was tried for one surface, but elevatedPanel also
+        // fills avatar placeholders and secondary buttons (Pin as partner, Decline, Cancel
+        // request); `cream` is white in this theme, so their labels became white on white.
         elevatedPanel = emberLadder.elevatedPanel,
         overlayPanel = emberLadder.overlayPanel,
-        // Pure white, not EMBER's own warm-cream — this is the one other spot asked to move
-        // away from cream specifically.
+        // Pure white instead of EMBER's warm cream.
         cream = Color(0xFFFFFFFF),
-        // Neutral grays, not EMBER's own warm taupe (0xFFA8A399/0xFF6E6A61) — that warmth is what
-        // still read as "cream" in placeholder text and disabled-button states even after cream
-        // itself became white, since it's a whole extra place the same warm bias was hiding.
+        // Neutral grays: EMBER's warm taupe still read as cream in placeholder text and disabled
+        // states even after `cream` itself became white.
         muted = Color(0xFFA3A3AA),
         mutedDim = Color(0xFF69696F).ensureLightnessGap(emberPanel, minGap = 0.26f, awayFromWhite = false),
-        // User-supplied "Aurora Gradient" palette: Ember Purple -> Sky Mist -> Soft Sage. Used
-        // exactly where every theme's accent trio already shows up — the avatar ring's sweep,
-        // the streak icon, CTA button fills, the camera shutter's own gradient — never the
-        // background or the nav dock.
+        // Purple, blue, green. Used only where every theme's accent trio appears (avatar ring
+        // sweep, streak icon, CTA fills, shutter), never the background or the nav dock.
         glow = Color(0xFF7B61FF),
         glow2 = Color(0xFF5DADE2),
         violet = Color(0xFF7ED8B3),
@@ -272,12 +231,9 @@ private val emberNewDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
 )
 
-// The original warm-orange/violet look this same slot used before EMBER became the icon-matched
-// cream/black theme above — kept exactly as it was, just under its own name now instead of
-// being lost.
-// Kept at its original depth (only Ember got the brighter background treatment) — background
-// unchanged from this theme's own original tone, panel still widened +14% for real tonal
-// separation, outer gradient stop just lifted off literal pure black.
+// The original warm-orange/violet look, unchanged. The themes below keep their original depth
+// (only Ember got the brighter background): the background is unchanged and the panel was widened
+// for tonal separation.
 private val blazeBackgroundBase = Color(0xFF121212)
 private val blazePanel = Color(0xFF313038)
 private val blazeLadder = deriveSurfaceLadder(blazeBackgroundBase, blazePanel, accent = Color(0xFFFFA94D))
@@ -302,8 +258,7 @@ private val blazeDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
 )
 
-// Kept at its original depth — see blazeDefinition's identical comment. Noir's own "luxury
-// monochrome" identity leans on real darkness, not just Ember's brighter, more everyday one.
+// Original depth, like Blaze: Noir's monochrome "luxury" look relies on real darkness.
 private val noirBackgroundBase = Color(0xFF121212)
 private val noirPanel = Color(0xFF2E2E2E)
 private val noirLadder = deriveSurfaceLadder(noirBackgroundBase, noirPanel, accent = Color(0xFFF5F5F5))
@@ -328,14 +283,14 @@ private val noirDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = SpaceGroteskFontFamily, body = InterFontFamily),
 )
 
-// Kept at its original depth — see blazeDefinition's identical comment.
+// Original depth, like Blaze.
 private val auroraBackgroundBase = Color(0xFF0A100F)
 private val auroraPanel = Color(0xFF2B3633)
 private val auroraLadder = deriveSurfaceLadder(auroraBackgroundBase, auroraPanel, accent = Color(0xFF4FE3C1))
 private val auroraDefinition = EmberThemeDefinition(
     key = ThemeKey.AURORA,
     colors = EmberColors(
-        // Image backdrop rather than a gradient, same as Cyber — see EmberBackground.ImageBacked.
+        // Image backdrop, see EmberBackground.ImageBacked.
         background = EmberBackground.ImageBacked(R.drawable.aurora2_theme_background, auroraBackgroundBase),
         surface = auroraLadder.surface,
         panel = auroraPanel,
@@ -354,15 +309,14 @@ private val auroraDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = SpaceGroteskFontFamily, body = InterFontFamily),
 )
 
-// Kept at its original depth — see blazeDefinition's identical comment.
+// Original depth, like Blaze.
 private val cyberBackgroundBase = Color(0xFF0E0B14)
 private val cyberPanel = Color(0xFF342D3A)
 private val cyberLadder = deriveSurfaceLadder(cyberBackgroundBase, cyberPanel, accent = Color(0xFFFF2EC4))
 private val cyberDefinition = EmberThemeDefinition(
     key = ThemeKey.CYBER,
     colors = EmberColors(
-        // The one theme with a real image backdrop rather than a gradient — see
-        // EmberBackground.ImageBacked for how it's drawn (once, at the app root, fixed).
+        // Image backdrop, see EmberBackground.ImageBacked.
         background = EmberBackground.ImageBacked(R.drawable.cyber2_theme_background, cyberBackgroundBase),
         surface = cyberLadder.surface,
         panel = cyberPanel,
@@ -381,14 +335,14 @@ private val cyberDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = SpaceGroteskFontFamily, body = InterFontFamily),
 )
 
-// Kept at its original depth — see blazeDefinition's identical comment.
+// Original depth, like Blaze.
 private val botanicaBackgroundBase = Color(0xFF0C110D)
 private val botanicaPanel = Color(0xFF2F362F)
 private val botanicaLadder = deriveSurfaceLadder(botanicaBackgroundBase, botanicaPanel, accent = Color(0xFFC9A15A))
 private val botanicaDefinition = EmberThemeDefinition(
     key = ThemeKey.BOTANICA,
     colors = EmberColors(
-        // Image backdrop rather than a gradient, same as Cyber/Aurora — see EmberBackground.ImageBacked.
+        // Image backdrop, see EmberBackground.ImageBacked.
         background = EmberBackground.ImageBacked(R.drawable.botanica_theme_background, botanicaBackgroundBase),
         surface = botanicaLadder.surface,
         panel = botanicaPanel,
@@ -407,7 +361,7 @@ private val botanicaDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = FrauncesFontFamily, body = InterFontFamily),
 )
 
-// Kept at its original depth — see blazeDefinition's identical comment.
+// Original depth, like Blaze.
 private val citrusBackgroundBase = Color(0xFF111111)
 private val citrusPanel = Color(0xFF353535)
 private val citrusLadder = deriveSurfaceLadder(citrusBackgroundBase, citrusPanel, accent = Color(0xFFF5D90A))
@@ -432,21 +386,17 @@ private val citrusDefinition = EmberThemeDefinition(
     typography = EmberTypography(display = SpaceGroteskFontFamily, body = InterFontFamily),
 )
 
-// Built directly around a user-supplied accent (#CCE7FF, a very pale icy blue) rather than
-// derived from anywhere else — a dark, cold-toned counterpart to Aurora's teal-green rather than
-// a repeat of it. Since #CCE7FF itself is close to white, glow2 is a genuinely deeper, more
-// saturated blue rather than just a slightly-darker version of the same pale tone — the streak
-// ring's gradient sweep needs real range between its two stops, not two shades that read as
-// almost the same color. Background/panel gradients lean a touch more saturated-blue than a
-// flat navy-black too, so the theme reads as "icy," not just "dark with a blue accent."
-// Kept at its original depth — see blazeDefinition's identical comment.
+// Built around a pale icy-blue accent (#CCE7FF), a cold counterpart to Aurora's teal-green. The
+// accent is close to white, so glow2 is a deeper, more saturated blue: the streak ring's gradient
+// sweep needs real range between its two stops. Background and panel lean saturated blue so the
+// theme reads as "icy", not just dark with a blue accent. Original depth, like Blaze.
 private val frostBackgroundBase = Color(0xFF0B121B)
 private val frostPanel = Color(0xFF24384A)
 private val frostLadder = deriveSurfaceLadder(frostBackgroundBase, frostPanel, accent = Color(0xFFCCE7FF))
 private val frostDefinition = EmberThemeDefinition(
     key = ThemeKey.FROST,
     colors = EmberColors(
-        // Image backdrop rather than a gradient, same as Cyber/Aurora — see EmberBackground.ImageBacked.
+        // Image backdrop, see EmberBackground.ImageBacked.
         background = EmberBackground.ImageBacked(R.drawable.frost_theme_background, frostBackgroundBase),
         surface = frostLadder.surface,
         panel = frostPanel,
@@ -495,35 +445,27 @@ object EmberTheme {
 @Composable
 fun EmberAppTheme(themeKey: ThemeKey, content: @Composable () -> Unit) {
     val definition = emberThemeDefinition(themeKey)
-    // Plain platform default overscroll — no LocalOverscrollFactory override at all. A custom
-    // rubber-band stretch, and later a narrower wrapper that only softened a flick's bounce, were
-    // both tried and fully reverted: confirmed (by removing it entirely and testing) that the
-    // wrapper itself — running on every scroll/swipe frame app-wide, including the tab pager —
-    // was the actual cause of a black flash while swiping to/from the Camera tab on at least one
-    // real test device, not anything about the camera code itself. Not worth reintroducing for a
-    // minor flick-bounce refinement; leave this unoverridden.
+    // No LocalOverscrollFactory override: a custom rubber-band stretch, and later a wrapper that
+    // softened flick bounce, were both tried and reverted. Removing the wrapper showed it was
+    // the cause of a black flash when swiping to or from the Camera tab on a real device (it runs
+    // on every scroll frame app-wide, including the tab pager). Leave the default.
     CompositionLocalProvider(LocalEmberThemeDefinition provides definition) {
         val background = definition.colors.background
-        // The Box is unconditional, and content() always sits in this one spot inside it, even
-        // for themes with no image at all. Wrapping only the image-backed case was tried and
-        // broke theme switching outright: selecting a theme with a different background *kind*
-        // changed the shape of the composition around content(), so the entire app subtree was
-        // torn down and rebuilt — throwing away every remembered state inside it, including which
-        // screen was open and the picker's own staged selection. Keeping the structure identical
-        // for every theme means switching only ever changes colors, never the tree.
+        // The Box is unconditional, with content() always in the same spot, even for themes with
+        // no image. Wrapping only the image-backed case broke theme switching: a theme with a
+        // different background kind changed the composition around content(), tearing down the
+        // whole app and losing remembered state (the open screen, the picker's staged choice).
+        // With the same structure for every theme, switching only changes colors.
         Box(modifier = Modifier.fillMaxSize()) {
             if (background is EmberBackground.ImageBacked) {
-                // Behind every screen, at the root — so it can't scroll, shift, or be re-drawn per
-                // screen. ContentScale.Crop fills the device regardless of the image's own aspect
-                // ratio, with [base] underneath covering anything Crop still leaves uncovered.
+                // At the root so it can't scroll, shift, or redraw per screen. Crop fills the
+                // device whatever the image's aspect ratio, with [base] under anything Crop misses.
                 Box(modifier = Modifier.fillMaxSize().background(background.base)) {
-                    // AsyncImage, not painterResource: painterResource decodes the bitmap
-                    // synchronously on the main thread *during composition*, so the whole app's
-                    // first frames were blocked behind that decode — the background painted, then
-                    // everything else appeared a beat later, which only happened on image-backed
-                    // themes. Coil decodes off the main thread and caches the result, so content
-                    // composes and renders at its normal speed and the image simply arrives when
-                    // it's ready, over [base] which is already covering the screen in the meantime.
+                    // AsyncImage, not painterResource: painterResource decodes on the main thread
+                    // during composition, which blocked the app's first frames on image-backed
+                    // themes (the background painted, then everything else a beat later). Coil
+                    // decodes off-thread and caches, so content renders at normal speed and the
+                    // image arrives over [base], which already covers the screen meanwhile.
                     AsyncImage(
                         model = background.drawableResId,
                         contentDescription = null,

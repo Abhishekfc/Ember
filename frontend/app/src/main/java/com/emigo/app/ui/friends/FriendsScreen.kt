@@ -55,16 +55,14 @@ import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.PublicSansFontFamily
 import dev.chrisbanes.haze.HazeState
 
-// How close to a streak's own deadline counts as genuinely "at risk" — must match the backend's
-// own STREAK_AT_RISK_THRESHOLD_HOURS (StreakCalculator.kt) exactly, since that's the number this
-// screen's own live evaluation is meant to reproduce client-side; a mismatch here would just mean
-// this screen and ActivityService's STREAK_EXPIRING event disagree about when "soon" starts.
+// How close to a streak's deadline counts as "at risk". Must match the backend's
+// STREAK_AT_RISK_THRESHOLD_HOURS (StreakCalculator.kt); otherwise this screen and ActivityService's
+// STREAK_EXPIRING event would disagree about when "soon" starts.
 private const val STREAK_AT_RISK_THRESHOLD_SECONDS = 4 * 60 * 60L
 
-/** Signature device for this screen: a friend's ring literally warms up with their streak,
- * rather than a numeric badge doing all the work — 0 is unlit, low streaks glow one colour,
- * longer ones become a full ember-to-violet blaze. Mirrors the ring language Home already
- * uses for "unseen photo", repurposed here to mean "how much this friendship is glowing". */
+/** A friend's ring warms up with their streak instead of a number doing all the work: 0 is unlit,
+ * low streaks glow one color, longer ones become a full ember-to-violet blaze. Mirrors Home's
+ * "unseen photo" ring, here meaning how much the friendship is glowing. */
 private fun streakRingBrush(colors: com.emigo.app.ui.theme.EmberColors, streak: Int): Brush = when {
     streak >= 7 -> Brush.sweepGradient(listOf(colors.glow, colors.glow2, colors.violet, colors.glow))
     streak >= 3 -> Brush.linearGradient(listOf(colors.glow, colors.glow2))
@@ -82,9 +80,8 @@ fun FriendsScreen(
     onPendingRequestClick: (PendingFriendRequestDto) -> Unit,
     onUpgradeToGold: () -> Unit,
     hazeState: HazeState,
-    // Left to TabScreenScaffold's own default for any other caller — MainActivity hoists and
-    // passes one specifically so scroll position survives opening a friend's profile and coming
-    // back, the same reasoning Home's own hoisted scroll state already documents.
+    // Defaults to a local state. MainActivity passes a hoisted one so the scroll position survives
+    // opening a friend's profile and coming back (same reasoning as Home's hoisted scroll state).
     listState: LazyListState = rememberLazyListState(),
 ) {
     val colors = EmberTheme.colors
@@ -97,10 +94,9 @@ fun FriendsScreen(
         title = stringResource(R.string.friends_title),
         hazeState = hazeState,
         trailing = {
-            // Same panel-toned circle, same 44dp size, as Home's header icons (ActivityBellButton
-            // / ProfileIconButton). TabScreenHeader now sizes its whole row to whichever is
-            // taller, the title text or this trailing control, so the row itself grows to fit
-            // this at its real 44dp rather than squishing or overflowing it.
+            // Same panel-toned 44dp circle as Home's header icons (ActivityBellButton,
+            // ProfileIconButton). TabScreenHeader sizes its row to the taller of the title and this
+            // control, so the row grows to fit it.
             Box(
                 modifier = Modifier.size(44.dp).clickable(onClick = onFindPeopleClick),
                 contentAlignment = Alignment.Center,
@@ -113,26 +109,23 @@ fun FriendsScreen(
                 }
             }
         },
-        // Strictly the manual pull gesture — not isLoading, which is also true for the automatic
-        // load this ViewModel fires on every app start. With a warm cache there's already content
-        // on screen by then, so keying off isLoading meant opening Friends after a restart showed
-        // a refresh nobody asked for.
+        // Strictly the manual pull gesture, not isLoading: isLoading is also true for the automatic
+        // load on every app start. With a warm cache, content is already showing by then, so keying
+        // on isLoading showed a refresh nobody asked for.
         isRefreshing = viewModel.isPullRefreshing,
         onRefresh = { viewModel.loadFriends(isPullRefresh = true) },
         listState = listState,
     ) {
-        // The search bar is the scaffold's own first list item, not a fixed sibling above it —
-        // it scrolls away with the rest of the list instead of staying pinned forever. Hidden
-        // entirely with zero friends — there's nothing to search yet, and showing an input with
-        // no possible results read as broken rather than just empty.
+        // The search bar is the scaffold's first list item, so it scrolls away with the list
+        // instead of staying pinned. Hidden with zero friends: an input with no possible results
+        // read as broken, not empty.
         if (viewModel.friends.isNotEmpty()) item(key = "search") {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 14.dp)
-                    // A quiet in-between tone, not the same panel every card below uses — an
-                    // input sits apart from background without competing with real cards for
-                    // the same visual weight.
+                    // A quiet in-between tone, not the card panel: an input should sit apart from
+                    // the background without competing with cards.
                     .background(colors.surface, searchShape)
                     .padding(horizontal = 16.dp, vertical = 13.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -179,11 +172,8 @@ fun FriendsScreen(
             }
 
             viewModel.filteredFriends.isEmpty() && viewModel.pendingRequests.isEmpty() -> item(key = "empty") {
-                // Sits right under the search bar rather than pushed down by the generous top
-                // padding a lone line of text used to get — this state carries a real, tappable
-                // invite row now, and floating it far down the page just read as an unexplained
-                // gap. The search-miss case below keeps its own breathing room, since that one
-                // genuinely is a single line.
+                // The empty-state text sits near the top; the search-miss line gets more room
+                // below the search bar.
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(top = if (isSearching) 64.dp else 8.dp),
                     contentAlignment = Alignment.Center,
@@ -198,9 +188,9 @@ fun FriendsScreen(
                             )
                         }
                         if (!isSearching) {
-                            // Plain text only, nothing else — no invite row, no icons. The search
-                            // bar above is already hidden in this same state (see item("search")),
-                            // so this is deliberately the one thing on screen.
+                            // Plain text only: no invite row, no icons. The search bar is already
+                            // hidden in this state (see item("search")), so this is the one thing
+                            // on screen.
                             Text(
                                 text = stringResource(R.string.friends_empty),
                                 fontFamily = typography.body,
@@ -249,23 +239,18 @@ fun FriendsScreen(
                     }
                 }
 
-                // Whoever's pinned already gets their own hero card above (only while not
-                // searching — search results should still include them, since the hero itself
-                // is hidden then) — without this exclusion, they rendered a second time here as
-                // a plain FriendRow right below their own hero.
+                // The pinned friend already has the hero card above (hidden while searching, when
+                // results still include them), so exclude them here or they'd render twice.
                 val friendRows = if (!isSearching && pinnedPartner != null) {
                     viewModel.filteredFriends.filterNot { it.friendshipId == pinnedPartner.friendshipId }
                 } else {
                     viewModel.filteredFriends
                 }
-                    // More than one friend can be pinned at once (pinning one never unpins
-                    // another) — the hero above only ever features the first of them, so any
-                    // *other* pinned friend still needs to stand out here. Within (and below)
-                    // that, most-recently-shared-a-moment-with-us first — lastActivityAt is an
-                    // ISO-8601 string, so plain lexicographic descending comparison already
-                    // sorts it chronologically; a friend with none yet (null) falls back to "",
-                    // always the "oldest" possible value, so they land at the very end of their
-                    // group instead of before real timestamps.
+                    // More than one friend can be pinned (pinning one never unpins another) and the
+                    // hero features only the first, so other pinned friends must still stand out
+                    // here. Within and below that: most recent activity first. lastActivityAt is
+                    // ISO-8601, so plain descending string order is chronological; null falls back
+                    // to "" (the oldest), so those friends land last in their group.
                     .sortedWith(
                         compareByDescending<FriendSummaryDto> { it.pinnedByMe }
                             .thenByDescending { it.lastActivityAt ?: "" },
@@ -276,9 +261,9 @@ fun FriendsScreen(
                         onClick = { onFriendClick(friend) },
                         isRestoring = friend.friendshipId in viewModel.restoringStreakFriendshipIds,
                         onRestoreStreakClick = {
-                            // Same check WidgetSettingsScreen's own upgrade button already makes
-                            // — a client-side fast path only, the server re-checks Gold status
-                            // itself regardless (see FriendService.restoreStreak).
+                            // A client-side fast path only (same check as WidgetSettingsScreen's
+                            // upgrade button). The server re-checks Gold itself (see
+                            // FriendService.restoreStreak).
                             if (viewModel.isGoldMember) {
                                 viewModel.restoreStreak(friend.friendshipId)
                             } else {
@@ -288,11 +273,10 @@ fun FriendsScreen(
                     )
                 }
 
-                // Search operates only over what's already loaded (client-side filtering), so
-                // there's nothing to page in while searching — the sentinel only appears for the
-                // plain, unfiltered list. Composed only once the user has actually scrolled near
-                // the end (LazyColumn doesn't compose items far outside the viewport), which is
-                // what triggers the fetch — not a fixed scroll-position threshold.
+                // Search filters what's already loaded, so there's nothing to page in while
+                // searching; the sentinel appears only for the plain list. It composes only once
+                // the user scrolls near the end (LazyColumn skips far-offscreen items), which is
+                // what triggers the fetch, not a fixed scroll threshold.
                 if (!isSearching && viewModel.hasMore) {
                     item(key = "load-more") {
                         LaunchedEffect(Unit) { viewModel.loadMoreFriends() }
@@ -309,8 +293,7 @@ fun FriendsScreen(
     }
 }
 
-/** Same label treatment as Settings' own section headers — title case, no letter-spacing,
- * plain UI font, instead of the old uppercase/tracked-out caption. */
+/** Same label style as Settings' section headers: title case, no letter-spacing, plain UI font. */
 @Composable
 private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
@@ -325,9 +308,9 @@ private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** "Your Emigo" — the person you've pinned, spotlighted in the exact card language Home uses
- * for a sent photo (same shape, shadow, bottom scrim). The repetition is deliberate: it tells
- * you this is the same kind of glow, just standing for a relationship instead of a single photo. */
+/** "Your Emigo": the pinned person, shown in the same card style Home uses for a sent photo (shape,
+ * shadow, bottom scrim). The repetition is deliberate: it says this is the same kind of glow,
+ * standing for a relationship instead of a single photo. */
 @Composable
 private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = EmberTheme.colors
@@ -340,13 +323,11 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp)
-                // 1:1, not the old 1.55 landscape ratio — the profile photo behind this card is
-                // always a square crop now (see PhotoCropScreen), so a landscape card was
-                // cropping a second time on top of an already-deliberate square, for no reason.
+                // 1:1: the profile photo behind this card is always a square crop (see
+                // PhotoCropScreen), so a landscape card would crop it a second time.
                 .aspectRatio(1f)
                 .clip(cardShape)
-                // Elevated, not the plain panel tone every row below it already uses — this is
-                // the one card on the screen that's meant to visibly outrank its siblings.
+                // Elevated, not the row panel tone: the one card meant to outrank its siblings.
                 .background(colors.elevatedPanel)
                 .clickable(onClick = onClick),
         ) {
@@ -358,10 +339,8 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                // Same "no photo yet" identity as ActivityScreen's ActivityRow — an initial
-                // letter, not just an empty placeholder, so a friend without a profile photo
-                // still reads as *them* rather than as a broken/missing image. Flat panel tone,
-                // no gradient — matches ActivityRow's own fallback exactly, this app stays flat.
+                // Same no-photo fallback as ActivityScreen's ActivityRow: an initial on a flat
+                // panel, so a friend without a profile photo still reads as them.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -427,8 +406,8 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
     }
 }
 
-/** Circular ring avatar whose colour is the streak-intensity signature — used everywhere a
- * friend's identity needs to carry that "how much is this glowing" information at a glance. */
+/** A ring avatar colored by streak intensity, used wherever a friend's identity should show how
+ * much the friendship is glowing. */
 @Composable
 internal fun StreakAvatar(photoUrl: String?, displayName: String, streak: Int, size: Dp) {
     val colors = EmberTheme.colors
@@ -455,10 +434,9 @@ internal fun StreakAvatar(photoUrl: String?, displayName: String, streak: Int, s
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            // Same "no photo yet" identity as ActivityScreen's ActivityRow — see PinnedPartnerHero
-            // above for the fuller reasoning. Elevated, not colors.border (a hairline-stroke
-            // token, not a fill — read as a washed-out grey) or plain colors.panel (this sits
-            // inside a panel-toned row already and would just blend into it).
+            // Same no-photo fallback as PinnedPartnerHero. Elevated, not colors.border (a stroke
+            // token that read as washed-out grey) or colors.panel (this sits in a panel-toned row
+            // and would blend in).
             Box(modifier = Modifier.fillMaxSize().background(colors.elevatedPanel), contentAlignment = Alignment.Center) {
                 Text(
                     text = displayName.firstOrNull()?.uppercase() ?: "•",
@@ -471,8 +449,8 @@ internal fun StreakAvatar(photoUrl: String?, displayName: String, streak: Int, s
     }
 }
 
-/** A single tap target that opens the requester's profile page — accepting/declining lives
- * there now (same profile screen every person gets), not inline on this chip. */
+/** One tap target that opens the requester's profile, where accept and decline now live (the same
+ * profile screen everyone gets), not on the chip. */
 @Composable
 private fun PendingRequestChip(
     request: PendingFriendRequestDto,
@@ -500,8 +478,7 @@ private fun PendingRequestChip(
                     modifier = Modifier.fillMaxSize().clip(CircleShape),
                 )
             } else {
-                // Same "no photo yet" identity as ActivityScreen's ActivityRow — see
-                // PinnedPartnerHero's own comment above for the fuller reasoning.
+                // Same no-photo fallback as PinnedPartnerHero.
                 Text(
                     text = request.displayName.firstOrNull()?.uppercase() ?: "•",
                     fontFamily = typography.display,
@@ -521,11 +498,9 @@ private fun PendingRequestChip(
     }
 }
 
-// No card background here at all — flat, straight on the screen's own background, the same
-// language Snapchat's own chat list uses (a direct reference the user pointed to: "everything
-// clearly visible" comes from bold name text + generous row height + meaningful color, not from
-// a panel behind each row). Separation between rows is spacing (see the vertical padding below),
-// never a divider line.
+// No card background: flat on the screen background, like Snapchat's chat list. Clarity comes from
+// bold names, generous row height and meaningful color, not a panel behind each row. Rows are
+// separated by spacing (the vertical padding below), never a divider line.
 @Composable
 private fun FriendRow(
     friend: FriendSummaryDto,
@@ -535,13 +510,11 @@ private fun FriendRow(
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
-    // The same "streak = warmth" signature every avatar ring on this screen already carries
-    // (see streakRingBrush) — extended to the status line itself, so a glowing friendship reads
-    // as glowing everywhere in its row, not just in the ring. Three states, not two: a live
-    // streak glows; a broken one (they've shared before, just not recently enough to keep it)
-    // reads as a normal, legible status rather than glowing — but it shouldn't fade all the way
-    // to the same near-invisible tone a friend with no history at all gets, since "we used to
-    // have a streak" is a real, readable fact and not a placeholder.
+    // The same "streak = warmth" signature the avatar rings carry (see streakRingBrush), extended
+    // to the status line. Three states: a live streak glows; a broken one (shared before, but not
+    // recently enough to keep it) reads as a normal, legible status; no history at all gets the
+    // dimmest tone. A broken streak shouldn't fade to that placeholder tone, since "we used to have
+    // a streak" is a real fact.
     val hasHistory = friend.lastActivityAt != null
     val statusColor = when {
         friend.streak > 0 -> colors.glow
@@ -549,10 +522,9 @@ private fun FriendRow(
         else -> colors.mutedDim
     }
 
-    // Evaluated against the device's own clock, not a flag the server decided once at fetch
-    // time — see FriendSummaryDto's own doc comment on why: this has to stay correct for a row
-    // rendered from LocalListCache while offline, potentially long after the network response
-    // that produced these deadlines was ever fetched.
+    // Evaluated against the device clock, not a flag the server set at fetch time (see
+    // FriendSummaryDto): a row rendered from LocalListCache while offline can be long past the
+    // fetch that produced these deadlines.
     val nowEpochSeconds = System.currentTimeMillis() / 1000
     val isStreakAtRisk = friend.streakDeadlineEpochSeconds?.let { deadline ->
         deadline > nowEpochSeconds && deadline - nowEpochSeconds <= STREAK_AT_RISK_THRESHOLD_SECONDS
@@ -586,9 +558,8 @@ private fun FriendRow(
                 }
             }
             Text(
-                // Direction-aware, not a blind "Last sent" — lastActivityBySelf says whether the
-                // most recent exchange was this account sending or the friend sending, same
-                // reasoning as the Friend Profile screen's own identical wording.
+                // Direction-aware: lastActivityBySelf says whether the latest exchange was sent by
+                // this account or by the friend (same wording as the Friend Profile screen).
                 text = friend.lastActivityAt?.let {
                     stringResource(
                         if (friend.lastActivityBySelf == true) R.string.friends_you_sent else R.string.friends_sent_to_you,
@@ -603,13 +574,11 @@ private fun FriendRow(
             )
         }
         when {
-            // A broken streak with a live restore window replaces the flame entirely — filled
-            // with the app's own accent (colors.glow), the same yellow the flame icon two rows up
-            // uses for this exact concept, with colors.accentText on top — the same dark-on-accent
-            // pairing every other filled button in the app already uses (AddActions' "Add",
-            // FriendProfileScreen's "Done"). An unrelated orange was tried here first and looked
-            // wrong precisely because it wasn't that color: the one accent this app actually has.
-            // Sized to sit quietly in the row rather than outshout the friend's own name next to it.
+            // A broken streak with a live restore window replaces the flame with a pill in the
+            // app's accent (colors.glow, the flame's yellow) with colors.accentText on top, the
+            // same pairing as the app's other filled buttons (AddActions' "Add",
+            // FriendProfileScreen's "Done"). An orange was tried first and looked wrong because it
+            // wasn't the app's one accent. Small, so it doesn't outshout the friend's name.
             isStreakRestoreAvailable -> {
                 Row(
                     modifier = Modifier
@@ -632,9 +601,8 @@ private fun FriendRow(
                     }
                 }
             }
-            // Still alive but hasn't been kept up today yet — same "about to lapse" window
-            // ActivityService's own STREAK_EXPIRING event already fires for, surfaced here too so
-            // it's visible without opening Activity: send something today to keep it going.
+            // Still alive but not kept up today: the same "about to lapse" window ActivityService's
+            // STREAK_EXPIRING event fires for, shown here so it's visible without opening Activity.
             isStreakAtRisk -> {
                 Icon(
                     Icons.Rounded.HourglassBottom,
@@ -643,8 +611,7 @@ private fun FriendRow(
                     modifier = Modifier.size(16.dp),
                 )
             }
-            // A "0" streak isn't an achievement worth displaying — only show once a friend
-            // actually has one going.
+            // A 0 streak isn't worth showing; only show one once it's going.
             friend.streak > 0 -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.LocalFireDepartment, contentDescription = stringResource(R.string.friends_streak_description), tint = colors.glow, modifier = Modifier.size(14.dp))
