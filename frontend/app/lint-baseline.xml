@@ -2,28 +2,6 @@
 <issues format="6" by="lint 9.3.0" type="baseline" client="gradle" dependencies="false" name="AGP (9.3.0)" variant="all" version="9.3.0">
 
     <issue
-        id="MissingPermission"
-        message="Call requires permission which may be rejected by user: code should explicitly check to see if permission is available (with `checkPermission`) or explicitly handle a potential `SecurityException`"
-        errorLine1="        NotificationManagerCompat.from(this).notify(NEW_PHOTO_NOTIFICATION_ID, notification)"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/emigo/app/push/EmberFirebaseMessagingService.kt"
-            line="150"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
-        message="Call requires permission which may be rejected by user: code should explicitly check to see if permission is available (with `checkPermission`) or explicitly handle a potential `SecurityException`"
-        errorLine1="        NotificationManagerCompat.from(this).notify(friendshipId.hashCode(), notification)"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/emigo/app/push/EmberFirebaseMessagingService.kt"
-            line="198"
-            column="9"/>
-    </issue>
-
-    <issue
         id="ExifInterface"
         message="Avoid using `android.media.ExifInterface`; use `androidx.exifinterface.media.ExifInterface` instead"
         errorLine1="import android.media.ExifInterface"
@@ -109,17 +87,6 @@
             file="src/main/res/xml/ember_widget_info.xml"
             line="6"
             column="5"/>
-    </issue>
-
-    <issue
-        id="NonObservableLocale"
-        message="Reading locale in a non-observable way in a composable function"
-        errorLine1="                    if (date != null) &quot;${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.dayOfMonth}&quot; else &quot;&quot;"
-        errorLine2="                                                                                   ~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/emigo/app/ui/home/MemoriesScreen.kt"
-            line="549"
-            column="84"/>
     </issue>
 
     <issue
@@ -373,6 +340,17 @@
             file="build.gradle.kts"
             line="149"
             column="20"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.10.1 is available: 1.11.0"
+        errorLine1="    testImplementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="165"
+            column="24"/>
     </issue>
 
     <issue

@@ -80,6 +80,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -112,28 +113,20 @@ import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
-/** Flat photo-grid column count — square tiles, four across, matching the reference redesign
- * (no more calendar/weekday structure). */
+/** Square tiles, four across. */
 private const val MEMORIES_GRID_COLUMNS = 4
 
-/** Anything saved within this many days groups under "Recent"; everything older groups by its
- * own calendar month instead. */
+/** Anything saved within this many days goes under "Recent"; older photos group by calendar
+ * month. */
 private const val RECENT_SECTION_DAYS = 7L
 
-/** How far back [HomeViewModel.loadMemories] fetches when the account's real creation date isn't
- * known yet — see that property's own doc comment. Mirrored here only for this file's own
- * fallback empty-state copy; the real backstop constant lives on HomeViewModel. */
-
-/** One labeled band of the flat Memories grid — "Recent" or a calendar month name. Built fresh
- * from [HomeViewModel.memories] (already sorted newest-first) every time that list changes,
- * rather than kept as its own persisted state — grouping is cheap and entirely derived from data
- * already in memory. */
+/** One labeled band of the Memories grid: "Recent" or a month name. Built from
+ * [HomeViewModel.memories] (newest first) whenever it changes. It is derived data, so it isn't
+ * persisted. */
 private data class MemoriesSection(val label: String, val photos: List<MemoryPhotoDto>)
 
-/** Splits [memories] (already newest-first) into "Recent" (anything from the last
- * [RECENT_SECTION_DAYS] days) followed by one section per calendar month for everything older,
- * each labeled with that month's own name — no month-navigation state to keep around any more,
- * this is the entire grouping. */
+/** Splits [memories] (newest first) into "Recent" (the last [RECENT_SECTION_DAYS] days), then one
+ * section per calendar month for everything older. */
 private fun buildMemoriesSections(memories: List<MemoryPhotoDto>, recentLabel: String): List<MemoriesSection> {
     if (memories.isEmpty()) return emptyList()
     val recentCutoff = Instant.now().minus(RECENT_SECTION_DAYS, ChronoUnit.DAYS)
@@ -160,11 +153,10 @@ private fun buildMemoriesSections(memories: List<MemoryPhotoDto>, recentLabel: S
     return sections
 }
 
-/** A tapped photo, remembered together with the on-screen bounds of the grid tile that was tapped
- * (the origin the featured card grows out of, and shrinks back into on dismiss), the full
- * newest-first memories list, and which page within it the tapped photo corresponds to —
- * swiping continues across the *entire* saved history, not just whatever section it was tapped
- * from, the same "keep going" feel Home's own featured card already has across friends. */
+/** A tapped photo with the on-screen bounds of its grid tile (the featured card grows out of that
+ * rectangle and shrinks back into it), the full newest-first list, and the photo's page in it.
+ * Swiping continues across the whole history, not just the section it was tapped from, like Home's
+ * featured card across friends. */
 internal data class MemoryFocusTarget(
     val photo: MemoryPhotoDto,
     val originBounds: Rect,
@@ -172,12 +164,10 @@ internal data class MemoryFocusTarget(
     val initialPage: Int,
 )
 
-/** Hoisted out of the grid so the actual [MemoryFeaturedOverlay] can be rendered by
- * [MemoriesTabScreen] at its own true full-screen Box instead — that Box has a real, bounded
- * size, unlike a container nested inside a scrollable column (which measures children with an
- * unbounded height constraint), so a "centered against the full device screen" overlay rendered
- * there was positioning itself against a container that was never actually the full screen to
- * begin with. */
+/** Hoisted out of the grid so [MemoriesTabScreen] can render [MemoryFeaturedOverlay] in its own
+ * full-screen Box. That Box has a real, bounded size. A container nested in a scrollable column
+ * measures its children with unbounded height, so an overlay centered there wasn't centered on the
+ * device screen. */
 internal class MemoryFocusState {
     var target by mutableStateOf<MemoryFocusTarget?>(null)
     var isOpen by mutableStateOf(false)
@@ -187,15 +177,11 @@ internal class MemoryFocusState {
 @Composable
 internal fun rememberMemoryFocusState(): MemoryFocusState = remember { MemoryFocusState() }
 
-/** The flat Memories grid — one square tile per saved photo, grouped into [MemoriesSection]s
- * ("Recent", then a section per calendar month), with no calendar structure, no empty-day
- * placeholders, and no month navigation. A real [LazyVerticalGrid], not a plain eagerly-composed
- * Column — unlike the old one-month-at-a-time calendar (small and fixed-size enough to compose
- * eagerly), this can hold a long-time account's entire saved history, so it needs real
- * virtualization. That's also why this composable owns its own scrolling: a lazy layout can't be
- * nested inside another scrollable container (the "vertically scrollable component measured with
- * an infinity maximum height constraint" crash) — see [MemoriesTabScreen]'s own layout for how
- * the header stays fixed above this instead of scrolling away with it. */
+/** The Memories grid: one square tile per saved photo, grouped into [MemoriesSection]s. It is a
+ * real [LazyVerticalGrid] because it can hold an account's entire history. It owns its own
+ * scrolling, since a lazy layout can't sit inside another scrollable (it crashes with "measured
+ * with an infinity maximum height constraint"); [MemoriesTabScreen] keeps the header fixed above
+ * it instead. */
 @Composable
 internal fun MemoriesPhotoGrid(
     memories: List<MemoryPhotoDto>,
@@ -222,8 +208,7 @@ internal fun MemoriesPhotoGrid(
         }
     }
 
-    // Swiping back (or pressing back) while a photo is open should close the featured card, the
-    // same way tapping outside it does — not fall through to the system and back out of the app.
+    // Back closes the open photo, like tapping outside it, instead of leaving the app.
     BackHandler(enabled = isOpen) { focusState.isOpen = false }
 
     val gridBlur by rememberFocusBlur(isOpen)
@@ -304,8 +289,8 @@ private fun MemoriesEmptyState(onCameraClick: () -> Unit, modifier: Modifier = M
             color = colors.muted,
             modifier = Modifier.padding(top = 4.dp),
         )
-        // Same solid-white pill RecipientPickerScreen's own "Find friends" button uses (see its
-        // own comment there) — same look for the same class of action, wherever it shows up.
+        // Same solid-white pill as RecipientPickerScreen's "Find friends" button: the same look for
+        // the same kind of action.
         Row(
             modifier = Modifier
                 .padding(top = 18.dp)
@@ -356,45 +341,41 @@ private fun MemoryPhotoCell(
     }
 }
 
-/** A photo, grown out of the grid tile that was tapped into the exact same card recipe Home's own
- * `FeaturedPhotoCard` uses — rounded glow-shadowed card, bottom gradient scrim — via a
- * container-transform: the card animates from the tapped tile's actual on-screen position/size
- * ([MemoryFocusTarget.originBounds]) to a centered full-width position, and shrinks back into that
- * same spot on dismiss, rather than a flat full-screen takeover. Rendered by the caller
- * ([MemoriesTabScreen]) at its own true full-screen Box — [MemoryFocusTarget.originBounds] is
- * already captured via `boundsInRoot()`, i.e. relative to the same compose root that Box sits at,
- * so it needs no further coordinate conversion here. [screenSize] is that same Box's real measured
- * size in px, used to center the destination within the safe area below the status bar and above
- * the floating nav dock. */
+/** A photo grown out of its tapped grid tile into the same card as Home's `FeaturedPhotoCard`
+ * (rounded card, bottom scrim), as a container transform: it animates from the tile's on-screen
+ * bounds ([MemoryFocusTarget.originBounds]) to a centered full-width card, and back on dismiss.
+ * The caller ([MemoriesTabScreen]) renders it in its full-screen Box; originBounds comes from
+ * `boundsInRoot()`, the same coordinate space, so no conversion is needed. [screenSize] is that
+ * Box's measured size in px, used to center the card between the status bar and the nav dock. */
 @Composable
 internal fun MemoryFeaturedOverlay(
     target: MemoryFocusTarget,
     screenSize: Size,
     progress: Float,
     onDismiss: () -> Unit,
-    // Reports whichever photo scrolling has actually come to rest on, for the caller's own
-    // AmbientPhotoBackdrop (the same blurred-photo wash Home's own featured card uses) to pick up
-    // — deliberately NOT wired to the live page the way currentPhoto below is.
+    // Reports the photo the pager has settled on (not the live page, unlike currentPhoto below),
+    // for the caller's AmbientPhotoBackdrop, the blurred wash Home's featured card also uses.
     onCurrentPhotoChanged: (String?) -> Unit = {},
-    // Real, permanent deletion (see HomeViewModel.deleteMemoryPhoto/PhotoService.delete on the
-    // backend) — a suspend Result rather than a fire-and-forget callback so the confirm dialog
-    // below can show its own spinner/error inline instead of closing optimistically.
+    // Permanent deletion (see HomeViewModel.deleteMemoryPhoto and the backend's
+    // PhotoService.delete). A suspend Result, not a callback, so the confirm dialog can show its
+    // own spinner and error instead of closing optimistically.
     onDeletePhoto: suspend (String) -> Result<Unit> = { Result.success(Unit) },
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
     val density = LocalDensity.current
     val context = LocalContext.current
+    // Read from the Compose configuration so the date label follows a language change.
+    val locale = LocalConfiguration.current.locales[0]
     val deleteFailedMessage = stringResource(R.string.memories_delete_failed)
     val coroutineScope = rememberCoroutineScope()
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
 
-    // Only actually needed on Android 9 and below — scoped storage on 10+ lets MediaStore.insert
-    // write to the gallery with no permission at all (see saveImageToGallery's own doc comment).
-    // The lambda captured here always re-attempts the same download once the user responds,
-    // rather than needing a second explicit tap after granting.
+    // Only needed on Android 9 and below: from 10 on, MediaStore.insert writes to the gallery with
+    // no permission (see saveImageToGallery). The pending URL is retried automatically once the
+    // user answers, so no second tap is needed.
     var pendingDownloadUrl by remember { mutableStateOf<String?>(null) }
     val storagePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val url = pendingDownloadUrl
@@ -403,13 +384,10 @@ internal fun MemoryFeaturedOverlay(
             coroutineScope.launch { downloadPhoto(context, url) }
         }
     }
-    // Pages through the whole saved history (see MemoryFocusTarget.allMemories), not just the
-    // tapped photo alone — landing on the tapped photo, but continuing into neighboring photos
-    // instead of stopping dead at it.
+    // Pages through the whole saved history (MemoryFocusTarget.allMemories), starting at the
+    // tapped photo.
     val pagerState = rememberPagerState(initialPage = target.initialPage) { target.allMemories.size }
-    // Whichever photo the pager is actually settled/settling on right now — drives the date label,
-    // so it tracks wherever swiping has actually taken you rather than staying frozen on the
-    // originally-tapped photo.
+    // The photo the pager is on right now. It drives the date label, so the label follows swiping.
     val currentPhoto = target.allMemories.getOrElse(pagerState.currentPage) { target.allMemories[target.initialPage] }
 
     LaunchedEffect(target) {
@@ -421,13 +399,10 @@ internal fun MemoryFeaturedOverlay(
             }
     }
 
-    // Same reasoning as Home's FeaturedPhotoCard: this pager and whatever's behind it (the
-    // Memories grid's own scroll, and the page underneath) are both potential recipients of a
-    // drag that runs out of pages to turn — without this, swiping past the first/last photo lets
-    // that drag bubble down into the grid or the page underneath instead of just stopping.
-    // Consuming every bit of leftover scroll/fling here (onPost*, not onPre* — the pager itself
-    // still scrolls normally first) means nothing from a drag that starts on this card is ever
-    // left for whatever's behind it to receive.
+    // Same as Home's FeaturedPhotoCard: this pager and what's behind it (the grid, the page below)
+    // could both receive a drag that runs out of pages. Consuming all leftover scroll and fling
+    // here (onPost*, so the pager still scrolls first) stops a drag that started on this card from
+    // reaching anything behind it.
     val cardNestedScrollBoundary = remember {
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
@@ -436,18 +411,14 @@ internal fun MemoryFeaturedOverlay(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Centered within the SAFE usable area of the true screen (below the status bar, above
-        // the floating nav dock) — this Box is the caller's own top-level Box, which has a real,
-        // bounded size (screenSize), not a container nested inside a scrollable column (which
-        // measures its children with an unbounded height, making "center against the full
-        // screen" from in there meaningless). No root-position subtraction is needed either:
-        // originBounds and this Box both live at the same compose root, so originBounds is
-        // already in the right coordinate space as-is.
+        // Centered in the usable screen area (below the status bar, above the nav dock). This is
+        // the caller's top-level Box with a real bounded size, not a container inside a scrollable
+        // column. originBounds and this Box share one compose root, so no coordinate conversion is
+        // needed.
         val sidePaddingPx = with(density) { featuredCardSidePadding().toPx() }
         val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
-        // LocalNavDockHeight is the dock's own real measured height, which already includes the
-        // true system nav-bar inset (BottomNavDock applies navigationBarsPadding() internally) —
-        // no separate WindowInsets.navigationBars term needed on top of it any more.
+        // The dock's measured height already includes the system nav-bar inset (BottomNavDock
+        // applies navigationBarsPadding), so there is no separate navigation-bar term.
         val navDockReservePx = with(density) { LocalNavDockHeight.current.toPx() }
         val usableHeightPx = (screenSize.height - statusBarPx - navDockReservePx).coerceAtLeast(1f)
         val cardWidthPx = (screenSize.width - sidePaddingPx * 2).coerceAtLeast(1f)
@@ -458,11 +429,9 @@ internal fun MemoryFeaturedOverlay(
 
         val currentRect = lerp(target.originBounds, destRect, progress)
 
-        // The grid tile underneath uses 10.dp corners; the fully-open card uses Home's own
-        // FEATURED_CARD_CORNER_RADIUS. Interpolating this, instead of jumping straight to the
-        // open card's fixed radius, is what makes the swap back to the real tile underneath (once
-        // this overlay is removed at the very end of the close animation) seamless instead of a
-        // visible pop.
+        // The grid tile has 10.dp corners and the open card uses FEATURED_CARD_CORNER_RADIUS.
+        // Interpolating avoids a visible pop when this overlay is removed at the end of the close
+        // animation and the real tile shows.
         val cardCornerRadius = lerp(10.dp, FEATURED_CARD_CORNER_RADIUS, progress)
         val cardShape = RoundedCornerShape(cardCornerRadius)
 
@@ -479,11 +448,10 @@ internal fun MemoryFeaturedOverlay(
 
         Box(
             modifier = Modifier
-                // A separate .offset{} (raw pixels) + .size(dp, dp) (converted to dp, then back to
-                // pixels by the layout system) round independently of each other every frame — at
-                // the tiny end of the shrink-back-into-the-grid animation, that mismatch is a much
-                // bigger fraction of the box's size and reads as a jitter. Measuring and placing in
-                // one pass, in raw pixels throughout, rounds exactly once, consistently.
+                // A separate .offset{} (raw px) and .size(dp) round independently each frame. At
+                // the small end of the shrink-back animation that mismatch is a large fraction of
+                // the box and shows as jitter. Measuring and placing in one pass, in raw px, rounds
+                // once.
                 .layout { measurable, _ ->
                     val widthPx = currentRect.width.roundToInt().coerceAtLeast(0)
                     val heightPx = currentRect.height.roundToInt().coerceAtLeast(0)
@@ -494,11 +462,10 @@ internal fun MemoryFeaturedOverlay(
                 }
                 .nestedScroll(cardNestedScrollBoundary)
                 .clip(cardShape)
-                // Matches Home's own FeaturedPhotoCard, which this is explicitly "the same
-                // recipe" as — elevated, not plain panel, so it outranks the grid tiles behind it.
+                // Same recipe as Home's FeaturedPhotoCard: elevated, not plain panel, so it
+                // outranks the grid tiles behind.
                 .background(colors.elevatedPanel)
-                // A plain tap anywhere on the open photo closes it, matching Home's own featured
-                // card (there, tapping the card is exactly what toggles it back out of focus).
+                // A tap anywhere on the open photo closes it, as on Home's featured card.
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -508,11 +475,10 @@ internal fun MemoryFeaturedOverlay(
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 val photo = target.allMemories[page]
                 AsyncImage(
-                    // The same photo is already showing small in the grid tile this card grew
-                    // out of, and this Box's own size keeps animating during the grow/shrink
-                    // transition — pin the decode to the card's final, settled pixel size rather
-                    // than Coil's default (which follows the composable's size and would end up
-                    // re-requesting on every animation frame, or reusing the tiny grid decode).
+                    // The photo already shows small in the tile this card grew from, and this Box
+                    // keeps animating in size. Pin the decode to the card's final pixel size:
+                    // Coil's default follows the composable's size and would re-request every
+                    // frame or reuse the tiny grid decode.
                     model = remember(photo.photoUrl, cardWidthPx, cardHeightPx) {
                         ImageRequest.Builder(context)
                             .data(photo.photoUrl)
@@ -528,10 +494,9 @@ internal fun MemoryFeaturedOverlay(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    // The real grid tile has no bottom scrim at all — fading this in/out with
-                    // progress, the same way the date text below already does, keeps it absent at
-                    // the tile-sized end of the transition instead of a full-strength gradient
-                    // popping in against a tile that never had one.
+                    // The real grid tile has no bottom scrim. Fading it in with progress (like the
+                    // date text) keeps it absent at tile size instead of popping in at full
+                    // strength.
                     .alpha(progress)
                     .background(
                         Brush.verticalGradient(
@@ -546,7 +511,7 @@ internal fun MemoryFeaturedOverlay(
                     val date = runCatching {
                         Instant.parse(currentPhoto.createdAt).atZone(ZoneId.systemDefault()).toLocalDate()
                     }.getOrNull()
-                    if (date != null) "${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.dayOfMonth}" else ""
+                    if (date != null) "${date.month.getDisplayName(TextStyle.FULL, locale)} ${date.dayOfMonth}" else ""
                 },
                 fontFamily = typography.display,
                 fontSize = 24.sp,
@@ -558,11 +523,9 @@ internal fun MemoryFeaturedOverlay(
             )
         }
 
-        // A true screen-level overlay, not a child of the card above — deliberately NOT inside
-        // that Box (which clips to the card's own animated, growing/shrinking bounds). Living
-        // here instead, as this Box's own last child, means it's laid out against the real screen
-        // (top-right corner, below the status bar, entirely independent of wherever the card
-        // itself currently is mid-animation) and painted after everything else.
+        // A screen-level overlay, deliberately not inside the card's Box, which clips to the card's
+        // animated bounds. As this Box's last child it lays out against the real screen (top-right,
+        // below the status bar) and paints last, whatever the card is doing.
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -580,9 +543,8 @@ internal fun MemoryFeaturedOverlay(
             ) {
                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.common_more_options), tint = Color.White, modifier = Modifier.size(18.dp))
             }
-            // Material3's DropdownMenu already fades+scales in/out by default — that's the
-            // "fade animation" here, rather than a second, hand-rolled AnimatedVisibility on
-            // top of it, which would just fight the built-in one.
+            // Material3's DropdownMenu already fades and scales in and out; a hand-rolled
+            // AnimatedVisibility on top would fight it.
             DropdownMenu(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
@@ -634,9 +596,8 @@ internal fun MemoryFeaturedOverlay(
                     onDeletePhoto(photoId).onSuccess {
                         isDeleting = false
                         showDeleteConfirm = false
-                        // Back to the grid rather than trying to re-page a now-shorter carousel —
-                        // the grid itself already reflects the removal (HomeViewModel updates its
-                        // cache on success), so there's nothing stale left to look at here.
+                        // Back to the grid instead of re-paging a now-shorter carousel; the grid
+                        // already reflects the removal (HomeViewModel updates its cache on success).
                         onDismiss()
                     }.onFailure {
                         isDeleting = false
@@ -655,17 +616,13 @@ private suspend fun downloadPhoto(context: Context, photoUrl: String) {
     )
 }
 
-// Same dark red already used for Delete account/list confirms elsewhere in the app (see
-// SettingsScreen/RecipientPickerScreen's own DeleteAccountDestructiveColor/
-// DeleteListDestructiveColor) — kept as its own local constant rather than a shared one across
-// three unrelated packages purely for one hex value.
+// The shared destructive red (EmberFixedColors.destructive), as the other delete confirms use.
 private val MemoriesDestructiveColor = EmberFixedColors.destructive
 
-/** Same shell every other confirm-before-delete dialog in the app uses (see
- * RecipientPickerScreen's DeleteListConfirmDialog) — plain "This can't be undone.", no dash, dark
- * red confirm button. Stays open through the delete request (spinner on the confirm button)
- * rather than closing optimistically, since a real, permanent deletion failing needs to be
- * visibly a failure, not silently pretend to have worked. */
+/** The shared confirm-before-delete dialog shell (see RecipientPickerScreen's
+ * DeleteListConfirmDialog): "This can't be undone.", dark red confirm button. It stays open through
+ * the delete, with a spinner on the confirm button, because a failed permanent deletion must
+ * visibly fail, not pretend it worked. */
 @Composable
 private fun DeleteMemoryConfirmDialog(isDeleting: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val colors = EmberTheme.colors
@@ -711,18 +668,14 @@ private fun DeleteMemoryConfirmDialog(isDeleting: Boolean, onDismiss: () -> Unit
     }
 }
 
-/** Memories as its own bottom-nav tab — a real, standard-shaped tab screen (own header, own
- * scaffold), same "one tab, one screen" pattern Friends/Activity/Settings already follow. Reuses
- * [HomeViewModel] (already hoisted at the app root, already fetching/holding
- * [HomeViewModel.memories]) rather than a second ViewModel duplicating that same fetch.
+/** Memories as its own bottom-nav tab, with its own header and scaffold like Friends, Activity and
+ * Settings. Reuses [HomeViewModel] (hoisted at the app root, already holding
+ * [HomeViewModel.memories]) instead of a second ViewModel fetching the same data.
  *
- * The header stays fixed at the top (not part of any scroll) and [MemoriesPhotoGrid] owns the
- * only real scrolling on this screen — see that composable's own doc comment for why a lazy grid
- * can't be nested inside a second scrollable container. [MemoryFeaturedOverlay] needs to center
- * itself against the screen's *real* pixel size, which only this composable's own outer,
- * fillMaxSize Box actually is. [AmbientPhotoBackdrop] and the blur/fade-while-a-photo-is-open
- * treatment are the exact same building blocks Home's own featured-card focus state already
- * uses — nothing new invented for this screen specifically. */
+ * The header stays fixed and [MemoriesPhotoGrid] owns the only scrolling (see its doc).
+ * [MemoryFeaturedOverlay] must center against the screen's real pixel size, which only this
+ * composable's outer fillMaxSize Box has. The ambient backdrop and the blur and fade while a photo
+ * is open are the same building blocks Home's focus state uses. */
 @Composable
 fun MemoriesTabScreen(
     viewModel: HomeViewModel,
@@ -776,8 +729,8 @@ fun MemoriesTabScreen(
             )
         }
 
-        // Rendered from this screen's own outer Box (fillMaxSize of the true measured screen
-        // size), not from inside the grid above — see this composable's own doc comment for why.
+        // Rendered from this outer Box (the real screen size), not from inside the grid; see the
+        // doc above.
         focusState.target?.let { target ->
             MemoryFeaturedOverlay(
                 target = target,

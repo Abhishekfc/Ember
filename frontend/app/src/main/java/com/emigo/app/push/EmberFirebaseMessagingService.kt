@@ -1,6 +1,7 @@
 package com.emigo.app.push
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -129,6 +130,7 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
      * became data-only (see PushNotificationService.notifyNewPhoto for why it had to change) —
      * without this, switching to data-only would have silently dropped a notification users
      * already see today. */
+    @SuppressLint("MissingPermission") // Checked by hasNotificationPermission() on the first line.
     private fun showNewPhotoNotification(senderName: String) {
         if (!hasNotificationPermission()) return
 
@@ -158,6 +160,7 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
      * the notification itself disappears from the tray once the restore window server-side has
      * actually closed, rather than sitting there indefinitely offering an action that would just
      * fail if tapped. */
+    @SuppressLint("MissingPermission") // Checked by hasNotificationPermission() on the first line.
     private fun showStreakBrokenNotification(friendshipId: String, friendName: String, restoreDeadlineEpochSeconds: Long) {
         if (!hasNotificationPermission()) return
 
