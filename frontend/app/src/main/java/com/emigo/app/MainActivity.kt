@@ -122,30 +122,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 
-/** Screens reached from within a tab (Settings -> Theme, Friends -> Find People / Friend
- * Profile) rather than from the bottom nav tabs directly. Kept separate from the current page
- * so back navigation can pop just the nested screen without losing which page you were on.
- * Camera is NOT one of these any more — it's a swipeable page of the main pager, same as Home
- * or Friends, not a modal reached from a button. Activity joined this list (rather than staying
- * a pager page) once it moved out of the bottom nav dock into a bell icon in Home's own header —
- * see NavDestination's own doc comment for the full reasoning. */
+/** Screens reached from within a tab (Settings -> Theme, Friends -> Find People / Friend Profile)
+ * rather than from the bottom nav. Kept apart from the current page so back pops just the nested
+ * screen without losing which page you were on. Camera isn't one of these: it's a swipeable page
+ * of the main pager. Activity is, since it moved from the nav dock to the bell in Home's header. */
 private enum class NestedScreen { THEME, FIND_PEOPLE, FRIEND_PROFILE, PROFILE, GOLD, WIDGET_SETTINGS, BLOCKED_USERS, OTHER_SETTINGS, SENT_PHOTOS, ACTIVITY }
 
-/** The unified pager's page order — left to right, matching the bottom nav's own visual layout
- * (Memories, Home, [Camera in the center], Friends, Settings). Home sits immediately next to
- * Camera on purpose, not at either end: the app opens on Camera (see PAGE_CAMERA below being the
- * pager's initialPage), and a single swipe away from it needs to land directly on Home, not
- * Memories — Memories is one swipe further out instead. Activity has no page of its own any more
- * (see NestedScreen/NavDestination's own doc comments) — swiping past Friends or Settings never
- * lands on it, the way it briefly could when it was still page 3 here. */
-// Intent extras a notification's action button (or its own body tap) can carry to route
-// straight to a specific in-app action once MainActivity is showing — currently only the
-// streak-restore notification's "Restore streak" button uses these (see
-// EmberFirebaseMessagingService.showStreakBrokenNotification, the only place that sets them).
+/** Intent extras a notification's action button (or its body tap) can carry to route to an in-app
+ * action once MainActivity is showing. Only the streak-restore notification uses them (see
+ * EmberFirebaseMessagingService.showStreakBrokenNotification). */
 const val EXTRA_NOTIFICATION_ACTION = "notification_action"
 const val EXTRA_STREAK_FRIENDSHIP_ID = "streak_friendship_id"
 const val NOTIFICATION_ACTION_RESTORE_STREAK = "restore_streak"
 
+/** The pager's page order, left to right, matching the bottom nav (Memories, Home, [Camera in the
+ * center], Friends, Settings). Home sits next to Camera on purpose: the app opens on Camera (the
+ * pager's initialPage), and one swipe from it must land on Home, not Memories. Activity has no
+ * page of its own, so swiping past Friends or Settings never lands on it. */
 private const val PAGE_MEMORIES = 0
 private const val PAGE_HOME = 1
 private const val PAGE_CAMERA = 2
@@ -160,9 +153,8 @@ private fun pageForDestination(destination: NavDestination): Int = when (destina
     NavDestination.SETTINGS -> PAGE_SETTINGS
 }
 
-/** Which nav-dock tab should read as "active" for a given page — Camera doesn't correspond to
- * any tab (its icon fades out entirely near that page instead, see the dock's own alpha
- * graphicsLayer below), so it falls back to Home. */
+/** The nav-dock tab that reads as active for a page. Camera has no tab (its icon fades out near
+ * that page, see the dock's alpha graphicsLayer below), so it falls back to Home. */
 private fun destinationForPage(page: Int): NavDestination = when (page) {
     PAGE_MEMORIES -> NavDestination.MEMORIES
     PAGE_HOME -> NavDestination.HOME
@@ -173,9 +165,9 @@ private fun destinationForPage(page: Int): NavDestination = when (page) {
 
 class MainActivity : ComponentActivity() {
 
-    // All hoisted to EmberApplication (see its own doc comment) so they're true process-wide
-    // singletons — surviving this Activity being destroyed/recreated by a config change, rather
-    // than each recreation quietly wiring every ViewModel's repository to a orphaned NetworkModule.
+    // Hoisted to EmberApplication so they're process-wide singletons that survive this Activity
+    // being recreated by a config change, instead of each recreation wiring ViewModels to an
+    // orphaned NetworkModule.
     private val emberApplication get() = application as EmberApplication
     private val networkModule get() = emberApplication.networkModule
     private val authRepository get() = emberApplication.authRepository
@@ -192,11 +184,9 @@ class MainActivity : ComponentActivity() {
     private val notificationPreferenceStore get() = emberApplication.notificationPreferenceStore
     private val localListCache get() = emberApplication.localListCache
 
-    // Compose state (not a plain var) so the LaunchedEffect further down in setContent's own
-    // composable tree actually re-runs when this changes — set from whatever intent the Activity
-    // was most recently (re)launched with (onCreate for a cold start, onNewIntent for singleTask
-    // reuse while already running), and nulled back out once that effect has acted on it, so the
-    // same notification tap can't be processed twice across a recomposition.
+    // Compose state so the LaunchedEffect below re-runs on change. Set from the latest launch
+    // intent (onCreate on a cold start, onNewIntent when singleTask reuses the running Activity)
+    // and nulled once acted on, so a notification tap isn't processed twice across a recomposition.
     private var pendingNotificationIntent by mutableStateOf<Intent?>(null)
 
     override fun onNewIntent(intent: Intent) {
@@ -208,73 +198,50 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingNotificationIntent = intent
-        // True edge-to-edge: the status/nav bars are fully transparent, and every screen's own
-        // full-bleed background gradient (already drawn via Modifier.fillMaxSize().background(...)
-        // everywhere) paints straight through behind them — this is what actually makes the bars
-        // disappear into the screen pixel-for-pixel, rather than approximating with a flat fill
-        // color (tried first; visibly seams on any theme whose background isn't flat across the
-        // top edge, e.g. Ember's off-center radial gradient). Content that would otherwise render
-        // underneath the bars now needs its own explicit statusBarsPadding()/navigationBarsPadding()
-        // — see each top-level screen for where that's applied.
+        // True edge-to-edge: transparent system bars, with each screen's full-bleed background
+        // painting behind them. A flat fill color seamed visibly on themes whose background isn't
+        // flat across the top edge (e.g. Ember's off-center radial gradient). Content that would
+        // sit under the bars needs its own statusBarsPadding()/navigationBarsPadding().
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Otherwise the system quietly paints a translucent dark scrim behind the gesture bar
-            // for legibility contrast, which is exactly the flat mismatched strip this whole fix
-            // is meant to remove — every screen already gives its own content enough contrast
-            // against its own background without needing the system's help here.
+            // Otherwise the system paints a translucent dark scrim behind the gesture bar, the flat
+            // mismatched strip this removes. Screens already have enough contrast of their own.
             window.isNavigationBarContrastEnforced = false
         }
         // Keep the widget's background refresh alive even across reinstalls that wiped the
         // schedule; KEEP policy makes this a no-op when it's already queued.
         WidgetUpdateWorker.schedule(applicationContext)
-        // Read once, synchronously, before the first frame — a returning user's very first
-        // composition should already show real content (feed items, cached Memories thumbnails,
-        // the profile picture), not an empty/default state that then pops to the right thing a
-        // moment later once some async read resolves. That's what produced a visible "everything
-        // reloads" flash on every restart even though the data itself was genuinely cached — the
-        // read just wasn't finished before the first frame drew. A handful of tiny local
-        // Preferences reads block for a few milliseconds at most, well before there's anything on
-        // screen yet to notice a delay in.
-        // var, not val — reset back to empty on sign-out (see onSignOut below) rather than left
-        // holding whichever account was signed in when this Activity was created. Without that
-        // reset, signing into a different account within the same process reused this same
-        // already-read snapshot as the new HomeViewModel's "instant on reopen" seed, briefly (or,
-        // combined with the repositories' own account-unaware TTL caches below, not so briefly)
-        // showing the previous account's feed/memories/profile until a later fetch overwrote it.
-        // Read before the first composition, exactly like initialHomeCache below it, so the very
-        // first frame already knows whether to draw Home or Login. This used to happen in a
-        // LaunchedEffect instead, which by definition runs *after* that first frame — so every
-        // cold start rendered one empty placeholder frame first, and only then the real UI. That
-        // gap was invisible while every theme's background was a flat gradient (the placeholder
-        // painted the identical background), but a theme with an image backdrop made it obvious:
-        // the backdrop appeared alone, then everything else arrived a beat later.
-        // Firebase's own SDK persists this across process restarts in its own storage — no
-        // local read needed at all, synchronous or otherwise, unlike the custom JWT this replaced.
+        // Whether to draw Home or Login on the first frame, read before the first composition.
+        // Doing it in a LaunchedEffect meant every cold start rendered one empty placeholder frame
+        // first (invisible with flat gradient backgrounds, obvious with an image-backed theme).
+        // Firebase persists the session itself, so no local read is needed.
         var hasSavedSession = FirebaseAuth.getInstance().currentUser != null
-        // TokenStore's own local echo of the last NeedsVerification outcome this device actually
-        // saw (see its own doc comment) — read synchronously, same as initialHomeCache just below,
-        // so a still-pending account's cold start can render the verification screen on frame one
-        // instead of the full app shell. Matched against the *current* signed-in uid specifically:
-        // a stale entry left over from a previous account on this same device (see
-        // TokenStore.clear's own doc comment for why sign-out clears it) must never apply to
-        // whoever's actually signed in now.
+        // TokenStore's local echo of the last NeedsVerification outcome, read synchronously so a
+        // still-pending account's cold start shows the verification screen on frame one instead of
+        // the app shell. Matched against the current uid, so a stale entry from a previous account
+        // on this device never applies (TokenStore.clear removes it on sign-out).
         var pendingVerification = runBlocking { networkModule.tokenStore.readPendingVerification() }
             ?.takeIf { it.firebaseUid == FirebaseAuth.getInstance().currentUser?.uid }
-        // An already-past deadline means EmailVerificationExpiryService is going to delete this
-        // account on its very next sweep, if it hasn't already — there's nothing left to resume.
-        // Re-priming the verification screen from this stale entry would just recompute straight
-        // to its own "Verification failed" dead end on frame one, with no way forward, exactly the
-        // restart behavior this is meant to avoid. Signing out locally, right here before the
-        // first frame, means a restart after the countdown has actually run out always lands on a
-        // clean Welcome screen instead — same as if this device had never signed into it.
+        // A deadline already in the past means EmailVerificationExpiryService will delete the
+        // account on its next sweep (or already has), so there's nothing to resume. Priming the
+        // verification screen from it would land straight on "Verification failed" with no way
+        // forward. Signing out locally before the first frame means a restart after the countdown
+        // ran out lands on a clean Welcome screen.
         if (pendingVerification != null && pendingVerification.deadlineMillis <= System.currentTimeMillis()) {
             FirebaseAuth.getInstance().signOut()
             runBlocking { networkModule.tokenStore.clear() }
             hasSavedSession = false
             pendingVerification = null
         }
+        // Read once, synchronously, before the first frame so a returning user's first composition
+        // already shows real content (feed, cached Memories thumbnails, profile picture). Reading
+        // asynchronously caused an "everything reloads" flash on every restart even though the data
+        // was cached. A few tiny local reads block for milliseconds, before anything is on screen.
+        // var, not val: reset on sign-out (see onSignOut), otherwise signing into a different
+        // account in the same process seeded the new HomeViewModel with the previous account's
+        // snapshot until a later fetch overwrote it.
         var initialHomeCache = runBlocking {
             InitialHomeCache(
                 feedItems = localListCache.read<FeedItem>(LocalListCache.KEY_FEED) ?: emptyList(),
@@ -282,23 +249,19 @@ class MainActivity : ComponentActivity() {
                 profile = localListCache.readObject<UserProfileDto>(LocalListCache.KEY_PROFILE),
             )
         }
-        // Just the one photo Home's featured card shows first (page 0 — see buildHomeCarousel/
-        // pageIndexFor in HomeScreen.kt: the first feed item's newest photo) — asking Coil for it
-        // this early, before Compose has even started, gives it a real head start on what would
-        // otherwise be the very first AsyncImage request of the whole session. Sized to the real
-        // screen width (not left at Coil's full-original-resolution default) — see
-        // FirstPhotoPreloader's own doc comment for why an unsized preload of one of this app's
-        // multi-MB test images was actually part of the problem, not just "not enough of a fix."
+        // Preloads only the photo Home's featured card shows first (page 0: the first feed item's
+        // newest photo, see buildHomeCarousel/pageIndexFor), asking Coil before Compose starts for a
+        // head start on the session's first image request. Sized to the screen width, not full
+        // resolution: an unsized preload of this app's multi-MB test images was part of the problem
+        // (see FirstPhotoPreloader).
         FirstPhotoPreloader.preload(
             applicationContext,
             initialHomeCache.feedItems.firstOrNull()?.photos?.lastOrNull()?.photoUrl,
             targetWidthPx = resources.displayMetrics.widthPixels,
         )
-        // Same head start, for whichever theme's own background image is about to render behind
-        // the very first frame (see EmberAppTheme/EmberBackground.ImageBacked) — not every theme
-        // has one (several are plain gradients, nothing to preload for those), and never
-        // hardcoded to a specific theme: this reads whatever's actually persisted for this
-        // account, the same synchronous last-known-value read ThemeViewModel itself seeds from.
+        // Same head start for the current theme's background image, if it has one (several themes
+        // are plain gradients). Reads whatever is persisted, the same synchronous last-known value
+        // ThemeViewModel seeds from; never hardcoded to a theme.
         val lastTheme = themePreferenceStore.lastEffectiveThemeSync()
         val lastThemeBackground = emberThemeDefinition(lastTheme).colors.background
         if (lastThemeBackground is EmberBackground.ImageBacked) {
@@ -315,31 +278,22 @@ class MainActivity : ComponentActivity() {
                     initializer { ThemeViewModel(themePreferenceStore, subscriptionRepository) }
                 },
             )
-            // Non-null only while ThemeScreen is being browsed with an unapplied pick staged —
-            // lets the whole app (this screen included) live-preview a theme before it's
-            // actually chosen, without touching the persisted selectedTheme until Apply is
-            // tapped. ThemeScreen clears this back to null itself, both on Apply and whenever
-            // it leaves composition (back button, navigating away) so an unapplied preview never
-            // lingers past the screen that was browsing it.
+            // Non-null only while ThemeScreen browses with an unapplied pick staged, so the whole app
+            // can live-preview a theme without touching the persisted selection until Apply.
+            // ThemeScreen resets it on Apply and whenever it leaves composition, so a preview never
+            // outlives the screen.
             var previewThemeKey by remember { mutableStateOf<ThemeKey?>(null) }
 
-            // Hoisted above EmberAppTheme so picking a theme on ThemeScreen re-themes the
-            // whole app immediately, not just that screen.
+            // Hoisted above EmberAppTheme so picking a theme re-themes the whole app immediately,
+            // not just that screen.
             EmberAppTheme(themeKey = previewThemeKey ?: themeViewModel.selectedTheme) {
-                // Bumped by onSignOut (below), purely to force a *fresh* LoginViewModel afterwards.
-                //
-                // Sign-out calls viewModelStore.clear(), which cancels every ViewModel's own
-                // viewModelScope — including this one's, even though the login screen it drives is
-                // exactly where sign-out lands the user. A cancelled scope doesn't throw: every
-                // `viewModelScope.launch { }` in LoginViewModel simply never runs its body. So the
-                // login screen came back looking completely normal, buttons still animating on
-                // press, while nothing they triggered did anything at all — no network call, no
-                // navigation, no error. Reachable in one tap from the expired-verification screen
-                // ("Try again later"), and only a full app restart cleared it.
-                //
-                // Keying on this counter means the instance retrieved after a sign-out is a
-                // genuinely new one with a live scope, rather than the cleared instance the
-                // composition was still holding a reference to.
+                // Bumped by onSignOut to force a fresh LoginViewModel. Sign-out calls
+                // viewModelStore.clear(), which cancels every ViewModel's scope, including the login
+                // one's, even though sign-out lands on the login screen. A cancelled scope doesn't
+                // throw: viewModelScope.launch bodies just never run, so the screen looked normal
+                // while its buttons did nothing (reachable in one tap from "Try again later" on the
+                // expired-verification screen, and only a restart fixed it). Keying on this counter
+                // retrieves a new instance with a live scope.
                 var loginSessionId by remember { mutableIntStateOf(0) }
                 val loginViewModel: LoginViewModel = viewModel(
                     key = "login-$loginSessionId",
@@ -354,41 +308,34 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
-                // Seeded from the synchronous reads in onCreate, so there's no "we don't know yet"
-                // state to render a placeholder for — a returning, fully-verified user gets Home on
-                // frame one, a signed-out user gets Login on frame one, and a signed-in user who was
-                // last seen still needing to verify gets straight to that screen on frame one too
-                // (see pendingVerification's own doc comment) rather than a flash of the app shell
-                // first. resumeSession's own LaunchedEffect below still re-confirms all of this
-                // against a live network check — this is only ever the best guess before that.
+                // Seeded from the synchronous reads in onCreate, so there's no "unknown yet"
+                // placeholder: a verified returning user gets Home on frame one, a signed-out user
+                // Login, and a signed-in user who still needs to verify gets that screen (see
+                // pendingVerification). resumeSession's LaunchedEffect re-confirms all of this
+                // against the network; this is only the best guess before then.
                 var authenticated by remember { mutableStateOf(hasSavedSession && pendingVerification == null) }
                 var nestedScreen by remember { mutableStateOf<NestedScreen?>(null) }
                 var selectedProfileSubject by remember { mutableStateOf<ProfileSubject?>(null) }
-                // Where closing the friend profile should land, since `nestedScreen` holds one
-                // screen rather than a back stack: a profile opened from another nested screen
-                // (Activity, Find People) has to return *there*, not fall through to the pager
-                // and silently discard the screen it was opened from — leaving Find People, for
-                // one, meant losing the search results you'd just typed. Null means "opened from
-                // a pager tab", the plain case. Every site that opens a profile sets this
-                // explicitly, so a value can never linger from a previous, unrelated visit.
+                // Where closing the friend profile lands. nestedScreen holds one screen, not a back
+                // stack, so a profile opened from another nested screen (Activity, Find People) must
+                // return there instead of falling through to the pager (which lost your Find People
+                // search results). Null means opened from a pager tab. Every site that opens a
+                // profile sets this explicitly, so a value never lingers from an earlier visit.
                 var friendProfileReturnTo by remember { mutableStateOf<NestedScreen?>(null) }
                 val appContext = LocalContext.current
 
-                // One shared instance — read reactively for the Settings badge below, written
-                // once per session by the Gold-status LaunchedEffect further down, and reused by
-                // onSignOut's own cleanup, rather than each site constructing its own.
+                // One shared instance: read for the Settings badge, written once per session by the
+                // Gold-status LaunchedEffect, and reused by onSignOut's cleanup.
                 val widgetPreferenceStore = remember { WidgetPreferenceStore(applicationContext) }
-                // Mirrors what gets written into widgetPreferenceStore's own cached Gold status
-                // (see that LaunchedEffect's doc comment) — kept as a plain Compose state too so
-                // Settings can show a real "Gold"/"Free" badge without re-reading DataStore itself.
+                // Mirrors the Gold status written into widgetPreferenceStore's cache (see that
+                // LaunchedEffect), as Compose state so Settings can show a Gold/Free badge without
+                // re-reading DataStore.
                 var isGoldMember by remember { mutableStateOf(false) }
                 val widgetFeaturedFriendIds by widgetPreferenceStore.featuredFriendIds.collectAsState(initial = emptySet())
 
-                // Bars themselves are fully transparent (set once, in onCreate) — the only thing
-                // that needs updating per-recomposition is which set of icons (light content for
-                // a dark background, dark content for a light one) reads correctly on top of
-                // whatever's now showing through: the active theme's colors once signed in, or
-                // the fixed Ember look AuthPalette uses pre-login.
+                // The bars are transparent (set in onCreate); per recomposition only the icon tint
+                // changes: light icons on a dark background, dark on light, using the active theme
+                // once signed in or AuthPalette's fixed look before login.
                 val barsAreLight = if (authenticated) EmberTheme.colors.isLight else AuthPalette.colors.isLight
                 SideEffect {
                     val insetsController = WindowCompat.getInsetsController(window, window.decorView)
@@ -396,151 +343,120 @@ class MainActivity : ComponentActivity() {
                     insetsController.isAppearanceLightNavigationBars = barsAreLight
                 }
 
-                // Camera is now a page you can swipe to rather than a screen only opened
-                // deliberately, so the multi-hundred-millisecond ProcessCameraProvider fetch
-                // (previously eaten silently the first time someone tapped the camera button)
-                // is far more likely to show up as a visible black flash mid-swipe. Resolving it
-                // once, this early, means it's very likely already warm in memory (CameraX keeps
-                // it as a process-wide singleton) by the time the Camera page is actually
-                // reached — this doesn't touch the separate bindToLifecycle cost in CameraScreen
-                // itself, so it won't eliminate the flash entirely, only shorten it.
+                // Camera is a swipeable page, so the slow ProcessCameraProvider fetch (once absorbed
+                // by the camera button tap) is likely to show as a black flash mid-swipe. Resolving
+                // it this early usually has it warm (CameraX keeps it as a singleton) by the time
+                // Camera is reached. It doesn't remove the separate bindToLifecycle cost in
+                // CameraScreen, so the flash is shortened, not eliminated.
                 LaunchedEffect(Unit) { ProcessCameraProvider.getInstance(appContext) }
                 val coroutineScope = rememberCoroutineScope()
 
-                // Shared by the manual "Sign out" button in Settings and by the automatic
-                // handler below for an expired/invalid token (a 401 on an authenticated
-                // request) — both need to land the user back on a clean login screen.
+                // Used by Settings' Sign out and by the handler below for an expired or invalid token
+                // (401); both must land on a clean login screen.
                 val onSignOut = {
-                    // Detach this device from the account's push list *before* the token that
-                    // authenticates that call is cleared — see AuthRepository.unregisterDeviceToken
-                    // for why leaving it attached kept delivering the previous account's photo
-                    // notifications (friend names included) to a signed-out phone. Sequential in
-                    // one coroutine for exactly that ordering; every other cleanup below is
-                    // independent and stays parallel.
+                    // Detach this device from the account's push list before the token that
+                    // authenticates the call is cleared (see AuthRepository.unregisterDeviceToken):
+                    // leaving it attached kept delivering the old account's photo notifications,
+                    // friend names included, to a signed-out phone. Sequential in one coroutine for
+                    // that ordering; the other cleanup below is independent and parallel.
                     coroutineScope.launch {
                         val fcmToken = runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()
                         if (fcmToken != null) authRepository.unregisterDeviceToken(fcmToken)
                         networkModule.tokenStore.clear()
-                        // Ends the actual session. Must come after the unregister call above,
-                        // which needs a still-valid Firebase identity to authenticate itself.
+                        // Ends the session. Must follow the unregister call, which needs a valid
+                        // Firebase identity.
                         FirebaseAuth.getInstance().signOut()
                     }
-                    // LocalListCache isn't scoped per-account — without this, a different user
-                    // signing in on the same device would briefly see this account's cached
-                    // feed/friends/activity/memories before the fresh fetch overwrites them.
+                    // LocalListCache isn't per-account; without this a different user signing in would
+                    // briefly see this account's cached feed, friends, activity and memories.
                     coroutineScope.launch { localListCache.clearAll() }
-                    // Reset alongside LocalListCache itself (see this var's own doc comment at
-                    // declaration) — otherwise the next HomeViewModel constructed after signing
-                    // back in still seeds from this account's already-read-into-memory snapshot,
-                    // which clearAll() (an on-disk clear) has no effect on.
+                    // Reset with LocalListCache (see where it's declared): otherwise the next
+                    // HomeViewModel seeds from this account's in-memory snapshot, which the on-disk
+                    // clearAll() doesn't touch.
                     initialHomeCache = InitialHomeCache()
-                    // These repositories are process-wide singletons (see EmberApplication) that
-                    // outlive any one signed-in account, but their TTL caches are keyed without
-                    // any account identity — without clearing them here, signing into a different
-                    // account within that ~30s window could serve the *previous* account's feed/
-                    // friends/activity straight out of cache on what looks like a normal fetch,
-                    // not fixable by anything short of a force-refresh (or, as reported, waiting
-                    // out the TTL) otherwise.
+                    // These process-wide singletons (see EmberApplication) outlive any one account,
+                    // and their TTL caches are keyed without account identity. Without clearing,
+                    // signing into another account within ~30s could serve the previous account's
+                    // feed, friends or activity from cache on what looks like a normal fetch.
                     photoRepository.clearCache()
                     friendRepository.clearCache()
                     activityRepository.clearCache()
                     subscriptionRepository.clearCache()
-                    // Persisted to disk (see SubscriptionRepository.lastKnownIsActive), so it
-                    // needs its own explicit clear here too — otherwise a different account
-                    // signing in offline on this device would inherit the previous account's
-                    // last-confirmed Gold status instead of defaulting to false like any other
-                    // brand-new session.
+                    // Persisted to disk (SubscriptionRepository.lastKnownIsActive), so it needs its own
+                    // clear: otherwise a different account signing in offline would inherit the
+                    // previous account's last-confirmed Gold status.
                     coroutineScope.launch { subscriptionRepository.clearLastKnownStatus() }
-                    // Theme has no backend representation — it's a purely local, device-scoped
-                    // preference (see ThemePreferenceStore.clear's own doc comment) — without
-                    // this, a different account signing in on this device would inherit whatever
-                    // theme (Gold-gated ones included) the previous account had chosen.
+                    // Theme is a local, device-scoped preference with no backend copy (see
+                    // ThemePreferenceStore.clear); without this, another account would inherit the
+                    // previous theme, Gold-gated ones included.
                     coroutineScope.launch { themePreferenceStore.clear() }
-                    // Disk-level clear above has no effect on this same-instance-for-the-whole-
-                    // session ViewModel's own already-resolved in-memory state — see
-                    // ThemeViewModel.reset's own doc comment for why that's the actual reason a
-                    // Gold-gated theme kept visibly applying after signing out.
+                    // The disk clear doesn't touch this ViewModel's in-memory state (see
+                    // ThemeViewModel.reset), which is why a Gold-gated theme kept applying after
+                    // sign-out.
                     themeViewModel.reset()
-                    // Same reasoning as the theme cleanup right above, plus one more step a
-                    // theme choice never needed: the launcher icon is a real OS-level setting
-                    // (see AppIconSwitcher), not just in-memory app state, so it would otherwise
-                    // keep showing whatever a Gold subscriber last chose indefinitely on this
-                    // device even after signing out of their account.
+                    // Same as the theme, plus: the launcher icon is a real OS-level setting (see
+                    // AppIconSwitcher), so it would keep showing a Gold subscriber's choice after
+                    // sign-out.
                     coroutineScope.launch {
                         appIconPreferenceStore.clear()
                         AppIconSwitcher.apply(applicationContext, AppIconKey.DEFAULT)
                     }
                     coroutineScope.launch { notificationPreferenceStore.clear() }
-                    // The widget reads its cached photo (and, for a Gold subscriber, their
-                    // featured-friend choice + cached Gold status) independent of sign-in state —
-                    // without this, a friend's private photo (and their name), or a previous
-                    // account's widget customization, keeps applying indefinitely after "signing
-                    // out."
+                    // The widget reads its cached photo (and for Gold, its featured-friend choice and
+                    // cached Gold status) regardless of sign-in state; without this a friend's private
+                    // photo and name, or the old account's customization, keeps applying after
+                    // sign-out.
                     coroutineScope.launch {
                         WidgetPhotoStore(applicationContext).clear()
                         widgetPreferenceStore.clear()
                         EmberWidget().updateAll(applicationContext)
                     }
-                    // Same reasoning as the widget's cached photo right above, for the much larger
-                    // store: Coil keeps every photo this account viewed — friends' photos, their
-                    // profile pictures — in an on-disk cache under the app's own directory, and
-                    // that survived sign-out untouched. Clearing the widget's single cached photo
-                    // as private data while leaving the full browsing history of decoded photos on
-                    // disk was inconsistent; both belong to the account that just signed out.
-                    // Only costs a re-download of whatever is looked at again after signing in.
+                    // Coil keeps every photo this account viewed (friends' photos, profile pictures)
+                    // in an on-disk cache that survived sign-out. Clearing the widget's one cached
+                    // photo while leaving that history was inconsistent. Costs only a re-download of
+                    // whatever is viewed again.
                     SingletonImageLoader.get(applicationContext).let { loader ->
                         loader.memoryCache?.clear()
                         coroutineScope.launch(Dispatchers.IO) { loader.diskCache?.clear() }
                     }
-                    // All per-account ViewModels (home feed, friends list, login form, etc.)
-                    // live in the Activity's ViewModelStore and are normally retrieved by
-                    // class/key regardless of how many times `authenticated` flips — without
-                    // clearing here, signing into a different account would keep showing the
-                    // previous account's cached feed, friends, and stale form fields.
+                    // Per-account ViewModels (feed, friends, login form...) live in the Activity's
+                    // ViewModelStore and are retrieved by class/key however often `authenticated`
+                    // flips; without clearing, a new account would see the previous one's cached
+                    // data and stale form fields.
                     viewModelStore.clear()
-                    // Must follow that clear(), not precede it: it's what makes the login screen
-                    // pick up a LoginViewModel whose scope is still alive, rather than the one
-                    // clear() just cancelled. See loginSessionId's own doc comment above.
+                    // Must follow clear(), so the login screen gets a LoginViewModel with a live
+                    // scope (see loginSessionId).
                     loginSessionId++
                     authenticated = false
                     nestedScreen = null
                     selectedProfileSubject = null
-                    // pendingVerification is onCreate's own one-time cold-start snapshot — read
-                    // once, before the first frame, and still captured by the loginViewModel
-                    // factory below for exactly that one first construction. Left uncleared here,
-                    // every LoginViewModel built after *this* point (including the very next one,
-                    // built right after this sign-out) kept being re-primed straight back onto the
-                    // same NEEDS_EMAIL_VERIFICATION step with the same already-expired deadline —
-                    // which is exactly what made "Try again later" look broken: tapping it signed
-                    // out, but the freshly (re)created screen immediately recomputed as expired
-                    // again, indistinguishable from having done nothing at all. Nulling it out here
-                    // means any account reached from here on — a fresh sign-up, a different sign-in,
-                    // or just backing out to Welcome — starts from a genuinely clean slate instead.
+                    // pendingVerification is onCreate's one-time cold-start snapshot, still captured by
+                    // the loginViewModel factory. Left set, every LoginViewModel built after this
+                    // sign-out was re-primed onto NEEDS_EMAIL_VERIFICATION with the same expired
+                    // deadline, which made "Try again later" look broken: it signed out, then the new
+                    // screen immediately showed expired again. Nulling it gives any account reached
+                    // from here (new sign-up, different sign-in, back to Welcome) a clean start.
                     pendingVerification = null
                 }
 
-                // The backend issues short-lived JWTs with no refresh flow yet, so a session
-                // will eventually 401 on its own — without this, the app would sit on a
-                // permanently broken "couldn't load" error instead of returning to login.
+                // A 401 means the session expired or is invalid; return to login instead of sitting on
+                // a permanent "couldn't load" error.
                 LaunchedEffect(Unit) {
                     networkModule.sessionExpired.collect { onSignOut() }
                 }
 
-                // The third place email verification has to be enforced, after sign-up
-                // (submitUsername) and sign-in (AuthRepository.checkExistingProfile): a session
-                // resumed straight from Firebase's own cached state, which renders the app shell
-                // on frame one (see hasSavedSession in onCreate) without either of those two ever
-                // running. Without this, killing the app and reopening it during the window
-                // between the verification deadline passing and EmailVerificationExpiryService
-                // actually deleting the row put an unverified account right back inside the app.
+                // The third place email verification is enforced, after sign-up (submitUsername) and
+                // sign-in (AuthRepository.checkExistingProfile): a session resumed from Firebase's
+                // cached state renders the app shell on frame one without either of those running.
+                // Without this, reopening the app between the verification deadline passing and
+                // EmailVerificationExpiryService deleting the row put an unverified account back in.
                 //
-                // Deliberately a single authoritative check per launch — resumeSession reloads and
-                // force-refreshes before answering — rather than the passive 403 listener this
-                // replaced. That listener acted on whatever cached token some background caller
-                // (the widget sync worker especially) happened to send, so it kept throwing people
-                // who had genuinely already verified back onto the verification screen, restarting
-                // the countdown each time. A failure here is left alone entirely: it usually just
-                // means being offline, which must never sign anyone out.
+                // One authoritative check per launch (resumeSession reloads and force-refreshes
+                // before answering), replacing a passive 403 listener that acted on whatever cached
+                // token a background caller (especially the widget sync worker) sent, and kept
+                // throwing already-verified people back to verification and restarting the
+                // countdown. A failure is ignored: it usually means offline, which must never sign
+                // anyone out.
                 LaunchedEffect(Unit) {
                     if (!hasSavedSession) return@LaunchedEffect
                     authRepository.resumeSession().onSuccess { outcome ->
@@ -550,42 +466,32 @@ class MainActivity : ComponentActivity() {
                                 authenticated = false
                             }
                             is SignInOutcome.SignedIn -> {
-                                // Frame one guessed "still pending" from TokenStore's local echo
-                                // (see pendingVerification in onCreate) and this authoritative
-                                // check just proved that guess wrong — verification actually
-                                // completed somewhere this device didn't see happen itself (another
-                                // device, or the link opened outside this app). Without this branch
-                                // a genuinely verified account would be stuck looking at the
-                                // verification screen this same check just confirmed it no longer
-                                // belongs on.
+                                // Frame one guessed "still pending" from TokenStore's local echo (see
+                                // pendingVerification in onCreate) and this check proved it wrong:
+                                // verification finished somewhere this device didn't see (another
+                                // device, or the link opened outside the app). Without this, a
+                                // verified account would be stuck on the verification screen.
                                 if (!authenticated) authenticated = true
                             }
                             is SignInOutcome.NeedsProfile -> {
-                                // Only acted on while this device is mid-verification-flow, not
-                                // whenever this outcome could theoretically occur elsewhere — see
-                                // the guard's own reasoning: hasSavedSession is true (checked
-                                // above) and authenticated is false at this exact point only when
-                                // onCreate's synchronous check believed this account still needed
-                                // to verify. Reaching here regardless means EmailVerificationExpiry
-                                // Service has since deleted the row entirely (the onCreate check
-                                // above only catches a deadline that had *already* passed before
-                                // this launch; this catches the same account tipping over that
-                                // same deadline, or getting swept, in the seconds since). Nothing
-                                // left to resume — a clean sign-out returns to Welcome instead of
-                                // leaving the verification screen's own dead end on screen.
+                                // Acted on only mid-verification-flow: hasSavedSession is true and
+                                // authenticated is false here only when onCreate believed the account
+                                // still needed to verify. NeedsProfile then means
+                                // EmailVerificationExpiryService has since deleted the row (onCreate
+                                // catches only a deadline already past before launch; this catches
+                                // one that tipped over, or was swept, in the seconds since). Nothing
+                                // is left to resume, so sign out to Welcome instead of leaving the
+                                // verification dead end on screen.
                                 if (!authenticated) onSignOut()
                             }
                         }
                     }
                 }
 
-                // Re-fires on every genuine authenticated-state transition — a fresh login, or an
-                // already-valid session found at cold start (see the LaunchedEffect(Unit) above)
-                // are both moments a token and a signed-in user first coexist. A token obtained
-                // *before* this fires (e.g. EmberFirebaseMessagingService.onNewToken landing
-                // while signed out) is skipped there specifically so this is never missed —
-                // fetching the current token here rather than relying on that callback having
-                // already run covers both orderings with one path.
+                // Re-fires on every authenticated transition: a fresh login, or an already-valid
+                // session at cold start. A token fetched before this (e.g. onNewToken landing while
+                // signed out) is skipped there, so fetching the current token here covers both
+                // orderings with one path.
                 LaunchedEffect(authenticated) {
                     if (authenticated) {
                         val token = runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()
@@ -593,29 +499,24 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Refreshes the widget's locally-cached Gold status once per authenticated
-                // session — the same one-shot-on-open shape CameraViewModel/ThemeViewModel
-                // already use for their own Gold checks, not a new pattern. WidgetPhotoSync reads
-                // this cached value instead of checking live on every sync (including the 6h
-                // background worker and incoming pushes), so a lapsed subscription self-heals the
-                // next time the app is opened rather than needing a network call on every widget
-                // update. Shares SubscriptionRepository's own TTL cache with those other checks,
-                // so this rarely costs a genuinely new network round trip on top of them.
+                // Refreshes the widget's cached Gold status once per authenticated session, the same
+                // one-shot-on-open pattern CameraViewModel and ThemeViewModel use for their Gold
+                // checks. WidgetPhotoSync reads this cache instead of checking live on every sync
+                // (including the 6h worker and pushes), so a lapsed subscription self-heals on the
+                // next app open. Shares SubscriptionRepository's TTL cache with those checks, so it
+                // rarely adds a network round trip.
                 LaunchedEffect(authenticated) {
                     if (authenticated) {
-                        // isGoldMemberOrLastKnown(), not a bare getStatus() read — opening the app
-                        // offline must never overwrite this cache with false for a genuine
-                        // subscriber just because the live check couldn't reach the server (see
-                        // SubscriptionRepository's own doc comment on that function).
+                        // isGoldMemberOrLastKnown(), not a bare getStatus(): opening the app offline
+                        // must never overwrite this cache with false for a real subscriber (see
+                        // SubscriptionRepository).
                         isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
 
-                        // Our backend only re-checks Google when something actually calls
-                        // verifyPurchase — it doesn't notice a renewal on its own, so its stored
-                        // expiresAt can lapse even though Play already renewed the subscription.
-                        // The same reconciliation EmberGoldViewModel.refresh() already does for a
-                        // reinstall/new device runs here too, so a subscriber who never reopens
-                        // the Gold screen again after buying doesn't see Gold quietly disappear
-                        // app-wide on their first renewal.
+                        // The backend re-checks Google only when verifyPurchase is called; it doesn't
+                        // notice a renewal on its own, so its stored expiresAt can lapse though Play
+                        // renewed. This is the same reconciliation EmberGoldViewModel.refresh() does
+                        // for a reinstall or new device, so a subscriber who never reopens the Gold
+                        // screen doesn't see Gold vanish app-wide at their first renewal.
                         if (!isGoldMember) {
                             billingManager.findActivePurchase()?.let { existing ->
                                 subscriptionRepository.verifyPurchase(existing.productId, existing.purchaseToken)
@@ -631,9 +532,8 @@ class MainActivity : ComponentActivity() {
                         viewModel = loginViewModel,
                         onAuthenticated = {
                             authenticated = true
-                            // Re-resolves this newly signed-in account's own saved theme + real
-                            // Gold status — see ThemeViewModel.reload's own doc comment for why
-                            // this doesn't just happen on its own otherwise.
+                            // Re-resolves this account's saved theme and real Gold status (see
+                            // ThemeViewModel.reload).
                             themeViewModel.reload()
                         },
                         onSignOut = onSignOut,
@@ -641,86 +541,69 @@ class MainActivity : ComponentActivity() {
                 } else {
                     var showRecipientPicker by remember { mutableStateOf(false) }
 
-                    // Both of the app's core runtime permissions, asked once together right after
-                    // sign-in rather than each at its own first use. Camera used to be requested
-                    // only on arriving at the Camera tab, which meant the app's central action
-                    // was gated behind a prompt at the exact moment someone wanted to use it;
-                    // notifications are needed before the first photo arrives, not after. Asked
-                    // after sign-in (not on the login screen) so nobody is prompted before
-                    // they've committed to the app at all.
+                    // The app's two core runtime permissions, asked together right after sign-in
+                    // instead of at first use. Camera used to be asked on arriving at the Camera
+                    // tab, gating the central action at the moment someone wanted it, and
+                    // notifications are needed before the first photo arrives. After sign-in, not
+                    // on the login screen, so nobody is prompted before committing to the app.
                     //
-                    // CameraScreen keeps its own check and launcher regardless — this is a
-                    // convenience, not a guarantee, and someone who declines here (or revokes
-                    // later in system settings) still needs a way to grant it in context.
+                    // CameraScreen keeps its own check and launcher: this is a convenience, and
+                    // someone who declines (or revokes later) still needs a way to grant it in
+                    // context.
                     //
-                    // WRITE_EXTERNAL_STORAGE is deliberately not requested here: it only exists
-                    // for saving a photo to the gallery on Android 9 and below (see the manifest's
-                    // maxSdkVersion), so asking every user up front for something most never do,
-                    // on an OS version most aren't running, would cost a denial for nothing. It
-                    // stays where it is, asked at the moment someone actually taps save.
+                    // WRITE_EXTERNAL_STORAGE is not requested here: it exists only for saving to the
+                    // gallery on Android 9 and below (see the manifest's maxSdkVersion), so asking
+                    // everyone up front would cost a denial for nothing. It's asked when someone
+                    // taps save.
                     val startupPermissionLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.RequestMultiplePermissions(),
                     ) {}
                     LaunchedEffect(Unit) {
                         val wanted = buildList {
                             add(Manifest.permission.CAMERA)
-                            // POST_NOTIFICATIONS simply does not exist before Android 13 —
-                            // requesting it there throws rather than being ignored.
+                            // POST_NOTIFICATIONS doesn't exist before Android 13; requesting it
+                            // there throws.
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                 add(Manifest.permission.POST_NOTIFICATIONS)
                             }
                         }.filter {
-                            // Only ask for what isn't already granted, so a returning user isn't
-                            // re-prompted on every launch.
+                            // Only what isn't granted yet, so a returning user isn't re-prompted.
                             ContextCompat.checkSelfPermission(appContext, it) != PackageManager.PERMISSION_GRANTED
                         }
                         if (wanted.isNotEmpty()) startupPermissionLauncher.launch(wanted.toTypedArray())
                     }
 
-                    // Tapping the featured photo on Home throws everything else out of focus,
-                    // the shared nav dock included — hoisted all the way up here (rather than
-                    // living inside HomeScreen) since the dock is now a single instance shared
-                    // across every page, not something each screen renders for itself.
+                    // Tapping Home's featured photo throws everything else out of focus, the shared nav
+                    // dock included. Hoisted here because the dock is one instance shared by every
+                    // page, not rendered per screen.
                     var isHomePhotoFocused by remember { mutableStateOf(false) }
 
-                    // Hoisted up from HomeScreen (rather than let it own its own rememberScrollState)
-                    // so the nav dock — which lives outside HomeScreen entirely, alongside every
-                    // other page — can read Home's live scroll position for the icon-morph below,
-                    // the same way it used to read the outer pager's swipe position.
+                    // Hoisted from HomeScreen so the nav dock, which lives outside it, can read Home's
+                    // live scroll position for the icon morph (as it used to read the outer pager's
+                    // swipe position).
                     val homeScrollState = rememberScrollState()
-                    // Hoisted for a different reason than Home's above: FriendsScreen itself is
-                    // fully disposed while a friend's profile is open (the nestedScreen `when`
-                    // block below only ever composes one branch at a time), so a scroll position
-                    // FriendsScreen owned itself would silently reset to the top on every return
-                    // from a profile — remembering it here, outside that `when`, is what lets it
-                    // survive that round trip instead.
+                    // Hoisted for another reason: FriendsScreen is fully disposed while a friend's
+                    // profile is open (the nestedScreen `when` composes one branch at a time), so a
+                    // scroll position it owned would reset to the top on every return.
                     val friendsListState = rememberLazyListState()
-                    // Same reasoning as friendsListState just above, for a much more visible bug:
-                    // this used to be remembered inside the `else` branch below, alongside the
-                    // HorizontalPager itself — which meant every return from *any* nested screen
-                    // (not just a friend's profile) reset it to FALLBACK_NAV_DOCK_HEIGHT_DP for
-                    // one frame before BottomNavDock's own onSizeChanged corrected it back to the
-                    // real measured value. Every screen reserves bottom space equal to this value
-                    // (see LocalNavDockHeight), so that one-frame guess-then-correct made the
-                    // whole page's content visibly shift as the reserved space changed size —
-                    // reported as "the complete page does like a vibrate... moves a little from
-                    // bottom to top." Hoisting it here means it's set once, correctly, and never
-                    // guessed again for the rest of the session.
+                    // Same reason as friendsListState, for a more visible bug: remembered inside the
+                    // `else` branch with the HorizontalPager, every return from any nested screen
+                    // reset it to FALLBACK_NAV_DOCK_HEIGHT_DP for one frame before BottomNavDock's
+                    // onSizeChanged corrected it. Every screen reserves bottom space equal to this
+                    // (see LocalNavDockHeight), so the guess-then-correct made the whole page visibly
+                    // shift ("vibrate"). Hoisting sets it once and never guesses again this session.
                     var navDockHeight by remember { mutableStateOf(FALLBACK_NAV_DOCK_HEIGHT_DP) }
 
-                    // Hoisted rather than let each tab screen create its own: real-time backdrop
-                    // blur needs to set up a GPU render-effect pipeline (shader compile, capture
-                    // buffers) the first time it runs. Each tab creating its own HazeState meant
-                    // that pipeline was torn down and rebuilt from scratch on every single tab
-                    // switch — a real, consistent stutter on every nav tap, not specific to any
-                    // one screen. One shared instance keeps it alive across navigation.
+                    // Hoisted instead of one per tab: real-time backdrop blur sets up a GPU
+                    // render-effect pipeline (shader compile, capture buffers) on first use, and a
+                    // HazeState per tab rebuilt it on every tab switch, a consistent stutter on every
+                    // nav tap. One shared instance keeps it alive.
                     val hazeState = rememberHazeState()
 
-                    // Hoisted (rather than declared inside their respective page branches below)
-                    // so they survive navigating into nested screens and back, and so they can
-                    // be refreshed from elsewhere: FriendsViewModel after a friend is removed,
-                    // HomeViewModel after a photo is sent (streaks can change on send, not just
-                    // receive).
+                    // Hoisted (not declared inside their page branches) so they survive nested
+                    // screens and can be refreshed from elsewhere: FriendsViewModel after a friend is
+                    // removed, HomeViewModel after a photo is sent (streaks can change on send, not
+                    // just receive).
                     val friendsViewModel: FriendsViewModel = viewModel(
                         factory = viewModelFactory {
                             initializer {
@@ -752,52 +635,45 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                     )
-                    // A NEW_PHOTO push updates the widget directly (see WidgetPhotoSync.syncFromPush
-                    // in EmberFirebaseMessagingService, which needs no live app state at all) — this
-                    // is the other half, letting a *live* HomeViewModel also pick up the change.
-                    // loadFeed() here only ever updates syncedFeedItems (see HomeViewModel), never
-                    // the visible browsing session directly, so a push landing while someone's
-                    // mid-swipe through Home can't interrupt them — it just surfaces the "New
-                    // memories available" indicator instead.
+                    // A NEW_PHOTO push updates the widget directly (WidgetPhotoSync.syncFromPush in
+                    // EmberFirebaseMessagingService, no live app state needed); this is the other
+                    // half, letting a live HomeViewModel pick up the change too. loadFeed() only
+                    // updates syncedFeedItems (see HomeViewModel), never the visible session, so a
+                    // push landing mid-swipe can't interrupt; it only shows the "New memories
+                    // available" indicator.
                     LaunchedEffect(Unit) {
                         emberApplication.newPhotoPushEvents.collect { homeViewModel.loadFeed() }
                     }
-                    // FriendsViewModel otherwise only ever refetches at app start or an explicit
-                    // pull-to-refresh — nothing was re-syncing it when a friend's photo actually
-                    // arrived, so "Last sent"/streak on the Friends tab could sit stale for as
-                    // long as someone simply never happened to pull-to-refresh that screen,
-                    // even with the app fully online the whole time. A received photo is exactly
-                    // the event that changes those two fields, so it gets the same treatment as
-                    // Home's own feed above.
+                    // FriendsViewModel otherwise refetches only at app start or on pull-to-refresh,
+                    // so "Last sent" and streak on the Friends tab went stale when a friend's photo
+                    // arrived. A received photo changes exactly those fields, so it gets the same
+                    // treatment as Home's feed above.
                     LaunchedEffect(Unit) {
                         emberApplication.newPhotoPushEvents.collect { friendsViewModel.refreshSilently() }
                     }
-                    // Same bridge, the other direction: a queued send (see PendingSendWorker)
-                    // finishing is *my own* new photo, so both Feed and Memories need refreshing
-                    // — unlike the push case above, which only ever needs Feed.
+                    // The other direction: a finished queued send (see PendingSendWorker) is my own
+                    // new photo, so both Feed and Memories need refreshing, unlike the push case
+                    // above, which needs only Feed.
                     LaunchedEffect(Unit) {
                         emberApplication.photoSendCompletedEvents.collect {
                             homeViewModel.loadFeed()
                             homeViewModel.loadMemories()
-                            // My own send is just as much a streak/last-activity change for
-                            // whoever I sent it to as receiving one from them is above.
+                            // My own send changes streak and last activity for the recipient just
+                            // as receiving one does.
                             friendsViewModel.refreshSilently()
                         }
                     }
-                    // Also hoisted, for the same reason: created here means its fetch starts as
-                    // soon as the app opens, in the background, rather than only starting the
-                    // moment the user first taps the Activity tab — that lazy-create pattern is
-                    // what made Activity specifically feel slower to open than Home or Friends,
-                    // whose ViewModels (and therefore their network calls) were already hoisted.
+                    // Also hoisted: created here, its fetch starts when the app opens instead of on
+                    // the first tap of Activity, which made it feel slower than Home and Friends
+                    // (whose ViewModels were already hoisted).
                     val activityViewModel: ActivityViewModel = viewModel(
                         factory = viewModelFactory {
                             initializer { ActivityViewModel(stringProvider, activityRepository, localListCache) }
                         },
                     )
-                    // Camera is a page of the main pager now, not a screen only created on
-                    // entry — hoisted alongside the other tab ViewModels so its state
-                    // (specifically capturedFile, which gates whether swiping is allowed at all
-                    // — see userScrollEnabled below) exists regardless of which page is current.
+                    // Camera is a pager page, not a screen created on entry; hoisted with the other tab
+                    // ViewModels so its state (notably capturedFile, which gates swiping, see
+                    // userScrollEnabled below) exists whichever page is current.
                     val cameraViewModel: CameraViewModel = viewModel(
                         factory = viewModelFactory {
                             initializer {
@@ -813,57 +689,44 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
-                    // Camera's own recipient list (see hasLoadedCameraFriends below) is fetched
-                    // exactly once per session and never on its own initiative afterward — without
-                    // this, a friend request accepted anywhere kept being invisible in Camera's
-                    // picker until the app was restarted, since nothing ever told this long-lived
-                    // ViewModel its own copy had gone stale.
+                    // Camera's recipient list (see hasLoadedCameraFriends) is fetched once per session
+                    // and never on its own afterward; without this, a friend request accepted
+                    // anywhere stayed invisible in Camera's picker until restart, since nothing told
+                    // this long-lived ViewModel its copy was stale.
                     LaunchedEffect(Unit) {
                         emberApplication.friendsChangedEvents.collect { cameraViewModel.loadFriends() }
                     }
                     LaunchedEffect(Unit) {
                         emberApplication.friendsChangedEvents.collect { friendsViewModel.refreshSilently() }
                     }
-                    // Flips the outbox button's animation from SENDING to its filled checkmark —
-                    // see CameraViewModel.markSendComplete's own doc comment for why this coarse,
-                    // not-photo-specific signal (shared with the Feed/Memories/Friends refresh
-                    // above) is good enough here. A separate collector, not folded into that one,
-                    // purely because cameraViewModel isn't declared yet at that earlier point in
-                    // this function.
+                    // Flips the outbox button's animation from SENDING to its checkmark (see
+                    // CameraViewModel.markSendComplete for why this coarse, not photo-specific signal
+                    // is good enough). A separate collector because cameraViewModel isn't declared
+                    // yet at the earlier one.
                     LaunchedEffect(Unit) {
                         emberApplication.photoSendCompletedEvents.collect { cameraViewModel.markSendComplete() }
                     }
 
-                    // Home, Friends, Camera, Activity and Settings are all pages of one
-                    // full-screen pager now — not separate conditionally-composed screens, so a
-                    // swipe can move between any of them, not just a tap on the nav dock. Opens on
-                    // Camera (Snapchat/Locket-style: the app's default view is "take a photo," not
-                    // a feed) — Home is one swipe away from it either direction is irrelevant here
-                    // since PAGE_HOME sits immediately adjacent to PAGE_CAMERA either way (see
-                    // PAGE_HOME's own doc comment for why that adjacency is deliberate).
+                    // Memories, Home, Camera, Friends and Settings are pages of one full-screen pager,
+                    // so a swipe moves between any of them, not just a nav-dock tap. Opens on Camera
+                    // (Snapchat/Locket-style: the default view is "take a photo", not a feed).
+                    // PAGE_HOME sits next to PAGE_CAMERA on purpose, so Home is one swipe away.
                     val pagerState = rememberPagerState(initialPage = PAGE_CAMERA) { PAGE_COUNT }
 
-                    // The recipient-picker friends fetch (limit=500 — see CameraViewModel's own
-                    // comment) only actually needs to happen once the user reaches Camera, not
-                    // at app launch regardless of whether they ever do this session. Fires once,
-                    // the first time the pager actually settles there, however it got there
-                    // (button tap or a manual swipe past Friends).
+                    // The recipient-picker friends fetch (limit=500, see CameraViewModel) only needs
+                    // to happen once the user reaches Camera, not at launch. Fires once, the first
+                    // time the pager settles there, by button tap or by swiping.
                     var hasLoadedCameraFriends by remember { mutableStateOf(false) }
                     LaunchedEffect(pagerState.settledPage) {
                         if (pagerState.settledPage == PAGE_CAMERA && !hasLoadedCameraFriends) {
                             hasLoadedCameraFriends = true
-                            // Friends' own tab has very often already fetched this same list —
-                            // reuse it instead of firing a second, mostly-redundant GET /friends
-                            // when it's known to already be complete (hasMore == false). Falls
-                            // back to CameraViewModel's own fetch whenever that isn't the case
-                            // (Friends hasn't loaded yet this session, or genuinely has more than
-                            // one page of friends).
-                            // isLoading is checked too, not just hasMore/friends — a snapshot
-                            // hydrated from FriendsViewModel's own local disk cache (see its
-                            // init) can be an incomplete first page with hasMore still sitting at
-                            // its pre-fetch default of false, until the real network fetch
-                            // actually corrects it; isLoading only goes false once that real
-                            // fetch has completed at least once.
+                            // The Friends tab has often already fetched this list; reuse it instead of a
+                            // second, mostly redundant GET /friends when it's known complete (hasMore
+                            // == false). Otherwise fall back to CameraViewModel's own fetch (Friends
+                            // not loaded yet, or more than one page of friends). isLoading is checked
+                            // too: a snapshot hydrated from FriendsViewModel's disk cache can be an
+                            // incomplete first page with hasMore still at its pre-fetch default of
+                            // false, until the real fetch completes once.
                             if (!friendsViewModel.isLoading && !friendsViewModel.hasMore && friendsViewModel.friends.isNotEmpty()) {
                                 cameraViewModel.provideFriends(friendsViewModel.friends)
                             } else {
@@ -872,43 +735,36 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Swiping away from Home shouldn't leave the rest of the app permanently
-                    // blurred behind a focus state that page no longer shows.
+                    // Swiping away from Home mustn't leave the rest of the app blurred behind a focus
+                    // state Home no longer shows.
                     LaunchedEffect(pagerState.settledPage) {
                         if (pagerState.settledPage != PAGE_HOME) isHomePhotoFocused = false
                     }
-                    // Clears the header bell's badge the moment Activity actually becomes the
-                    // shown nested screen — not on the bell tap alone, matching the exact same
-                    // "only counts once it's actually visible" timing this had back when Activity
-                    // was still a pager page keyed on settledPage instead of nestedScreen.
+                    // Clears the header bell's badge once Activity is actually the shown nested
+                    // screen, not on the bell tap alone ("only counts once visible", as when
+                    // Activity was a pager page keyed on settledPage).
                     LaunchedEffect(nestedScreen) {
                         if (nestedScreen == NestedScreen.ACTIVITY) activityViewModel.markSeen()
                     }
-                    // cameraViewModel is scoped to this Activity, not recreated per visit —
-                    // without discarding here, a capture the user swiped away from (rather than
-                    // sent or explicitly retook) would still be sitting there in review,
-                    // unreachable-looking-fresh, next time this page comes back into view. Used
-                    // to be a button tap (Camera's own close button); Camera has no such button
-                    // any more (it's a plain page of this pager, not a modal screen), so this is
-                    // now the only place that cleanup happens.
+                    // cameraViewModel is Activity-scoped, not recreated per visit; without
+                    // discarding here, a capture the user swiped away from (not sent or retaken)
+                    // would still be in review the next time Camera came into view. Camera has no
+                    // close button now (it's a plain pager page), so this is the only place that
+                    // cleanup happens.
                     LaunchedEffect(pagerState.settledPage) {
                         if (pagerState.settledPage != PAGE_CAMERA) {
                             cameraViewModel.discardCapture()
-                            // The user has now successfully swiped away from Camera at least
-                            // once — the whole thing the onboarding hint was there to teach.
-                            // Permanent, one-way, on-device (see CameraHintPreferenceStore).
+                            // The user has swiped away from Camera at least once, which is what the
+                            // onboarding hint taught. Permanent, one-way, on-device (see
+                            // CameraHintPreferenceStore).
                             cameraViewModel.dismissSwipeHint()
                         }
                     }
-                    // Home's featured card has its own inner pager for cycling through photos —
-                    // same swipe axis as this outer one, nested inside it. Compose doesn't always
-                    // hand a gesture off cleanly between two pagers on the same axis, and the
-                    // observed result is the drag ending with this pager stopped partway between
-                    // two pages (both partially visible) instead of settled on either one. Rather
-                    // than a fragile fix aimed at the gesture handoff itself, this is a general
-                    // correction: whenever a drag ends and this pager isn't sitting exactly on a
-                    // page, finish the job by animating the rest of the way to whichever one it
-                    // was already closer to.
+                    // Home's featured card has its own inner pager on the same axis, nested in this
+                    // one. Compose doesn't always hand a gesture off cleanly between same-axis
+                    // pagers, and the result was a drag ending with this pager stopped between two
+                    // pages. Instead of a fragile fix at the handoff, this is a general correction:
+                    // whenever a drag ends off a page boundary, animate to the nearest page.
                     LaunchedEffect(pagerState.isScrollInProgress) {
                         if (!pagerState.isScrollInProgress && abs(pagerState.currentPageOffsetFraction) > 0.01f) {
                             val nearestPage = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
@@ -918,29 +774,24 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Shared by the on-screen back arrow (FriendProfileScreen's own onBack) and
-                    // the system back gesture/button below — two genuinely separate code paths
-                    // that both end this screen, previously only kept in sync by hand (a fix that
-                    // only taught one of them to refresh the Friends list left the other, more
-                    // commonly used one — a swipe/back-button — still showing stale data). Doesn't
-                    // need to refresh anything itself: every action this screen can take
-                    // (pin/unpin, remove, accept, decline) already pushes its own fresh result
-                    // straight into friendsViewModel the instant it succeeds — see onPinChanged/
-                    // onRemoved/onAccepted/onRejected below — so by the time this ever runs,
-                    // friendsViewModel is already correct with no fetch of its own needed.
+                    // Shared by the on-screen back arrow (FriendProfileScreen's onBack) and the system
+                    // back gesture below: two separate paths that both end this screen, once kept in
+                    // sync by hand (a fix that taught only one to refresh Friends left the commonly
+                    // used swipe/back button stale). It needn't refresh anything: every action here
+                    // (pin/unpin, remove, accept, decline) pushes its fresh result into
+                    // friendsViewModel on success (see onPinChanged/onRemoved/onAccepted/onRejected),
+                    // so it's already correct.
                     val onCloseFriendProfile = {
                         nestedScreen = friendProfileReturnTo
                         friendProfileReturnTo = null
                         selectedProfileSubject = null
                     }
 
-                    // Swiping/pressing back should always retrace the last navigation step
-                    // instead of falling through to the system default (which closes the app):
-                    // close the recipient picker, then any nested screen, then return to Home
-                    // before actually exiting. Camera has its own, higher-priority BackHandler
-                    // (registered inside CameraScreen itself) for "back retakes instead of
-                    // leaving" while a capture is pending — this one only ever fires once
-                    // that's no longer the case.
+                    // Back retraces the last navigation step instead of falling through to the system
+                    // (which closes the app): close the recipient picker, then any nested screen,
+                    // then return to Home before exiting. Camera has its own higher-priority
+                    // BackHandler (in CameraScreen) for "back retakes" while a capture is pending;
+                    // this one fires only once that no longer applies.
                     BackHandler(
                         enabled = showRecipientPicker || nestedScreen != null || pagerState.currentPage != PAGE_HOME,
                     ) {
@@ -952,18 +803,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // A tap on the nav dock (a tab, or the camera button) is a direct jump to
-                    // that page — not the same gesture as a swipe, so it shouldn't play the
-                    // same "scroll through every page in between" animation a swipe covering
-                    // that same distance would. scrollToPage (not animateScrollToPage) snaps
-                    // straight there; only an actual drag on screen animates through the pages
-                    // it passes over.
+                    // A nav dock tap (a tab or the camera button) is a direct jump, not a swipe, so it
+                    // shouldn't animate through every page in between. scrollToPage snaps straight
+                    // there; only an actual drag animates through the pages it crosses.
                     val onNavigate: (NavDestination) -> Unit = { destination ->
                         nestedScreen = null
-                        // Tapping Home while already on Home (very likely now, since Home is
-                        // page 0) should behave like every other app's "tap the tab again" —
-                        // scroll back to the top — rather than a no-op just because the pager
-                        // page itself didn't need to change.
+                        // Tapping Home while already on Home scrolls back to the top, like "tap the
+                        // tab again" in other apps, instead of doing nothing because the page
+                        // didn't change.
                         if (destination == NavDestination.HOME) {
                             coroutineScope.launch { homeScrollState.animateScrollTo(0) }
                         }
@@ -973,10 +820,10 @@ class MainActivity : ComponentActivity() {
                         coroutineScope.launch { pagerState.scrollToPage(PAGE_CAMERA) }
                     }
 
-                    /** The profile subject behind an activity row's actor, or null if they can't
-                     * be placed. Pending requests are checked first on purpose: someone who has a
-                     * request still waiting must open as a PendingRequest so the profile offers
-                     * accept/decline, which the plain Friend case has no reason to show. */
+                    /** The profile subject behind an activity row's actor, or null if they can't be
+                     * placed. Pending requests are checked first so someone with a request still
+                     * waiting opens as a PendingRequest, offering accept/decline, which the plain
+                     * Friend case wouldn't. */
                     val resolveActorSubject: (String) -> ProfileSubject? = { actorId ->
                         friendsViewModel.pendingRequests.firstOrNull { it.requesterId == actorId }
                             ?.let { ProfileSubject.PendingRequest(it) }
@@ -984,16 +831,13 @@ class MainActivity : ComponentActivity() {
                                 ?.let { ProfileSubject.Friend(it) }
                     }
 
-                    // Handles a tap on the streak-broken notification's "Restore streak" action
-                    // (see EmberFirebaseMessagingService.showStreakBrokenNotification, the only
-                    // place that sets these extras) — the same Gold-or-restore branch
-                    // FriendsScreen's own restore pill makes, just reached from outside the
-                    // Compose tree instead of a button tap. Keyed on the intent itself (not just
-                    // `Unit`) so a second, different notification tap while this effect's scope
-                    // is still alive correctly restarts it rather than being ignored as "already
-                    // running". Nulls the pending intent back out once handled (or once
-                    // determined to be irrelevant) so recomposition can't replay the same action
-                    // twice.
+                    // Handles a tap on the streak-broken notification's "Restore streak" action (see
+                    // EmberFirebaseMessagingService.showStreakBrokenNotification, the only place that
+                    // sets these extras): the same Gold-or-restore branch as FriendsScreen's restore
+                    // pill, reached from outside the Compose tree. Keyed on the intent itself so a
+                    // second, different notification tap restarts the effect instead of being
+                    // ignored. Nulls the pending intent once handled (or found irrelevant) so
+                    // recomposition can't replay it.
                     LaunchedEffect(pendingNotificationIntent) {
                         val intent = pendingNotificationIntent ?: return@LaunchedEffect
                         if (intent.getStringExtra(EXTRA_NOTIFICATION_ACTION) == NOTIFICATION_ACTION_RESTORE_STREAK) {
@@ -1010,9 +854,8 @@ class MainActivity : ComponentActivity() {
                         pendingNotificationIntent = null
                     }
 
-                    // Wraps the whole nested-screen `when` (and the Gold overlay below it) so
-                    // Gold can render on top of whatever the `when` currently shows, rather than
-                    // being one more mutually-exclusive branch inside it.
+                    // Wraps the nested-screen `when` and the Gold overlay so Gold renders on top of
+                    // whatever the `when` shows, instead of being another mutually exclusive branch.
                     Box(modifier = Modifier.fillMaxSize()) {
                     when {
                         nestedScreen == NestedScreen.PROFILE -> {
@@ -1042,16 +885,14 @@ class MainActivity : ComponentActivity() {
                             onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                         )
 
-                        // NestedScreen.GOLD is deliberately not a branch here — see the Box/
-                        // AnimatedVisibility wrapping this whole `when`, below.
+                        // NestedScreen.GOLD isn't a branch here; see the Box/AnimatedVisibility around
+                        // this whole `when`, below.
 
-                        // Activity moved here from being pager page PAGE_ACTIVITY — reached via
-                        // the bell icon in Home's own header now (see HomeScreen's onActivityClick)
-                        // rather than a dock tab/swipe. onCameraClick and onNavigateToFriends both
-                        // need to close this nested screen *and* move the pager, the same two-step
-                        // pattern FriendProfileScreen's own onSendPhotoClick already uses — closing
-                        // alone would leave the pager sitting on whatever page it already was on,
-                        // underneath this screen, rather than actually navigating anywhere.
+                        // Activity is reached from the bell in Home's header (see HomeScreen's
+                        // onActivityClick), not a dock tab or swipe. onCameraClick and
+                        // onNavigateToFriends must close this nested screen and move the pager (the
+                        // pattern FriendProfileScreen's onSendPhotoClick uses): closing alone would
+                        // leave the pager on its current page underneath.
                         nestedScreen == NestedScreen.ACTIVITY -> ActivityScreen(
                             viewModel = activityViewModel,
                             onCameraClick = {
@@ -1062,8 +903,8 @@ class MainActivity : ComponentActivity() {
                                 nestedScreen = null
                                 onNavigate(NavDestination.FRIENDS)
                             },
-                            // Both go through the same resolver, so "is this tappable" and "what
-                            // does it open" can never disagree.
+                            // Both go through the same resolver, so "is this tappable" and "what does
+                            // it open" can't disagree.
                             canOpenActorProfile = { actorId -> resolveActorSubject(actorId) != null },
                             onOpenActorProfile = { actorId ->
                                 resolveActorSubject(actorId)?.let { subject ->
@@ -1118,9 +959,8 @@ class MainActivity : ComponentActivity() {
                             OtherSettingsScreen(
                                 onClose = { nestedScreen = null },
                                 onDeleteAccount = { userRepository.deleteAccount() },
-                                // Same local cleanup + return-to-login as a manual sign-out —
-                                // there's no account left for any of that cached state to belong
-                                // to either.
+                                // Same local cleanup and return to login as a manual sign-out; no
+                                // account is left for the cached state to belong to.
                                 onAccountDeleted = onSignOut,
                             )
                         }
@@ -1144,22 +984,15 @@ class MainActivity : ComponentActivity() {
 
                         nestedScreen == NestedScreen.FRIEND_PROFILE && selectedProfileSubject != null -> {
                             val subject = selectedProfileSubject!!
-                            // A ViewModel cached under a hand-built string key (tried userId
-                            // alone, then subject-kind + userId) will always eventually collide,
-                            // because the same person is legitimately revisited many times across
-                            // a session as the relationship itself changes underneath — stranger
-                            // to requested, requested to friend, friend to removed, removed back
-                            // to stranger. Each of those is a genuinely new visit, but
-                            // `viewModel(key = X)` only ever runs its factory on the *first*
-                            // lookup for a given key and silently hands back that same stale
-                            // instance to every later call with the same key, no matter what fresh
-                            // subject was just passed in. The actual right scope for this
-                            // ViewModel is "one visit to this screen," not "one person" or "one
-                            // person in one relationship stage" — so it gets its own private
-                            // ViewModelStore, created fresh whenever `subject` changes and cleared
-                            // via the DisposableEffect below (canceling its viewModelScope too),
-                            // the same lifetime a real back-stack entry would give it. This is the
-                            // same pattern Jetpack Navigation uses internally per back-stack entry.
+                            // A ViewModel cached under a hand-built string key (userId alone, then subject
+                            // kind + userId) eventually collides, because the same person is revisited
+                            // many times as the relationship changes (stranger, requested, friend,
+                            // removed, stranger). Each is a new visit, but viewModel(key = X) runs its
+                            // factory only on the first lookup for a key and returns that stale instance
+                            // afterward. The right scope is "one visit to this screen", so it gets its
+                            // own ViewModelStore, created whenever `subject` changes and cleared by the
+                            // DisposableEffect below (cancelling its viewModelScope too), like a
+                            // back-stack entry. Jetpack Navigation does the same per entry.
                             val profileViewModelStoreOwner = remember(subject) {
                                 object : ViewModelStoreOwner {
                                     override val viewModelStore = ViewModelStore()
@@ -1178,25 +1011,21 @@ class MainActivity : ComponentActivity() {
                                 viewModel = friendProfileViewModel,
                                 onBack = onCloseFriendProfile,
                                 onSendPhotoClick = {
-                                    // Sending from a specific friend's profile means that friend,
-                                    // and only that friend, should end up selected in Camera — not
-                                    // whatever was already selected (typically the pinned partner,
-                                    // via CameraViewModel's own default). Safe unconditionally
-                                    // because Send a photo only ever shows for
-                                    // ProfileSubject.Friend, which always has a real friendId.
+                                    // Sending from a friend's profile means that friend, and only that
+                                    // friend, ends up selected in Camera, not whatever was selected
+                                    // before (typically the pinned partner via CameraViewModel's
+                                    // default). Safe unconditionally: Send a photo shows only for
+                                    // ProfileSubject.Friend, which always has a friendId.
                                     cameraViewModel.setSelectedRecipients(setOf(subject.userId))
-                                    // onCameraClick alone only scrolls the pager to Camera — it
-                                    // doesn't close this nested screen, so without this the pager
-                                    // was scrolling correctly underneath while FriendProfileScreen
-                                    // kept covering it, making Camera invisible until back was
-                                    // pressed (which calls onCloseFriendProfile itself).
+                                    // onCameraClick only scrolls the pager; without closing this
+                                    // screen the pager scrolled underneath while FriendProfileScreen
+                                    // kept covering it, hiding Camera until back was pressed.
                                     onCloseFriendProfile()
                                     onCameraClick()
                                 },
-                                // subject.friendshipId below is the same id this screen was
-                                // opened with — stable for as long as the screen is open, so it's
-                                // exactly the key each of these needs to update the Friends tab's
-                                // own list in place, with no fetch of any kind.
+                                // subject.friendshipId is the id this screen was opened with, stable
+                                // while it's open, so it's the key each of these needs to update the
+                                // Friends tab's list in place with no fetch.
                                 onPinChanged = { updated -> friendsViewModel.applyUpdatedFriend(updated) },
                                 onRemoved = {
                                     subject.friendshipId?.let { friendsViewModel.removeFriendLocally(it) }
@@ -1216,10 +1045,9 @@ class MainActivity : ComponentActivity() {
                                     selectedProfileSubject = null
                                 },
                                 onBlocked = {
-                                    // Same local-list update as onRemoved above — blocking also
-                                    // deletes any existing friendship server-side (BlockService's
-                                    // own doc comment), and a pending request between the two is
-                                    // just as invalid to keep showing once blocked.
+                                    // Same local-list update as onRemoved: blocking also deletes any
+                                    // friendship server-side (see BlockService), and a pending
+                                    // request between the two is invalid once blocked.
                                     subject.friendshipId?.let {
                                         friendsViewModel.removeFriendLocally(it)
                                         friendsViewModel.removePendingRequestLocally(it)
@@ -1245,31 +1073,22 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                             )
-                            // This screen's ViewModel is an existing (not freshly re-fetched)
-                            // instance whenever the picker is reopened — Compose's own
-                            // viewModel() store reuses it for as long as this ViewModel store
-                            // owner is alive, the same way cameraViewModel/friendsViewModel do.
-                            // Unlike those two, this one's own collector below only runs while
-                            // this branch is actually composed — i.e. only while the picker is
-                            // open — so a friend accepted anywhere else while the picker was
-                            // closed emitted a friendsChangedEvents signal nobody here was
-                            // listening for yet. That event has no replay (a plain SharedFlow,
-                            // not backed by a state holder), so a collector that starts listening
-                            // only after the fact can never see it — reopening the picker kept
-                            // showing whatever it last fetched, correctable only by restarting
-                            // the app and losing this stale instance entirely.
+                            // On reopen this is an existing ViewModel instance (viewModel() reuses it
+                            // while the store owner lives), not freshly fetched. Unlike cameraViewModel
+                            // and friendsViewModel, its collector below runs only while this branch is
+                            // composed, so a friend accepted elsewhere while the picker was closed
+                            // emitted a friendsChangedEvents signal nobody was listening for. That
+                            // SharedFlow has no replay, so a late collector never sees it, and the
+                            // picker kept showing stale data until the app restarted.
                             //
-                            // The explicit loadFriends() below closes that gap by refreshing on
-                            // every open regardless of whether a signal was missed. The collector
-                            // stays for the one thing an on-open refresh alone can't cover: a
-                            // friend accepted through some other screen while this picker is
-                            // already open.
+                            // The loadFriends() below closes that gap by refreshing on every open. The
+                            // collector remains for what an on-open refresh can't cover: a friend
+                            // accepted from another screen while the picker is already open.
                             LaunchedEffect(Unit) {
                                 recipientPickerViewModel.loadFriends()
-                                // Once per open, not on every recomposition — see
-                                // RecipientPickerViewModel.sortSnapshot's own doc comment for why
-                                // the sort order needs to freeze here instead of tracking the live
-                                // selection.
+                                // Once per open, not per recomposition; see
+                                // RecipientPickerViewModel.sortSnapshot for why the sort order freezes
+                                // here instead of tracking the live selection.
                                 recipientPickerViewModel.refreshSortSnapshot()
                                 emberApplication.friendsChangedEvents.collect { recipientPickerViewModel.loadFriends() }
                             }
@@ -1289,58 +1108,42 @@ class MainActivity : ComponentActivity() {
 
                         else -> {
                             Box(modifier = Modifier.fillMaxSize()) {
-                                // navDockHeight itself is hoisted above this whole `when` now —
-                                // see its own doc comment there for why. Screens read it via
-                                // LocalNavDockHeight instead of a fixed dp constant, which is what
-                                // originally left the Settings screen's Log out button partly
-                                // covered by the dock on at least one real device.
-                                // Captured here, at the natural (un-overridden) composition point,
-                                // before the pager's own scope below deliberately nulls this out —
-                                // re-provided as-is inside the page content lambda so every tab's
-                                // own vertical lists (Home, Friends, Settings) keep the platform's
-                                // normal overscroll untouched; only the pager's own horizontal
-                                // edge-of-tabs bounce is disabled.
+                                // navDockHeight is hoisted above this `when` (see its comment there).
+                                // Screens read it via LocalNavDockHeight instead of a fixed dp, which
+                                // once left Settings' Log out button partly under the dock on a real
+                                // device. defaultOverscrollFactory is captured here, before the
+                                // pager's scope nulls the local, and re-provided inside page content so
+                                // each tab's vertical lists keep normal overscroll; only the pager's
+                                // horizontal edge-of-tabs bounce is disabled.
                                 val defaultOverscrollFactory = LocalOverscrollFactory.current
                                 CompositionLocalProvider(
                                     LocalNavDockHeight provides navDockHeight,
-                                    // Swiping past the first (Memories) or last (Settings) tab
-                                    // used to stretch-and-bounce the same way a scrolled-to-the-end
-                                    // list does — reasonable for a list, but for tab navigation
-                                    // itself it read as the page "hitting a wall", not a deliberate
-                                    // choice anywhere else in this app's flat, no-bounce design
-                                    // language. null here turns that off for the pager specifically
-                                    // (see defaultOverscrollFactory above for how each tab's own
-                                    // content still keeps normal overscroll).
+                                    // Swiping past the first (Memories) or last (Settings) tab stretched
+                                    // and bounced like a list at its end, which for tab navigation read
+                                    // as hitting a wall and doesn't fit this app's flat, no-bounce
+                                    // design. null turns that off for the pager only.
                                     LocalOverscrollFactory provides null,
                                 ) {
                                 HorizontalPager(
                                     state = pagerState,
                                     modifier = Modifier.fillMaxSize(),
-                                    // Keeps the immediate neighbours of the current tab composed
-                                    // instead of tearing them down the moment you swipe away.
-                                    //
-                                    // This is what fixes Home's featured card briefly showing the
-                                    // previous photo every time you come back to it. Rebuilding
-                                    // Home from scratch recreates its card pager, and while that
-                                    // pager restores its page number immediately, the scroll
-                                    // offset it needs to actually *show* that page is only applied
-                                    // on the following frame — so for one frame it paints the page
-                                    // before it. Verified via logging: the page index was already
-                                    // correct on return every single time, which is why nothing
-                                    // that adjusted the page number ever helped. Not rebuilding
-                                    // the screen at all removes the wrong frame entirely, rather
-                                    // than trying to correct it after it's been drawn.
+                                    // Keeps the current tab's neighbours composed instead of tearing them
+                                    // down when you swipe away. This fixes Home's featured card briefly
+                                    // showing the previous photo on return: rebuilding Home recreates its
+                                    // card pager, which restores its page number at once but applies the
+                                    // scroll offset needed to show that page a frame later, so one frame
+                                    // painted the page before. Logging confirmed the page index was
+                                    // always already correct, which is why adjusting it never helped. Not
+                                    // rebuilding the screen removes the wrong frame instead of correcting
+                                    // it after it's drawn.
                                     beyondViewportPageCount = 1,
-                                    // A photo mid-review/caption is easy to lose to an
-                                    // accidental swipe — once one's been captured, swiping is
-                                    // blocked entirely until it's sent or explicitly discarded.
+                                    // A photo mid-review or caption is easy to lose to an accidental
+                                    // swipe; once captured, swiping is blocked until it's sent or
+                                    // discarded.
                                     userScrollEnabled = cameraViewModel.capturedFile == null,
-                                    // Default threshold needs the drag to cross ~50% of the
-                                    // screen before release decides to commit to the next page —
-                                    // a quick, short flick reasonably falls short of that and
-                                    // snaps back instead of advancing. Lowered so a light flick is
-                                    // enough, without needing a big deliberate drag all the way
-                                    // across.
+                                    // The default threshold needs a drag across ~50% of the screen
+                                    // before release commits to the next page, so a short flick
+                                    // snapped back. Lowered so a light flick is enough.
                                     flingBehavior = PagerDefaults.flingBehavior(
                                         state = pagerState,
                                         snapPositionalThreshold = 0.2f,
@@ -1395,17 +1198,14 @@ class MainActivity : ComponentActivity() {
                                             onUpgradeToGold = { nestedScreen = NestedScreen.GOLD },
                                             onOpenSentPhotos = { nestedScreen = NestedScreen.SENT_PHOTOS },
                                             onSent = {
-                                                // Fires the instant the photo is queued, not once
-                                                // it's actually uploaded — PendingSendWorker now
-                                                // sends it in the background (possibly much later,
-                                                // if there's no connectivity yet). Deliberately
-                                                // stays on Camera rather than navigating to Home —
-                                                // CameraScreen's own header shows Sending/Sent
-                                                // directly, so there's no need to leave the page
-                                                // to see the outcome. These two still refresh right
-                                                // away regardless, quietly in the background, so
-                                                // Home/Memories are ready with the real photo by
-                                                // the time the user does swipe over there.
+                                                // Fires when the photo is queued, not once uploaded:
+                                                // PendingSendWorker sends it in the background
+                                                // (possibly much later without connectivity). Stays
+                                                // on Camera, whose header shows Sending/Sent, so
+                                                // there's no need to leave to see the outcome. These
+                                                // two still refresh right away, quietly, so Home and
+                                                // Memories have the real photo by the time the user
+                                                // swipes there.
                                                 homeViewModel.loadFeed()
                                                 homeViewModel.loadMemories()
                                             },
@@ -1455,11 +1255,10 @@ class MainActivity : ComponentActivity() {
                                     friendsBadgeCount = friendsViewModel.pendingRequests.size,
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
-                                        // Fades the whole dock out near the Camera page (its own
-                                        // capture/review controls occupy similar bottom-of-screen
-                                        // space) — a graphicsLayer lambda for the same reason as
-                                        // homeIconProgress above: deferred to the draw phase so
-                                        // it doesn't force a recomposition every swipe frame.
+                                        // Fades the dock out near the Camera page (its capture and review
+                                        // controls use similar bottom space). A graphicsLayer lambda
+                                        // defers the alpha to the draw phase so it doesn't recompose on
+                                        // every swipe frame.
                                         .graphicsLayer {
                                             alpha = abs(pagerState.currentPage + pagerState.currentPageOffsetFraction - PAGE_CAMERA)
                                                 .coerceIn(0f, 1f)
@@ -1472,12 +1271,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Always composed (not gated inside the `when` above) so its exit transition
-                    // has something to animate — a screen selected by `when` gets torn out of
-                    // composition the instant its condition flips, before any exit animation
-                    // could actually play. This is the one nested screen with its own distinct
-                    // entrance: slides up from the bottom like a sheet, every time, rather than
-                    // appearing instantly the way every other nested screen still does.
+                    // Always composed (not gated inside the `when`) so its exit transition has
+                    // something to animate; a screen selected by `when` leaves composition the
+                    // instant its condition flips, before an exit animation could play. The one
+                    // nested screen with its own entrance: it slides up like a sheet every time
+                    // instead of appearing instantly.
                     AnimatedVisibility(
                         visible = nestedScreen == NestedScreen.GOLD,
                         enter = slideInVertically(initialOffsetY = { it }),
@@ -1492,9 +1290,9 @@ class MainActivity : ComponentActivity() {
                             viewModel = goldViewModel,
                             onBack = { nestedScreen = null },
                             onGoldActivated = {
-                                // The purchase already updated SubscriptionRepository's caches; this
-                                // just pulls the same "you're Gold now" answer into the app-wide
-                                // state the other screens read before they'd otherwise re-check.
+                                // The purchase already updated SubscriptionRepository's caches; this pulls
+                                // the "you're Gold now" answer into the app-wide state other screens
+                                // read before they'd re-check.
                                 isGoldMember = true
                                 coroutineScope.launch { widgetPreferenceStore.setCachedIsGoldMember(true) }
                                 themeViewModel.reload()
@@ -1505,15 +1303,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        // The manifest's importantForAutofill="noExcludeDescendants" on this Activity doesn't
-        // reach Compose content in practice — Compose's own ComposeView appears to mark itself
-        // important for autofill regardless of what its ancestors declare. setContent() creates
-        // and attaches that ComposeView synchronously as the sole child of the content root, so
-        // right after it returns we can reach in and force the flag directly on the view that
-        // actually matters, overriding whatever Compose set internally. This — not the manifest
-        // attribute, not KeyboardType, not disableAutofillServices() (which silently no-ops
-        // unless its one-time system dialog gets shown and accepted) — is what actually stops
-        // Google Password Manager's "Save password?" prompt from firing on every login.
+        // The manifest's importantForAutofill="noExcludeDescendants" on this Activity doesn't reach
+        // Compose content: Compose's ComposeView marks itself important for autofill regardless of
+        // its ancestors. setContent() attaches that ComposeView synchronously as the content root's
+        // only child, so right after it returns the flag can be forced on the view directly. This
+        // (not the manifest attribute, KeyboardType, or disableAutofillServices(), which no-ops
+        // unless its one-time system dialog is accepted) is what stops Google Password Manager's
+        // "Save password?" prompt on every login.
         (findViewById<ViewGroup>(android.R.id.content))?.getChildAt(0)
             ?.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
     }

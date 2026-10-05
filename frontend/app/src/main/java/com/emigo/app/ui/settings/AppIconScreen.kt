@@ -162,7 +162,7 @@ private fun AppIconChip(
     // image formats (PNG/JPG/WEBP) and throws IllegalArgumentException on anything else, which
     // crashed this whole screen the instant it composed. PackageManager already knows how to
     // composite an adaptive icon into a real bitmap; this is the exact same pattern
-    // rememberAppIcon (LoginScreen.kt) already uses for *other* apps' launcher icons, applied to
+    // rememberAppIcon (InviteSharing.kt) already uses for *other* apps' launcher icons, applied to
     // this app's own.
     val context = LocalContext.current
     val iconBitmap = remember {

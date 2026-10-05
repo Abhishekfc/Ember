@@ -43,22 +43,20 @@ internal const val CAPTION_Y_FRACTION = 0.72f
  * pagination page size, just far above any real user's friend count. */
 private const val RECIPIENT_PICKER_FRIENDS_LIMIT = 500
 
-/** How long the outbox button's filled-checkmark state holds before fading back to idle — see
- * [CameraViewModel.markSendComplete]. */
+/** How long the outbox button holds its filled-checkmark state before fading back to idle (see
+ * [CameraViewModel.markSendComplete]). */
 private const val SEND_ANIM_COMPLETE_HOLD_MS = 1200L
 
-/** Confirmed good on-device (2026-09-16) — left as a named constant rather than deleted outright,
- * so re-testing a future change to the hint is a one-line flip again instead of re-deriving this
- * whole mechanism from scratch. */
+/** Debug switch to always show the swipe hint. Confirmed good on-device (2026-09-16); kept as a
+ * named constant so re-testing a hint change is a one-line flip. */
 private const val SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING = false
 
-/** Drives the Camera outbox button's own send animation (see CameraScreen's OutboxButton) —
- * SENDING from the moment [CameraViewModel.sendCaptured] queues the upload, flipped to COMPLETE by
- * [CameraViewModel.markSendComplete] once the real upload has actually landed (MainActivity
- * collects EmberApplication.photoSendCompletedEvents for this — see its own doc comment), then
- * automatically fades back to IDLE a moment later. Deliberately not tied to [isQueuingSend]
- * (which only covers the brief local queuing step) — the real upload can take much longer,
- * especially offline, and this is meant to reflect that whole span. */
+/** Drives the outbox button's send animation (see CameraScreen's OutboxButton): SENDING from when
+ * [CameraViewModel.sendCaptured] queues the upload, COMPLETE once [CameraViewModel.markSendComplete]
+ * reports the real upload landed (MainActivity collects EmberApplication.photoSendCompletedEvents),
+ * then back to IDLE shortly after. Not tied to [isQueuingSend], which covers only the brief local
+ * queuing step; the real upload can take much longer, especially offline, and this reflects the
+ * whole span. */
 enum class SendAnimState { IDLE, SENDING, COMPLETE }
 
 class CameraViewModel(
@@ -70,16 +68,16 @@ class CameraViewModel(
     private val cameraHintPreferenceStore: CameraHintPreferenceStore,
 ) : ViewModel() {
 
-    // Seeded synchronously (see CameraHintPreferenceStore's own doc comment) so a returning user
-    // who already dismissed this never sees it flash on for even a frame. Only ever goes true ->
-    // false, once, for the life of this account on this device (dismissSwipeHint below).
+    // Seeded synchronously (see CameraHintPreferenceStore) so a returning user who dismissed it never
+    // sees it flash for a frame. Only goes true -> false, once, per account on this device (see
+    // dismissSwipeHint).
     var showSwipeHint by mutableStateOf(SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING || !cameraHintPreferenceStore.isDismissed())
         private set
 
-    /** Called once, the first time the user ever navigates away from Camera (see MainActivity's
-     * own pagerState.settledPage effect) — permanently hides the hint from here on, on this
-     * device. A no-op every time after the first, both for a cheap early-out and so this can't
-     * re-write the same true -> false transition to disk on every single later page change. */
+    /** Called the first time the user navigates away from Camera (MainActivity's settledPage
+     * effect); hides the hint permanently on this device. A no-op after the first call: a cheap
+     * early-out that also avoids rewriting the same true -> false transition to disk on every page
+     * change. */
     fun dismissSwipeHint() {
         if (SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING) return
         if (!showSwipeHint) return
@@ -87,15 +85,11 @@ class CameraViewModel(
         cameraHintPreferenceStore.dismiss()
     }
 
-    // Both seeded synchronously, together, from LocalListCache's own synchronous mirror
-    // (readSync) — not the emptyList()/emptySet() this used to default to while the real,
-    // suspend localCache.read + friendRepository fetch was still in flight. Resolved with the
-    // exact same pinned-friend-first-else-last-sent priority applyFriends itself already
-    // establishes below, computed once here so the two land together on frame one instead of
-    // friends populating on one recomposition and the selection (and so the recipient badge)
-    // catching up a moment later — see applyFriends' own doc comment for why "land together"
-    // specifically was already worth writing carefully once, this just moves that same care to
-    // also cover the very first frame, not only the moment the real fetch resolves.
+    // Friends and selection are seeded together, synchronously, from LocalListCache's synchronous
+    // mirror (readSync), not the empty defaults this used while the suspend read and network fetch
+    // were in flight. Resolved with applyFriends' pinned-first-else-last-sent priority, computed once
+    // here so both land on frame one instead of friends appearing on one recomposition and the
+    // recipient badge catching up later (see applyFriends for why landing together matters).
     private val initialFriendsAndSelection: Pair<List<FriendSummaryDto>, Set<String>> = run {
         val cachedFriends = localCache.readSync<FriendSummaryDto>(LocalListCache.KEY_FRIENDS).orEmpty()
         val pinnedIds = cachedFriends.filter { it.pinnedByMe }.map { it.friendId }.toSet()
@@ -112,27 +106,24 @@ class CameraViewModel(
         private set
 
     /** True only for the brief local step (baking the caption in, moving the file into durable
-     * storage) between tapping Send and it actually being handed to [PendingSendWorker] — purely
-     * a double-tap guard for that short window, not a "network in flight" flag any more. The
-     * actual upload happens in the background regardless of whether this screen is even open,
-     * with no on-screen indicator of its own any more (see CameraScreen — the top-right corner
-     * that used to show "Sending…"/"Sent" is the bookmark button's spot now). */
+     * storage) between tapping Send and handing the upload to [PendingSendWorker]. A double-tap
+     * guard for that window, not a "network in flight" flag; the upload runs in the background
+     * whether or not this screen is open, with no on-screen indicator of its own (the top-right
+     * corner is the bookmark button's spot). */
     var isQueuingSend by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
-    /** See [SendAnimState]'s own doc comment. Not reset per-capture like [isSaved]/[capturedFile]
-     * — a send animation should keep playing through to completion even if the user retakes or
-     * leaves Camera mid-flight, since it's tracking the outbox upload itself, not this specific
-     * review session. */
+    /** See [SendAnimState]. Not reset per capture like [isSaved] and [capturedFile]: the animation
+     * tracks the outbox upload itself, so it keeps playing even if the user retakes or leaves Camera
+     * mid-flight. */
     var sendAnimState by mutableStateOf(SendAnimState.IDLE)
         private set
 
-    /** Called once the real upload this ViewModel most recently queued has actually landed (see
-     * [SendAnimState]'s own doc comment for where that signal comes from) — a no-op unless a send
-     * animation is actually in flight, so a completion echoing in from an unrelated older retry
-     * can't restart an already-finished (or never-started) animation. */
+    /** Called once the real upload this ViewModel last queued has landed (see [SendAnimState] for
+     * where that comes from). A no-op unless an animation is in flight, so a completion echoing in
+     * from an unrelated older retry can't restart a finished or never-started animation. */
     fun markSendComplete() {
         if (sendAnimState != SendAnimState.SENDING) return
         sendAnimState = SendAnimState.COMPLETE
@@ -140,17 +131,15 @@ class CameraViewModel(
             delay(SEND_ANIM_COMPLETE_HOLD_MS)
             sendAnimState = SendAnimState.IDLE
         }
-        // The photo that was just sent is now the outbox's own newest entry — refresh so the
-        // button's thumbnail updates to it once the fill/checkmark fades back out.
+        // The sent photo is now the outbox's newest entry; refresh so the thumbnail updates once the
+        // checkmark fades out.
         refreshLastSentPhoto()
     }
 
-    /** The thumbnail the outbox button itself shows — this account's own single most recent
-     * unsaved send (the same list [SentPhotosScreen] shows, just the first entry of it), fetched
-     * independently of whether that screen has ever actually been opened this session. Silent on
-     * failure/empty, same as every other background refresh in this class — worst case the
-     * button just keeps showing whatever it last had (or its empty fallback), not a user-facing
-     * error over a purely decorative thumbnail. */
+    /** The outbox button's thumbnail: the account's most recent unsaved send (the first entry of
+     * [SentPhotosScreen]'s list), fetched whether or not that screen was opened this session.
+     * Silent on failure or empty, like other background refreshes here: the worst case is the
+     * button keeps its last thumbnail or empty fallback, not an error over a decorative image. */
     var lastSentPhotoUrl by mutableStateOf<String?>(null)
         private set
 
@@ -160,153 +149,136 @@ class CameraViewModel(
         }
     }
 
-    /** True once the current capture has been saved to Memories (see [saveToMemories]) — drives
-     * the bookmark button switching from outline to filled. Per-capture, not per-session: reset
-     * back to false by every place a new [capturedFile] gets set (a fresh capture, a retake, a
-     * gallery pick), same as [captionText] already is. Saving is one-way from this screen —
-     * there's no un-save button here, only Memories' own delete (see MemoriesScreen). */
+    /** True once the current capture was saved to Memories (see [saveToMemories]); switches the
+     * bookmark from outline to filled. Per capture, not per session: every place that sets
+     * [capturedFile] (new capture, retake, gallery pick) resets it, like [captionText]. Saving is
+     * one-way here; un-saving is only Memories' own delete (see MemoriesScreen). */
     var isSaved by mutableStateOf(false)
         private set
     /** True only for the brief local step (baking the caption in, moving the file into durable
-     * storage) between tapping the bookmark and it actually being handed to [PendingSendWorker] —
-     * same purpose as [isQueuingSend], just for the independent save action rather than send. */
+     * storage) between tapping the bookmark and handing the upload to [PendingSendWorker]. Same
+     * purpose as [isQueuingSend], for save instead of send. */
     var isSavingToMemories by mutableStateOf(false)
         private set
 
-    /** True once *either* Save or Send has queued the real upload for this capture — the other
-     * one, if it's also tapped, chains onto that same upload (see [PendingSendWorker.
-     * enqueueMarkSaved]/[PendingSendWorker.enqueueAddRecipients]) instead of uploading the file a
-     * second time. Reset alongside [isSaved] on every new capture. */
+    /** True once either Save or Send has queued the real upload for this capture. The other, if
+     * also tapped, chains onto that upload (see [PendingSendWorker.enqueueMarkSaved] and
+     * [PendingSendWorker.enqueueAddRecipients]) instead of uploading the file twice. Reset with
+     * [isSaved] on every new capture. */
     private var hasQueuedUpload = false
-    /** The stable identity WorkManager's unique-work chain for this capture is keyed on — set
-     * once, from the freshly-captured file's own name, the moment [capturedFile] is assigned.
-     * Deliberately NOT re-derived from whatever the actually-uploaded file ends up named later
-     * (baking a caption in, or Save's own copy, both rename it — see [saveToMemories]), since the
-     * second action needs to target the exact same WorkManager unique-work name the first one
-     * used, and that name has to survive those renames unchanged to do it. */
+    /** The key of WorkManager's unique-work chain for this capture, set once from the captured
+     * file's name when [capturedFile] is assigned. Deliberately not re-derived from the uploaded
+     * file's later name (baking a caption, or Save's copy, both rename it, see [saveToMemories]):
+     * the second action must target the same unique-work name the first used, which has to survive
+     * those renames. */
     private var uploadWorkName: String? = null
 
-    /** Gallery picking is an Ember Gold perk; free accounts are limited to the live camera.
-     * Defaults to false (not Gold) until the subscription check resolves, so the upsell never
-     * flashes a free feature open before snapping shut. */
+    /** Gallery picking is an Ember Gold perk; free accounts get only the live camera. */
     // Seeded synchronously from the last resolved value (see SubscriptionRepository.isGoldMemberSync)
-    // rather than a hardcoded false — the real check below is a suspend call with a real gap
-    // before it resolves, and defaulting to false for that gap flashed the gallery button's lock
-    // badge over a genuine subscriber's own unlocked feature for a moment on every cold start.
+    // instead of a hardcoded false: the real check below is a suspend call with a gap, and defaulting
+    // to false flashed the gallery button's lock badge over a real subscriber's unlocked feature on
+    // every cold start.
     var isGoldMember by mutableStateOf(subscriptionRepository.isGoldMemberSync())
         private set
     var showGoldUpsell by mutableStateOf(false)
         private set
 
-    /** Captured (or gallery-picked) photo waiting on the preview stage — nothing is sent
-     * until the user reviews it and taps Send. */
+    /** A captured (or gallery-picked) photo waiting on the preview stage; nothing is sent until the
+     * user reviews it and taps Send. */
     var capturedFile by mutableStateOf<File?>(null)
         private set
     var captionText by mutableStateOf("")
         private set
 
-    /** False only for the brief window between [onPreviewSnapshotCaptured] (an instant frozen
-     * frame of the live viewfinder, shown the moment the shutter is tapped so capture feels
-     * immediate — see capturePhoto in CameraScreen.kt) and the real hardware capture actually
-     * landing via [onPhotoCaptured]. Gallery picks skip the snapshot stage entirely and go
-     * straight to [onPhotoCaptured], so this is true immediately for that path. Send gates on
-     * this so a very fast tap-then-send can never upload the temporary frame instead of the real
-     * photo.
+    /** False only between [onPreviewSnapshotCaptured] (an instant frozen frame of the viewfinder,
+     * shown on shutter tap so capture feels immediate; see capturePhoto in CameraScreen.kt) and the
+     * real hardware capture landing via [onPhotoCaptured]. Gallery picks skip the snapshot and go
+     * straight to [onPhotoCaptured], so it's true at once for them. Send gates on this so a fast
+     * tap-then-send can't upload the temporary frame instead of the real photo.
      *
-     * A first attempt at this exact idea was reverted after two real bugs: the page-level
-     * transition was a `Crossfade` keyed on the file value itself, so the snapshot→real swap
-     * retriggered a second fade that exposed the photo card's black background mid-transition;
-     * and the swap was slow/visible enough that the temporary frame's lower fidelity read as an
-     * obvious quality dip. This time: the live↔reviewing boundary in CameraScreen.kt is a plain
-     * `if/else` (no Crossfade at all, so no fade-through-black is even possible), and the
-     * snapshot→real swap happens through the same already-crossfade-disabled AsyncImage request
-     * (see CapturedPreview) — an instant pixel swap, not a fade, over two frames that show
-     * nearly the same scene a fraction of a second apart. The real capture itself is still full,
-     * unbounded quality — only the fleeting placeholder is viewfinder-resolution. */
+     * A first attempt at this was reverted after two bugs: the page transition was a `Crossfade`
+     * keyed on the file value, so the snapshot-to-real swap retriggered a second fade that exposed
+     * the card's black background; and the swap was slow and visible enough that the temporary
+     * frame's lower fidelity read as a quality dip. Now the live/reviewing boundary in
+     * CameraScreen.kt is a plain overlay (no Crossfade, so no fade through black), and the
+     * snapshot-to-real swap goes through the crossfade-disabled AsyncImage request (see
+     * CapturedPreview): an instant pixel swap between two frames of nearly the same scene. The real
+     * capture is still full, unbounded quality; only the fleeting placeholder is viewfinder
+     * resolution. */
     var isRealCaptureReady by mutableStateOf(true)
         private set
 
-    /** The in-memory bitmap backing the instant preview stage — an already-decoded `Bitmap`
-     * (from `previewView.bitmap`), not a second file-based image, so it draws the same frame
-     * it's set with no async decode gap. Kept alive for this capture's whole review (not cleared
-     * the moment the real photo lands) purely as a defensive fallback layer — see
-     * `CapturedPreview` in CameraScreen.kt, which layers the real file's AsyncImage on top of
-     * this so the real photo's own (Coil, EXIF-aware) decode always has something already on
-     * screen to sit over instead of the card's bare black background. */
+    /** The in-memory bitmap behind the instant preview stage: an already-decoded `Bitmap` (from
+     * `previewView.bitmap`), not a second file-based image, so it draws the same frame it's set
+     * with no async decode gap. Kept for the whole review (not cleared when the real photo lands)
+     * as a fallback layer: `CapturedPreview` in CameraScreen.kt layers the real file's AsyncImage
+     * (Coil, EXIF-aware decode) on top, so that decode always has something on screen to sit over
+     * instead of the card's black background. */
     var previewBitmap by mutableStateOf<Bitmap?>(null)
         private set
 
-    // The snapshot file backing capturedFile while isRealCaptureReady is false — tracked
-    // separately (not just re-derived from capturedFile) purely so it can be deleted once the
-    // real file supersedes it, or if a retake happens before that ever occurs.
+    // The snapshot file backing capturedFile while isRealCaptureReady is false. Tracked separately
+    // (not re-derived from capturedFile) so it can be deleted once the real file supersedes it, or on
+    // a retake before that happens.
     private var pendingSnapshotFile: File? = null
 
     init {
         refreshLastSentPhoto()
-        // Deliberately NOT loadFriends() here — this ViewModel now lives for the whole app
-        // session (Camera is a pager page, not a screen only created on demand), so anything
-        // fired from init runs on every single cold start whether or not Camera is ever opened
-        // that session. loadFriends() is a limit=500 "give me everyone" fetch for the recipient
-        // picker specifically — MainActivity calls it once, lazily, the first time the user
-        // actually reaches the Camera page (see its own comment for why), not here.
+        // Deliberately NOT loadFriends() here: this ViewModel lives for the whole session (Camera is a
+        // pager page, not created on demand), so anything fired from init runs on every cold start
+        // whether or not Camera is opened. loadFriends() is a limit=500 fetch for the recipient
+        // picker; MainActivity calls it once, lazily, the first time the user reaches Camera.
         //
-        // The *local* cache read below is a different matter and does belong here: it's plain
-        // disk I/O, not a network call, and without it the recipient badge had no data at all
-        // until that lazy fetch landed — so opening Camera after a restart showed the empty
-        // "Friends" state first and only then popped in the pinned/last-used friend's avatar. The
-        // fetch above still runs on arrival and refreshes this; this just means the badge starts
-        // out already correct instead of visibly correcting itself a moment later.
+        // The local cache read below does belong here: it's disk I/O, not a network call, and without
+        // it the recipient badge had no data until the lazy fetch landed, so opening Camera after a
+        // restart showed the empty "Friends" state and then popped in the pinned or last-used friend's
+        // avatar. The fetch still runs on arrival and refreshes this; this just starts the badge
+        // correct.
         viewModelScope.launch {
             localCache.read<FriendSummaryDto>(LocalListCache.KEY_FRIENDS)?.let { cached ->
-                // Guarded on friends still being empty — if the real fetch somehow beat this read,
-                // its fresher (and complete, limit=500 rather than the Friends tab's own 30) list
-                // must not be replaced by this snapshot.
+                // Guarded on friends still being empty: if the real fetch beat this read, its
+                // fresher and complete list (limit=500, not the Friends tab's 30) must not be
+                // replaced by this snapshot.
                 if (friends.isEmpty()) applyFriends(cached)
             }
             isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
         }
-        // Camera is a pager page, not a screen only created on demand — this instance lives for
-        // the whole app session, so without this it would never see a purchase made later from
-        // the Ember Gold screen until the next full app restart. See
-        // SubscriptionRepository.isGoldMemberFlow's own doc comment.
+        // This instance lives for the whole session, so without this it would never see a purchase
+        // made later on the Ember Gold screen until a full restart. See
+        // SubscriptionRepository.isGoldMemberFlow.
         viewModelScope.launch {
             subscriptionRepository.isGoldMemberFlow.collect { isGoldMember = it }
         }
     }
 
-    // Ordered by selectedRecipientIds itself, not by filtering `friends` — Set's own + / - here
-    // (see toggleSelected/setSelectedRecipients) already preserve tap order as a LinkedHashSet
-    // under the hood, but filtering `friends` against that set would've thrown that away and
-    // shown them back in the friends list's own order instead of the order actually picked.
+    // Ordered by selectedRecipientIds, not by filtering `friends`: Set + / - (see
+    // toggleSelected/setSelectedRecipients) preserve tap order as a LinkedHashSet, and filtering
+    // `friends` would show the friends list's order instead of the order picked.
     val selectedFriends: List<FriendSummaryDto>
         get() {
             val friendsById = friends.associateBy { it.friendId }
             return selectedRecipientIds.mapNotNull { friendsById[it] }
         }
 
-    // Always the plain word "Friends" now, never a specific name — the avatar stack (plus its
-    // own "+N" circle once there's more than a couple) already shows exactly who's selected, so
-    // naming them again in text was saying the same thing twice.
+    // Always the plain word "Friends", never a specific name: the avatar stack (and its "+N" circle)
+    // already shows who's selected, so naming them again said the same thing twice.
     val recipientLabel: String = strings.get(R.string.friends_title)
 
     val hasPinnedSelected: Boolean
         get() = friends.any { it.friendId in selectedRecipientIds && it.pinnedByMe }
 
-    /** Reuses a friend list Friends' own tab has already fetched, when it's known to already be
-     * complete (see MainActivity — only used when FriendsViewModel has loaded everything, i.e.
-     * `hasMore == false`), instead of this ViewModel firing its own separate, mostly-redundant
-     * network call for what's very often the exact same data. [loadFriends] below remains the
-     * fallback for whenever that isn't the case (Friends hasn't loaded yet, or genuinely has more
-     * than a page of friends). */
+    /** Reuses a friend list the Friends tab already fetched, when it's known complete (see
+     * MainActivity: only when FriendsViewModel has loaded everything, `hasMore == false`), instead
+     * of a separate, mostly redundant network call for the same data. [loadFriends] is the fallback
+     * when that isn't the case (Friends not loaded yet, or more than a page of friends). */
     fun provideFriends(list: List<FriendSummaryDto>) {
         viewModelScope.launch { applyFriends(list) }
     }
 
     fun loadFriends() {
         viewModelScope.launch {
-            // The recipient picker needs every friend to choose from, not a scrollable page of
-            // them — RECIPIENT_PICKER_FRIENDS_LIMIT is a generously high ceiling, not a real
-            // pagination boundary.
+            // The recipient picker needs every friend, not a scrollable page;
+            // RECIPIENT_PICKER_FRIENDS_LIMIT is a generous ceiling, not a pagination boundary.
             friendRepository.getFriends(limit = RECIPIENT_PICKER_FRIENDS_LIMIT).fold(
                 onSuccess = { page -> applyFriends(page.items) },
                 onFailure = { errorMessage = it.message ?: strings.get(R.string.error_load_friends) },
@@ -314,22 +286,18 @@ class CameraViewModel(
         }
     }
 
-    // Shared by provideFriends and loadFriends so both paths apply the exact same default-
-    // recipient rule below — never to "everyone" with no explicit choice. A silent reply-all
-    // default is exactly the kind of invisible behavior that makes a send flow feel unsafe rather
-    // than just unpolished: nothing should leave the device to a friend the user never actually
-    // picked. A pinned best-friend always wins as that default; failing that, this falls back to
-    // whoever the last real send actually went to (see sendCaptured), so a restart remembers "who
-    // I was sending to" instead of resetting to nobody every time nothing is pinned.
+    // Shared by provideFriends and loadFriends so both apply the same default-recipient rule: never
+    // "everyone" with no explicit choice. A silent reply-all default makes a send flow feel unsafe:
+    // nothing should go to a friend the user never picked. A pinned best friend always wins; failing
+    // that, it falls back to whoever the last real send went to (see sendCaptured), so a restart
+    // remembers who I was sending to instead of resetting to nobody.
     //
-    // The default is fully computed *before* either `friends` or `selectedRecipientIds` is
-    // written, specifically so both land in the same recomposition. The first version of this
-    // wrote `friends = list` immediately and only resolved the default afterward — harmless for
-    // the pinned case (no suspension in between), but the local-cache read in the non-pinned path
-    // is a real suspend point, so Compose recomposed once with friends populated and the
-    // selection still empty (the badge briefly showing "Friends" / nobody picked), then again a
-    // moment later once the read completed — a visible flash on every cold start with no pinned
-    // friend that the user explicitly didn't want.
+    // The default is computed before either `friends` or `selectedRecipientIds` is written, so both
+    // land in the same recomposition. The first version wrote `friends = list` first and resolved the
+    // default afterward: harmless when pinned (no suspension), but the local-cache read in the
+    // non-pinned path is a real suspend point, so Compose recomposed once with friends populated and
+    // no selection (the badge briefly showing nobody picked), then again once the read finished: a
+    // visible flash on every cold start with no pinned friend.
     private suspend fun applyFriends(list: List<FriendSummaryDto>) {
         val resolvedSelection = if (selectedRecipientIds.isEmpty()) {
             val pinnedIds = list.filter { it.pinnedByMe }.map { it.friendId }.toSet()
@@ -337,8 +305,8 @@ class CameraViewModel(
                 pinnedIds
             } else {
                 val lastUsedIds = localCache.read<String>(LocalListCache.KEY_LAST_RECIPIENT_IDS).orEmpty().toSet()
-                // Filtered against the freshly-loaded list, not trusted blindly — a friend from a
-                // past send could since have been unfriended/removed.
+                // Filtered against the freshly loaded list, not trusted blindly: a friend from a past
+                // send could since have been unfriended.
                 lastUsedIds.filterTo(mutableSetOf()) { id -> list.any { friend -> friend.friendId == id } }
             }
         } else {
@@ -352,8 +320,8 @@ class CameraViewModel(
         selectedRecipientIds = ids
     }
 
-    /** Entry point for the gallery button: opens the picker for Gold members, otherwise shows
-     * the upsell instead — the caller never launches the picker directly. */
+    /** Entry point for the gallery button: opens the picker for Gold members, otherwise shows the
+     * upsell. The caller never launches the picker directly. */
     fun onGalleryClick(launchPicker: () -> Unit) {
         if (isGoldMember) launchPicker() else showGoldUpsell = true
     }
@@ -366,8 +334,8 @@ class CameraViewModel(
         errorMessage = message
     }
 
-    /** The instant, pre-real-capture frame — see [isRealCaptureReady]'s own doc comment. Never
-     * called for a gallery pick, only the live-camera path. */
+    /** The instant, pre-real-capture frame (see [isRealCaptureReady]). Called only on the
+     * live-camera path, never for a gallery pick. */
     fun onPreviewSnapshotCaptured(file: File, bitmap: Bitmap) {
         capturedFile = file
         pendingSnapshotFile = file
@@ -380,15 +348,15 @@ class CameraViewModel(
         uploadWorkName = file.name
     }
 
-    /** The real, final photo — either the hardware capture landing (superseding whatever
-     * snapshot [onPreviewSnapshotCaptured] showed a moment earlier) or a gallery pick, which has
-     * no snapshot stage and is already "real" the instant it's chosen. */
-    /** [isFrontCamera] captures get their pixels mirrored to match the mirrored preview the shot
-     * was actually framed against — see takePhoto's own comment in CameraScreen for why this is
-     * done to the pixels here rather than via ImageCapture's EXIF-only isReversedHorizontal flag.
-     * The flip runs off the main thread; until it lands, the instant preview snapshot already on
-     * screen keeps showing (isRealCaptureReady stays false), which is the same handoff a
-     * back-camera capture already goes through, just a beat longer. */
+    /** The real, final photo: either the hardware capture landing (superseding the snapshot
+     * [onPreviewSnapshotCaptured] showed a moment earlier) or a gallery pick, which has no snapshot
+     * stage and is real as soon as it's chosen.
+     *
+     * [isFrontCamera] captures get their pixels mirrored to match the mirrored preview they were
+     * framed against (see capturePhoto in CameraScreen for why this is done to pixels, not via
+     * ImageCapture's EXIF-only isReversedHorizontal). The flip runs off the main thread; until it
+     * lands, the instant snapshot keeps showing (isRealCaptureReady stays false), the same handoff
+     * a back-camera capture goes through, just a beat longer. */
     fun onPhotoCaptured(file: File, isFrontCamera: Boolean = false) {
         if (!isFrontCamera) {
             applyCapturedFile(file)
@@ -432,25 +400,21 @@ class CameraViewModel(
         uploadWorkName = null
     }
 
-    /** Queues the captured photo for background sending and returns immediately — this no
-     * longer waits on (or even needs) a live network connection, and never blocks the screen.
-     * [PendingSendWorker] does the actual upload whenever the device next has connectivity, even
-     * if the app is later closed. [context] is used transiently (moving a file, enqueuing
-     * WorkManager) and never retained — the caller passes `context.applicationContext`, not an
-     * Activity Context, since this can outlive the screen that called it.
+    /** Queues the captured photo for background sending and returns at once; it doesn't wait on (or
+     * need) a network connection and never blocks the screen. [PendingSendWorker] uploads whenever
+     * the device next has connectivity, even if the app is closed. [context] is used transiently
+     * (moving a file, enqueuing WorkManager) and never retained; the caller passes
+     * `context.applicationContext`, not an Activity, since this can outlive the screen.
      *
-     * If [saveToMemories] already queued the real upload for this exact capture, this doesn't
-     * upload the file again — it chains a lightweight "add these recipients" request onto that
-     * same upload instead (see [PendingSendWorker.enqueueAddRecipients]). Tapping both Save and
-     * Send on one capture used to mean two full, independent uploads of the same file; this is
-     * the fix for that. */
+     * If [saveToMemories] already queued the real upload for this capture, this doesn't upload the
+     * file again: it chains a lightweight "add these recipients" request onto that upload (see
+     * [PendingSendWorker.enqueueAddRecipients]). Tapping both Save and Send used to mean two full
+     * uploads of the same file. */
     fun sendCaptured(context: Context, onQueued: () -> Unit) {
-        // Guards the top of the function itself, not just the button's own `enabled` — enabled
-        // only takes effect once Compose recomposes after isQueuingSend flips true, so a fast
-        // double-tap landing inside that window could otherwise queue the same photo twice.
-        // isRealCaptureReady is the same idea for the instant preview-snapshot stage — without
-        // it, a send fired in the brief window before the real capture lands would queue the
-        // temporary frame instead.
+        // Guards the top of the function, not just the button's `enabled`: enabled applies only after
+        // Compose recomposes once isQueuingSend flips true, so a fast double-tap in that window could
+        // queue the photo twice. isRealCaptureReady is the same idea for the instant snapshot stage:
+        // without it, a send fired before the real capture lands would queue the temporary frame.
         if (isQueuingSend || !isRealCaptureReady) return
         val file = capturedFile ?: return
         val workName = uploadWorkName ?: file.name
@@ -464,9 +428,9 @@ class CameraViewModel(
             errorMessage = null
             sendAnimState = SendAnimState.SENDING
             if (hasQueuedUpload) {
-                // Save already uploaded a *copy* of this capture (see saveToMemories), leaving
-                // the original file — still sitting right here — untouched on purpose in case
-                // Send followed. Now that it has, and nothing else needs it, it can finally go.
+                // Save already uploaded a copy of this capture (see saveToMemories), leaving the
+                // original untouched in case Send followed. Now that it has and nothing else needs
+                // it, it can go.
                 withContext(Dispatchers.IO) { file.delete() }
                 PendingSendWorker.enqueueAddRecipients(context, workName, recipientIds)
             } else {
@@ -476,9 +440,8 @@ class CameraViewModel(
                 val queuedFile = withContext(Dispatchers.IO) {
                     runCatching { moveToPendingSendStorage(context, baked) }.getOrNull()
                 }
-                // The captioned copy (if there was one) supersedes the original the instant
-                // baking succeeds, same as the old inline-upload path did — nothing else still
-                // needs it.
+                // The captioned copy supersedes the original once baking succeeds, as in the old
+                // inline-upload path.
                 if (baked != file) file.delete()
                 if (queuedFile == null) {
                     errorMessage = strings.get(R.string.camera_error_queue)
@@ -489,8 +452,8 @@ class CameraViewModel(
                 PendingSendWorker.enqueuePrimary(context, workName, queuedFile, recipientIds, save = isSaved)
                 hasQueuedUpload = true
             }
-            // Only persisted once a send actually goes out — not on every tap in the picker —
-            // so a selection made and then backed out of never overwrites "who I last sent to".
+            // Persisted only once a send goes out, not on every picker tap, so a selection made and
+            // backed out of never overwrites "who I last sent to".
             localCache.write(LocalListCache.KEY_LAST_RECIPIENT_IDS, recipientIds)
             capturedFile = null
             captionText = ""
@@ -499,16 +462,14 @@ class CameraViewModel(
         }
     }
 
-    /** Saves the current capture to Memories, independent of [sendCaptured] — you can tap this
-     * alone, with nobody selected to send to, and it still saves. If Send *also* gets tapped for
-     * the very same capture (in either order), the two share one real upload instead of each
-     * independently uploading the same file — see [sendCaptured]'s own doc comment and
-     * [PendingSendWorker.enqueueMarkSaved].
+    /** Saves the current capture to Memories, independent of [sendCaptured]: you can tap this alone
+     * with nobody selected and it still saves. If Send is also tapped for the same capture (in
+     * either order), the two share one real upload (see [sendCaptured] and
+     * [PendingSendWorker.enqueueMarkSaved]).
      *
-     * Bakes the caption onto a *copy* of [capturedFile] when this is the first of the two actions
-     * to run, never the original — unlike [sendCaptured], this can't consume/delete the file
-     * still backing the live preview, since the user might still go on to tap Send (or Retake)
-     * afterward. */
+     * When it's the first of the two to run it bakes the caption onto a copy of [capturedFile],
+     * never the original: unlike [sendCaptured] it can't consume the file still backing the live
+     * preview, since the user might still tap Send or Retake. */
     fun saveToMemories(context: Context) {
         if (isSaved || isSavingToMemories || !isRealCaptureReady) return
         val file = capturedFile ?: return
@@ -550,11 +511,11 @@ class CameraViewModel(
     }
 }
 
-/** Moves [source] out of the cache dir (which the OS can clear at any moment) into a durable
- * spot under [Context.getFilesDir] that survives until [PendingSendWorker] actually uploads and
- * deletes it — a photo waiting on connectivity, possibly for a long time, can't be left
- * somewhere the system is free to reclaim. Copy-then-delete rather than `File.renameTo`, which
- * isn't guaranteed to work across different storage areas on every Android version/device. */
+/** Moves [source] out of the cache dir (which the OS can clear at any time) into a durable spot
+ * under [Context.getFilesDir] that lasts until [PendingSendWorker] uploads and deletes it; a photo
+ * waiting on connectivity can't sit somewhere the system may reclaim. Copy-then-delete, not
+ * `File.renameTo`, which isn't guaranteed to work across storage areas on every Android version or
+ * device. */
 private fun moveToPendingSendStorage(context: Context, source: File): File {
     val dir = File(context.filesDir, "pending_sends").apply { mkdirs() }
     val dest = File(dir, source.name)
@@ -563,11 +524,11 @@ private fun moveToPendingSendStorage(context: Context, source: File): File {
     return dest
 }
 
-/** Rewrites [file] horizontally mirrored, so a front-camera capture matches the mirrored preview
- * it was framed against. Any EXIF rotation is baked into the pixels at the same time and the
- * output carries no orientation metadata of its own — that keeps this from fighting
- * [bakeCaptionIntoPhoto], which reads EXIF itself and would otherwise re-apply a rotation that's
- * already been applied here. Returns the original [file] untouched if it can't be decoded. */
+/** Rewrites [file] horizontally mirrored so a front-camera capture matches the mirrored preview it
+ * was framed against. Any EXIF rotation is baked into the pixels at the same time and the output
+ * carries no orientation metadata, so it doesn't fight [bakeCaptionIntoPhoto], which reads EXIF and
+ * would re-apply a rotation already applied here. Returns the original [file] untouched if it can't
+ * be decoded. */
 private fun mirrorHorizontally(file: File): File {
     val decoded = BitmapFactory.decodeFile(file.absolutePath) ?: return file
     val rotationDegrees = when (
@@ -578,8 +539,8 @@ private fun mirrorHorizontally(file: File): File {
         ExifInterface.ORIENTATION_ROTATE_270 -> 270f
         else -> 0f
     }
-    // One matrix doing both at once — rotating upright first and mirroring second in two separate
-    // createBitmap passes would allocate a second full-resolution intermediate for no benefit.
+    // One matrix does both at once; rotating then mirroring in two createBitmap passes would
+    // allocate a second full-resolution intermediate for no benefit.
     val matrix = Matrix().apply {
         postRotate(rotationDegrees)
         postScale(-1f, 1f)
@@ -594,12 +555,11 @@ private fun mirrorHorizontally(file: File): File {
     return output
 }
 
-/** Draws the caption onto the photo itself so recipients see it everywhere (feed, widget) with
- * no backend support for captions needed. Returns the original file untouched for a blank
- * caption; otherwise decodes (honoring EXIF rotation, which would be lost by re-encoding), crops
- * to the same [FEATURED_CARD_ASPECT_RATIO] every card displays photos at (see [cropToAspectRatio]
- * for why that step has to happen before baking, not just at display time), paints a
- * Snapchat-style dark bar + centered white text, and writes a new JPEG. */
+/** Draws the caption onto the photo so recipients see it everywhere (feed, widget) with no backend
+ * caption support. Returns the original file for a blank caption; otherwise decodes (honoring EXIF
+ * rotation, which re-encoding would lose), crops to the [FEATURED_CARD_ASPECT_RATIO] every card
+ * uses (see [cropToAspectRatio] for why this must happen before baking, not just at display),
+ * paints a Snapchat-style dark bar with centered white text, and writes a new JPEG. */
 private fun bakeCaptionIntoPhoto(file: File, caption: String): File {
     if (caption.isBlank()) return file
 
@@ -618,21 +578,17 @@ private fun bakeCaptionIntoPhoto(file: File, caption: String): File {
     } else {
         decoded
     }
-    // A capture is a full-resolution bitmap (tens of MB decoded) — up to four can transiently
-    // exist here (decoded, upright, sourceForBake, bitmap) if left to GC alone, and retake/
-    // re-caption repeats this every time in one Camera session. Recycling each intermediate the
-    // moment it's superseded keeps at most two full-resolution bitmaps live at once instead of
-    // four.
+    // A capture is a full-resolution bitmap (tens of MB decoded); up to four (decoded, upright,
+    // sourceForBake, bitmap) could exist at once if left to GC, and retake or re-caption repeats this
+    // in one Camera session. Recycling each intermediate once superseded keeps at most two live.
     if (upright !== decoded) decoded.recycle()
 
-    // The camera's own raw capture is whatever native aspect ratio that device's sensor defaults
-    // to (varies by phone) — never the featured card's 0.8 ratio the live preview constrained
-    // itself to while framing/captioning. Cropping here, before baking, is what makes the
-    // caption's Y-fraction below land in the same relative spot the preview showed *and* the same
-    // spot the featured card will later display — without it, a different crop applied only at
-    // display time shifts where the caption ends up, sometimes into the name/streak bar at the
-    // very bottom of the card, and how far it shifts depends on that device's own native capture
-    // ratio, which is why this only ever showed up on some recipients' devices and not others.
+    // The camera's raw capture has whatever native aspect ratio the sensor defaults to (varies by
+    // phone), not the featured card's 0.8 that the live preview framed against. Cropping before
+    // baking makes the caption's Y-fraction land in the same relative spot the preview showed and the
+    // featured card will display. Without it, a crop applied only at display shifted the caption,
+    // sometimes into the name/streak bar at the card's bottom, by an amount that depends on the
+    // device's native ratio; that's why it only showed on some recipients' devices.
     val sourceForBake = cropToAspectRatio(upright, FEATURED_CARD_ASPECT_RATIO)
     if (sourceForBake !== upright) upright.recycle()
 
@@ -668,10 +624,9 @@ private fun bakeCaptionIntoPhoto(file: File, caption: String): File {
     return output
 }
 
-/** Center-crops [source] down to [targetRatio] (width/height), the same way [ContentScale.Crop]
- * would at display time — trims the sides if [source] is relatively wider than [targetRatio],
- * or the top/bottom if it's relatively taller. Returns [source] itself, unmodified, if it's
- * already at (or extremely close to) that ratio. */
+/** Center-crops [source] to [targetRatio] (width/height), as [ContentScale.Crop] would at display:
+ * trims the sides if [source] is relatively wider, or top and bottom if relatively taller. Returns
+ * [source] itself if it's already at (or very near) that ratio. */
 private fun cropToAspectRatio(source: Bitmap, targetRatio: Float): Bitmap {
     val sourceRatio = source.width.toFloat() / source.height.toFloat()
     if (kotlin.math.abs(sourceRatio - targetRatio) < 0.001f) return source
