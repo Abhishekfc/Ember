@@ -2,13 +2,6 @@ package com.ember.backend.config
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 
-@ConfigurationProperties(prefix = "ember.jwt")
-data class JwtProperties(
-    val secret: String,
-    val accessTokenTtlMinutes: Long,
-    val issuer: String,
-)
-
 @ConfigurationProperties(prefix = "ember.storage.r2")
 data class R2Properties(
     val endpoint: String,
