@@ -50,10 +50,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.emigo.app.R
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.data.remote.dto.ReportReason
 import com.emigo.app.ui.components.emberButtonBrush
@@ -173,11 +175,11 @@ fun FriendProfileScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 HeroCircleButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = Color.White, modifier = Modifier.size(20.dp))
                 }
                 Box {
                     HeroCircleButton(onClick = { showOverflowMenu = true }) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.common_more_options), tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                     DropdownMenu(
                         expanded = showOverflowMenu,
@@ -205,7 +207,7 @@ fun FriendProfileScreen(
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        "Unfriend",
+                                        stringResource(R.string.friend_profile_unfriend),
                                         fontFamily = PublicSansFontFamily,
                                         fontSize = 14.5.sp,
                                         fontWeight = FontWeight.Bold,
@@ -224,7 +226,7 @@ fun FriendProfileScreen(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "Block",
+                                    stringResource(R.string.friend_profile_block),
                                     fontFamily = PublicSansFontFamily,
                                     fontSize = 14.5.sp,
                                     fontWeight = FontWeight.Bold,
@@ -242,7 +244,7 @@ fun FriendProfileScreen(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "Report",
+                                    stringResource(R.string.friend_profile_report),
                                     fontFamily = PublicSansFontFamily,
                                     fontSize = 14.5.sp,
                                     fontWeight = FontWeight.Bold,
@@ -296,7 +298,7 @@ fun FriendProfileScreen(
                     if (friend?.pinnedByMe == true) {
                         Icon(
                             Icons.Rounded.PushPin,
-                            contentDescription = "Pinned as partner",
+                            contentDescription = stringResource(R.string.friend_profile_pinned_as_partner),
                             tint = colors.glow,
                             modifier = Modifier.padding(start = 6.dp).size(16.dp),
                         )
@@ -314,11 +316,10 @@ fun FriendProfileScreen(
                 // most recent exchange was this account sending or the friend sending, so this
                 // can actually say who — a plain "Last sent" left that ambiguous.
                 friend?.lastActivityAt?.let { lastActivityAt ->
-                    val label = if (friend.lastActivityBySelf == true) {
-                        "You sent ${formatRelativeTime(lastActivityAt)}"
-                    } else {
-                        "Sent to you ${formatRelativeTime(lastActivityAt)}"
-                    }
+                    val label = stringResource(
+                        if (friend.lastActivityBySelf == true) R.string.friends_you_sent else R.string.friends_sent_to_you,
+                        formatRelativeTime(lastActivityAt),
+                    )
                     Text(
                         text = label,
                         fontFamily = PublicSansFontFamily,
@@ -418,9 +419,9 @@ private fun BlockConfirmDialog(
     onConfirm: () -> Unit,
 ) {
     val colors = EmberTheme.colors
-    EditDialogShell(title = "Block $displayName?", onDismiss = onDismiss) {
+    EditDialogShell(title = stringResource(R.string.friend_profile_block_title, displayName), onDismiss = onDismiss) {
         Text(
-            text = "They won't be able to find your profile, send you friend requests, or send you photos. This won't notify them.",
+            text = stringResource(R.string.friend_profile_block_warning),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.sp,
             color = colors.muted,
@@ -439,7 +440,7 @@ private fun BlockConfirmDialog(
                     .padding(vertical = 13.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Text(text = "Cancel", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
+                Text(text = stringResource(R.string.common_cancel), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
             }
             Row(
                 modifier = Modifier
@@ -453,7 +454,7 @@ private fun BlockConfirmDialog(
                 if (isBlocking) {
                     CircularProgressIndicator(modifier = Modifier.size(15.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text(text = "Block", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(text = stringResource(R.string.friend_profile_block), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
@@ -461,11 +462,11 @@ private fun BlockConfirmDialog(
 }
 
 private val REPORT_REASON_LABELS = listOf(
-    ReportReason.SPAM to "Spam",
-    ReportReason.HARASSMENT to "Harassment or bullying",
-    ReportReason.INAPPROPRIATE_CONTENT to "Inappropriate content",
-    ReportReason.FAKE_ACCOUNT to "Fake account",
-    ReportReason.OTHER to "Other",
+    ReportReason.SPAM to R.string.report_reason_spam,
+    ReportReason.HARASSMENT to R.string.report_reason_harassment,
+    ReportReason.INAPPROPRIATE_CONTENT to R.string.report_reason_inappropriate,
+    ReportReason.FAKE_ACCOUNT to R.string.report_reason_fake_account,
+    ReportReason.OTHER to R.string.report_reason_other,
 )
 
 /** Stays open through a successful submit (showing a brief confirmation in place of the reason
@@ -482,10 +483,10 @@ private fun ReportUserDialog(
     val colors = EmberTheme.colors
     var selectedReason by remember { mutableStateOf<ReportReason?>(null) }
 
-    EditDialogShell(title = if (reportSubmitted) "Report submitted" else "Report this account", onDismiss = onDismiss) {
+    EditDialogShell(title = stringResource(if (reportSubmitted) R.string.report_submitted_title else R.string.report_title), onDismiss = onDismiss) {
         if (reportSubmitted) {
             Text(
-                text = "Thanks, we'll look into it.",
+                text = stringResource(R.string.report_thanks),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 color = colors.muted,
@@ -500,17 +501,17 @@ private fun ReportUserDialog(
                     .padding(vertical = 13.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Text(text = "Done", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.accentText)
+                Text(text = stringResource(R.string.common_done), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.accentText)
             }
         } else {
             Text(
-                text = "What's wrong with this account?",
+                text = stringResource(R.string.report_question),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 color = colors.muted,
             )
             Column(modifier = Modifier.padding(top = 12.dp)) {
-                REPORT_REASON_LABELS.forEach { (reason, label) ->
+                REPORT_REASON_LABELS.forEach { (reason, labelRes) ->
                     val isSelected = selectedReason == reason
                     Row(
                         modifier = Modifier
@@ -533,7 +534,7 @@ private fun ReportUserDialog(
                             }
                         }
                         Text(
-                            text = label,
+                            text = stringResource(labelRes),
                             fontFamily = PublicSansFontFamily,
                             fontSize = 13.5.sp,
                             color = colors.cream,
@@ -557,7 +558,7 @@ private fun ReportUserDialog(
                     CircularProgressIndicator(modifier = Modifier.size(15.dp), color = colors.accentText, strokeWidth = 2.dp)
                 } else {
                     Text(
-                        text = "Submit report",
+                        text = stringResource(R.string.report_submit),
                         fontFamily = PublicSansFontFamily,
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
@@ -592,7 +593,7 @@ private fun FriendActions(
     ) {
         Icon(Icons.Rounded.PhotoCamera, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
         Text(
-            text = "Send a photo",
+            text = stringResource(R.string.friend_profile_send_photo),
             fontFamily = PublicSansFontFamily,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
@@ -622,7 +623,7 @@ private fun FriendActions(
                 modifier = Modifier.size(14.dp),
             )
             Text(
-                text = if (friend.pinnedByMe) "Pinned as partner" else "Pin as partner",
+                text = stringResource(if (friend.pinnedByMe) R.string.friend_profile_pinned_as_partner else R.string.friend_profile_pin_as_partner),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
@@ -659,7 +660,7 @@ private fun PendingRequestActions(
         } else {
             Icon(Icons.Rounded.TaskAlt, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
             Text(
-                text = "Accept",
+                text = stringResource(R.string.friend_profile_accept),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
@@ -685,7 +686,7 @@ private fun PendingRequestActions(
         } else {
             Icon(Icons.Rounded.Cancel, contentDescription = null, tint = colors.cream, modifier = Modifier.size(14.dp))
             Text(
-                text = "Decline",
+                text = stringResource(R.string.friend_profile_decline),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
@@ -745,7 +746,7 @@ private fun AddActions(viewModel: FriendProfileViewModel, pillShape: RoundedCorn
         } else {
             Icon(Icons.Rounded.PersonAdd, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(16.dp))
             Text(
-                text = "Add",
+                text = stringResource(R.string.common_add),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
@@ -776,7 +777,7 @@ private fun RequestedActions(viewModel: FriendProfileViewModel, pillShape: Round
         } else {
             Icon(Icons.Rounded.Cancel, contentDescription = null, tint = colors.mutedDim, modifier = Modifier.size(14.dp))
             Text(
-                text = "Cancel request",
+                text = stringResource(R.string.friend_profile_cancel_request),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,

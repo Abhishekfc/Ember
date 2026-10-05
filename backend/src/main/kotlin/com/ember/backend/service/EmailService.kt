@@ -44,7 +44,7 @@ class EmailService(
                 ),
             )
             val request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.resend.com/emails"))
+                .uri(URI.create(resendProperties.apiUrl))
                 .header("Authorization", "Bearer ${resendProperties.apiKey}")
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(payload))

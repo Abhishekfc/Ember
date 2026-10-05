@@ -38,16 +38,19 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.emigo.app.R
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.data.remote.dto.PendingFriendRequestDto
 import com.emigo.app.ui.components.TabScreenScaffold
 import com.emigo.app.ui.home.formatRelativeTime
+import com.emigo.app.ui.theme.EmberFixedColors
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.PublicSansFontFamily
 import dev.chrisbanes.haze.HazeState
@@ -91,7 +94,7 @@ fun FriendsScreen(
     val pinnedPartner = viewModel.friends.firstOrNull { it.pinnedByMe }
 
     TabScreenScaffold(
-        title = "Friends",
+        title = stringResource(R.string.friends_title),
         hazeState = hazeState,
         trailing = {
             // Same panel-toned circle, same 44dp size, as Home's header icons (ActivityBellButton
@@ -106,7 +109,7 @@ fun FriendsScreen(
                     modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.panel),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Rounded.PersonAdd, contentDescription = "Find people", tint = colors.cream, modifier = Modifier.size(24.dp))
+                    Icon(Icons.Rounded.PersonAdd, contentDescription = stringResource(R.string.friends_find_people), tint = colors.cream, modifier = Modifier.size(24.dp))
                 }
             }
         },
@@ -134,10 +137,10 @@ fun FriendsScreen(
                     .padding(horizontal = 16.dp, vertical = 13.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.Search, contentDescription = "Search", tint = colors.mutedDim, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.friends_search_icon_description), tint = colors.mutedDim, modifier = Modifier.size(16.dp))
                 Box(modifier = Modifier.padding(start = 10.dp).fillMaxWidth()) {
                     if (viewModel.searchQuery.isEmpty()) {
-                        Text(text = "Search friends", fontFamily = typography.body, fontSize = 13.5.sp, color = colors.mutedDim)
+                        Text(text = stringResource(R.string.friends_search_hint), fontFamily = typography.body, fontSize = 13.5.sp, color = colors.mutedDim)
                     }
                     BasicTextField(
                         value = viewModel.searchQuery,
@@ -188,7 +191,7 @@ fun FriendsScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         if (isSearching) {
                             Text(
-                                text = "No one matches \"${viewModel.searchQuery}\"",
+                                text = stringResource(R.string.friends_no_match, viewModel.searchQuery),
                                 fontFamily = typography.body,
                                 fontSize = 13.sp,
                                 color = colors.muted,
@@ -199,7 +202,7 @@ fun FriendsScreen(
                             // bar above is already hidden in this same state (see item("search")),
                             // so this is deliberately the one thing on screen.
                             Text(
-                                text = "No friends yet",
+                                text = stringResource(R.string.friends_empty),
                                 fontFamily = typography.body,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
@@ -223,7 +226,7 @@ fun FriendsScreen(
 
                 if (!isSearching && viewModel.pendingRequests.isNotEmpty()) {
                     item(key = "requests-header") {
-                        SectionLabel(text = "Added you · ${viewModel.pendingRequests.size}")
+                        SectionLabel(text = stringResource(R.string.friends_section_requests, viewModel.pendingRequests.size))
                     }
                     item(key = "requests-row") {
                         LazyRow(
@@ -242,7 +245,7 @@ fun FriendsScreen(
 
                 if (!isSearching && (pinnedPartner != null || viewModel.pendingRequests.isNotEmpty())) {
                     item(key = "friends-header") {
-                        SectionLabel(text = "My friends")
+                        SectionLabel(text = stringResource(R.string.friends_section_my_friends))
                     }
                 }
 
@@ -332,7 +335,7 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
     val cardShape = RoundedCornerShape(28.dp)
 
     Column(modifier = modifier) {
-        SectionLabel(text = "Your Emigo")
+        SectionLabel(text = stringResource(R.string.friends_section_your_emigo))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -393,12 +396,12 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
                         fontFamily = typography.display,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFBF8F3),
+                        color = EmberFixedColors.onPhotoText,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 3.dp)) {
                         Icon(Icons.Rounded.PushPin, contentDescription = null, tint = colors.glow, modifier = Modifier.size(11.dp))
                         Text(
-                            text = "Pinned partner",
+                            text = stringResource(R.string.friends_pinned_partner),
                             fontFamily = typography.body,
                             fontSize = 12.sp,
                             color = Color.White.copy(alpha = 0.8f),
@@ -408,7 +411,7 @@ private fun PinnedPartnerHero(friend: FriendSummaryDto, onClick: () -> Unit, mod
                 }
                 if (friend.streak > 0) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.LocalFireDepartment, contentDescription = "Streak", tint = colors.glow, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.LocalFireDepartment, contentDescription = stringResource(R.string.friends_streak_description), tint = colors.glow, modifier = Modifier.size(18.dp))
                         Text(
                             text = "${friend.streak}",
                             fontFamily = typography.body,
@@ -576,7 +579,7 @@ private fun FriendRow(
                 if (friend.pinnedByMe) {
                     Icon(
                         Icons.Rounded.PushPin,
-                        contentDescription = "Pinned",
+                        contentDescription = stringResource(R.string.friends_pinned_description),
                         tint = colors.glow,
                         modifier = Modifier.padding(start = 5.dp).size(11.dp),
                     )
@@ -587,8 +590,11 @@ private fun FriendRow(
                 // most recent exchange was this account sending or the friend sending, same
                 // reasoning as the Friend Profile screen's own identical wording.
                 text = friend.lastActivityAt?.let {
-                    if (friend.lastActivityBySelf == true) "You sent ${formatRelativeTime(it)}" else "Sent to you ${formatRelativeTime(it)}"
-                } ?: "No photos yet",
+                    stringResource(
+                        if (friend.lastActivityBySelf == true) R.string.friends_you_sent else R.string.friends_sent_to_you,
+                        formatRelativeTime(it),
+                    )
+                } ?: stringResource(R.string.friends_no_photos_yet),
                 fontFamily = typography.body,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Normal,
@@ -617,7 +623,7 @@ private fun FriendRow(
                         CircularProgressIndicator(modifier = Modifier.size(11.dp), color = colors.accentText, strokeWidth = 1.5.dp)
                     } else {
                         Text(
-                            text = "Restore streak",
+                            text = stringResource(R.string.friends_restore_streak),
                             fontFamily = typography.body,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -632,7 +638,7 @@ private fun FriendRow(
             isStreakAtRisk -> {
                 Icon(
                     Icons.Rounded.HourglassBottom,
-                    contentDescription = "Streak expiring soon",
+                    contentDescription = stringResource(R.string.friends_streak_expiring_description),
                     tint = colors.glow2,
                     modifier = Modifier.size(16.dp),
                 )
@@ -641,7 +647,7 @@ private fun FriendRow(
             // actually has one going.
             friend.streak > 0 -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.LocalFireDepartment, contentDescription = "Streak", tint = colors.glow, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Rounded.LocalFireDepartment, contentDescription = stringResource(R.string.friends_streak_description), tint = colors.glow, modifier = Modifier.size(14.dp))
                     Text(
                         text = "${friend.streak}",
                         fontFamily = typography.body,

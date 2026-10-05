@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -53,6 +54,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.emigo.app.R
 import com.emigo.app.ui.theme.PublicSansFontFamily
 
 /** The pill-shaped, gradient-filled call to action every auth step ends on ("Continue with
@@ -170,6 +172,14 @@ fun AuthTextField(
 ) {
     val colors = AuthPalette
     val shape = RoundedCornerShape(16.dp)
+    // One shared style for both the placeholder Text and the BasicTextField itself — Text merges
+    // in LocalTextStyle's own line-height/letter-spacing from the ambient theme, but
+    // BasicTextField uses exactly the TextStyle it's given with no such merge. Two separately
+    // built styles that otherwise look identical (same font/size/weight) can still resolve to
+    // different line heights because of that, which put the placeholder a couple pixels off from
+    // where the real typed text actually sits. Same TextStyle object, only the color swapped, is
+    // what guarantees they lay out identically.
+    val fieldTextStyle = TextStyle(fontFamily = PublicSansFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold)
 
     Row(
         modifier = modifier
@@ -182,13 +192,13 @@ fun AuthTextField(
     ) {
         Box(modifier = Modifier.weight(1f)) {
             if (value.isEmpty()) {
-                Text(text = placeholder, fontFamily = PublicSansFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.mutedDim)
+                Text(text = placeholder, style = fieldTextStyle.copy(color = colors.mutedDim))
             }
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = TextStyle(fontFamily = PublicSansFontFamily, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.cream),
+                textStyle = fieldTextStyle.copy(color = colors.cream),
                 cursorBrush = SolidColor(colors.glow),
                 visualTransformation = visualTransformation,
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
@@ -233,7 +243,7 @@ fun AuthPasswordField(
         trailingIcon = {
             Icon(
                 imageVector = if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                contentDescription = if (visible) "Hide password" else "Show password",
+                contentDescription = stringResource(if (visible) R.string.auth_hide_password else R.string.auth_show_password),
                 tint = colors.mutedDim,
                 modifier = Modifier
                     .padding(start = 10.dp)
@@ -256,7 +266,7 @@ fun AuthBackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.cream, modifier = Modifier.size(18.dp))
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back), tint = colors.cream, modifier = Modifier.size(18.dp))
     }
 }
 

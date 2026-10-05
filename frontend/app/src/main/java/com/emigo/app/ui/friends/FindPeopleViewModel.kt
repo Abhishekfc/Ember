@@ -1,5 +1,8 @@
 package com.emigo.app.ui.friends
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -14,7 +17,10 @@ import kotlinx.coroutines.launch
 private const val SEARCH_DEBOUNCE_MS = 300L
 private const val MIN_QUERY_LENGTH = 2
 
-class FindPeopleViewModel(private val repository: FriendRepository) : ViewModel() {
+class FindPeopleViewModel(
+    private val strings: StringProvider,
+    private val repository: FriendRepository,
+) : ViewModel() {
 
     var query by mutableStateOf("")
         private set
@@ -41,7 +47,7 @@ class FindPeopleViewModel(private val repository: FriendRepository) : ViewModel(
             errorMessage = null
             repository.searchUsers(value.trim()).fold(
                 onSuccess = { results = it },
-                onFailure = { errorMessage = it.message ?: "Search failed" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_search_failed) },
             )
             isSearching = false
         }
@@ -59,7 +65,7 @@ class FindPeopleViewModel(private val repository: FriendRepository) : ViewModel(
                         }
                     }
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't send request" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_send_request) },
             )
         }
     }
@@ -80,7 +86,7 @@ class FindPeopleViewModel(private val repository: FriendRepository) : ViewModel(
                         }
                     }
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't cancel request" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_cancel_request) },
             )
         }
     }

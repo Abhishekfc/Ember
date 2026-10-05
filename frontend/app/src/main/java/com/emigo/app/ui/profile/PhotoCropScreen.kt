@@ -52,6 +52,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.emigo.app.R
 import com.emigo.app.ui.theme.EmberTheme
 import java.io.File
 import java.io.FileOutputStream
@@ -161,7 +163,7 @@ fun PhotoCropScreen(
         }
 
         Text(
-            text = "Move and pinch to adjust",
+            text = stringResource(R.string.crop_hint),
             fontFamily = typography.body,
             fontSize = 13.sp,
             color = colors.muted,
@@ -179,7 +181,7 @@ fun PhotoCropScreen(
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onCancel),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.Close, contentDescription = "Cancel", tint = colors.cream, modifier = Modifier.size(18.dp))
+            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.common_cancel), tint = colors.cream, modifier = Modifier.size(18.dp))
         }
 
         Row(
@@ -209,7 +211,7 @@ fun PhotoCropScreen(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.Check, contentDescription = "Use photo", tint = colors.accentText, modifier = Modifier.size(26.dp))
+                Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.crop_use_photo_description), tint = colors.accentText, modifier = Modifier.size(26.dp))
             }
         }
     }

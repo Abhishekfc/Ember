@@ -1,5 +1,8 @@
 package com.emigo.app.ui.camera
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,6 +16,7 @@ import com.emigo.app.data.remote.dto.RecipientListDto
 import kotlinx.coroutines.launch
 
 class RecipientPickerViewModel(
+    private val strings: StringProvider,
     private val repository: FriendRepository,
     private val localCache: LocalListCache,
     initialSelectedFriendIds: Set<String>,
@@ -175,7 +179,7 @@ class RecipientPickerViewModel(
             }
             repository.getFriends(limit = ALL_FRIENDS_LIMIT).fold(
                 onSuccess = { page -> friends = page.items },
-                onFailure = { if (isFirstLoad) errorMessage = it.message ?: "Couldn't load your friends" },
+                onFailure = { if (isFirstLoad) errorMessage = it.message ?: strings.get(R.string.error_load_friends) },
             )
             if (isFirstLoad) isLoading = false
         }
@@ -189,8 +193,16 @@ class RecipientPickerViewModel(
         }
     }
 
+    // Re-freezes sortSnapshot to match — unlike toggleSelected (one friend at a time, which must
+    // stay frozen so the list doesn't reshuffle under a finger mid-pick), this is only ever called
+    // by the three "jump to a whole named group" actions below (Recent/Everyone/a saved list).
+    // Selecting one of those is a deliberate "show me this group" action, and the group's members
+    // should float to the top immediately to reflect that — without this, tapping Recent partway
+    // through a session correctly checked those rows but left them sitting wherever they already
+    // were, since sortSnapshot only otherwise refreshes once when the picker first opens.
     fun setSelection(ids: Set<String>) {
         selectedFriendIds = ids
+        sortSnapshot = ids
     }
 
     fun selectRecent() {
@@ -224,7 +236,7 @@ class RecipientPickerViewModel(
                     customLists = updated
                     localCache.write(LocalListCache.KEY_RECIPIENT_LISTS, updated)
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't save that list" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_save_list) },
             )
             isMutatingLists = false
         }
@@ -251,7 +263,7 @@ class RecipientPickerViewModel(
                 customLists = previous
                 activeFilterId = previousFilterId
                 localCache.write(LocalListCache.KEY_RECIPIENT_LISTS, previous)
-                errorMessage = it.message ?: "Couldn't delete that list"
+                errorMessage = it.message ?: strings.get(R.string.error_delete_list)
             }
             isMutatingLists = false
         }

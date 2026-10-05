@@ -52,17 +52,20 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.emigo.app.R
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.data.remote.dto.RecipientListDto
 import com.emigo.app.ui.components.NestedScreenHeader
 import com.emigo.app.ui.components.emberButtonBrush
 import com.emigo.app.ui.profile.EditDialogShell
+import com.emigo.app.ui.theme.EmberFixedColors
 import com.emigo.app.ui.theme.EmberRadii
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.PublicSansFontFamily
@@ -95,7 +98,7 @@ fun RecipientPickerScreen(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
-        NestedScreenHeader(onBack = onClose, title = "Send to")
+        NestedScreenHeader(onBack = onClose, title = stringResource(R.string.recipients_title))
 
         if (viewModel.friends.isNotEmpty()) {
             RecipientBadgeRow(
@@ -126,7 +129,7 @@ fun RecipientPickerScreen(
             )
             if (viewModel.selectedFriendIds.isEmpty()) {
                 Text(
-                    text = "Pick who goes in it first, then save",
+                    text = stringResource(R.string.recipients_pick_first),
                     fontFamily = PublicSansFontFamily,
                     fontSize = 11.sp,
                     color = colors.mutedDim,
@@ -150,7 +153,7 @@ fun RecipientPickerScreen(
                 viewModel.friends.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "Add friends first to send them photos.",
+                            text = stringResource(R.string.recipients_add_friends_first),
                             fontFamily = PublicSansFontFamily,
                             fontSize = 13.sp,
                             color = colors.muted,
@@ -168,7 +171,7 @@ fun RecipientPickerScreen(
                             horizontalArrangement = Arrangement.Center,
                         ) {
                             Text(
-                                text = "Find friends",
+                                text = stringResource(R.string.recipients_find_friends),
                                 fontFamily = PublicSansFontFamily,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
@@ -184,7 +187,11 @@ fun RecipientPickerScreen(
                 // than silently rendering nothing where a list used to be.
                 viewModel.visibleFriends.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = if (viewModel.searchQuery.isBlank()) "No one in this list" else "No one matches \"${viewModel.searchQuery}\"",
+                        text = if (viewModel.searchQuery.isBlank()) {
+                            stringResource(R.string.recipients_empty_list)
+                        } else {
+                            stringResource(R.string.friends_no_match, viewModel.searchQuery)
+                        },
                         fontFamily = PublicSansFontFamily,
                         fontSize = 13.sp,
                         color = colors.muted,
@@ -224,7 +231,7 @@ fun RecipientPickerScreen(
             horizontalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "Continue",
+                text = stringResource(R.string.common_continue),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
@@ -268,13 +275,13 @@ private fun RecipientBadgeRow(
     ) {
         if (viewModel.recentIds.isNotEmpty()) {
             RecipientBadge(
-                label = "Recent",
+                label = stringResource(R.string.recipients_badge_recent),
                 active = activeFilterId == RecipientPickerViewModel.RECENT_BADGE_ID,
                 onClick = viewModel::selectRecent,
             )
         }
         RecipientBadge(
-            label = "Everyone",
+            label = stringResource(R.string.recipients_badge_everyone),
             active = activeFilterId == RecipientPickerViewModel.EVERYONE_BADGE_ID,
             onClick = viewModel::selectEveryone,
         )
@@ -311,10 +318,10 @@ private fun RecipientSearchField(query: String, onQueryChange: (String) -> Unit)
             .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Filled.Search, contentDescription = "Search", tint = colors.mutedDim, modifier = Modifier.size(16.dp))
+        Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.friends_search_icon_description), tint = colors.mutedDim, modifier = Modifier.size(16.dp))
         Box(modifier = Modifier.padding(start = 10.dp).fillMaxWidth()) {
             if (query.isEmpty()) {
-                Text(text = "Search friends", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.mutedDim)
+                Text(text = stringResource(R.string.friends_search_hint), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.mutedDim)
             }
             BasicTextField(
                 value = query,
@@ -387,7 +394,7 @@ private fun AddListBadge(isActive: Boolean, onClick: () -> Unit) {
     ) {
         Icon(
             if (isActive) Icons.Rounded.Close else Icons.Rounded.Add,
-            contentDescription = if (isActive) "Cancel" else "Create a list",
+            contentDescription = stringResource(if (isActive) R.string.common_cancel else R.string.recipients_create_list),
             tint = if (isActive) colors.glow else colors.muted,
             modifier = Modifier.size(16.dp),
         )
@@ -435,7 +442,7 @@ private fun NewListBar(
     ) {
         Box(modifier = Modifier.weight(1f)) {
             if (name.isEmpty()) {
-                Text(text = "Name this list", fontFamily = PublicSansFontFamily, fontSize = 14.sp, color = colors.mutedDim)
+                Text(text = stringResource(R.string.recipients_name_list_hint), fontFamily = PublicSansFontFamily, fontSize = 14.sp, color = colors.mutedDim)
             }
             BasicTextField(
                 value = name,
@@ -449,7 +456,7 @@ private fun NewListBar(
             )
         }
         Text(
-            text = "Save",
+            text = stringResource(R.string.common_save),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
@@ -471,9 +478,9 @@ private fun DeleteListConfirmDialog(
     onConfirm: () -> Unit,
 ) {
     val colors = EmberTheme.colors
-    EditDialogShell(title = "Delete \"$listName\"?", onDismiss = onDismiss) {
+    EditDialogShell(title = stringResource(R.string.recipients_delete_list_title, listName), onDismiss = onDismiss) {
         Text(
-            text = "This can't be undone.",
+            text = stringResource(R.string.common_undo_warning),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.sp,
             color = colors.muted,
@@ -492,7 +499,7 @@ private fun DeleteListConfirmDialog(
                     .padding(vertical = 13.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Text(text = "Cancel", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
+                Text(text = stringResource(R.string.common_cancel), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
             }
             Row(
                 modifier = Modifier
@@ -503,7 +510,7 @@ private fun DeleteListConfirmDialog(
                     .padding(vertical = 13.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Text(text = "Delete", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(text = stringResource(R.string.common_delete), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
     }
@@ -512,7 +519,7 @@ private fun DeleteListConfirmDialog(
 // Dark red, matching the Delete Account button's own tone (SettingsScreen's
 // DeleteAccountDestructiveColor) rather than the lighter coral Unfriend/Block use elsewhere —
 // requested explicitly for delete actions in this app, not the softer "merely annoying" tone.
-private val DeleteListDestructiveColor = Color(0xFFB3261E)
+private val DeleteListDestructiveColor = EmberFixedColors.destructive
 
 /** A real circular avatar — photo if the friend has one, a bold initial if not — same fallback
  * language as the header's ProfileChip and every other "this is a person" spot in the app. The
@@ -560,7 +567,7 @@ internal fun RecipientRow(
                 if (friend.pinnedByMe) {
                     Icon(
                         Icons.Rounded.PushPin,
-                        contentDescription = "Pinned",
+                        contentDescription = stringResource(R.string.friends_pinned_description),
                         tint = colors.glow,
                         modifier = Modifier.padding(start = 5.dp).size(11.dp),
                     )
@@ -587,7 +594,7 @@ internal fun RecipientRow(
             contentAlignment = Alignment.Center,
         ) {
             if (isSelected) {
-                Icon(Icons.Rounded.Check, contentDescription = "Selected", tint = colors.accentText, modifier = Modifier.size(13.dp))
+                Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.recipients_selected_description), tint = colors.accentText, modifier = Modifier.size(13.dp))
             }
         }
     }

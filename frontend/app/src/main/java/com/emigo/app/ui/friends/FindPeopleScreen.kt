@@ -38,10 +38,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.emigo.app.R
 import com.emigo.app.data.remote.dto.FriendSearchResultDto
 import com.emigo.app.ui.components.InviteFriendsRow
 import com.emigo.app.ui.components.NestedScreenHeader
@@ -82,7 +84,7 @@ fun FindPeopleScreen(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
     ) {
-        NestedScreenHeader(onBack = onBack, title = "Find people")
+        NestedScreenHeader(onBack = onBack, title = stringResource(R.string.find_people_title))
 
         Row(
             modifier = Modifier
@@ -100,7 +102,7 @@ fun FindPeopleScreen(
             )
             Box(modifier = Modifier.padding(start = 9.dp).fillMaxWidth()) {
                 if (viewModel.query.isEmpty()) {
-                    Text(text = "Search by name or username", fontFamily = PublicSansFontFamily, fontSize = 13.sp, color = colors.mutedDim)
+                    Text(text = stringResource(R.string.find_people_search_hint), fontFamily = PublicSansFontFamily, fontSize = 13.sp, color = colors.mutedDim)
                 }
                 BasicTextField(
                     value = viewModel.query,
@@ -132,7 +134,7 @@ fun FindPeopleScreen(
                 !isActiveSearch -> FindPeopleNoResults()
 
                 viewModel.results.isEmpty() -> Text(
-                    text = "No one found.",
+                    text = stringResource(R.string.find_people_no_results),
                     fontFamily = typography.body,
                     fontSize = 13.sp,
                     color = colors.muted,
@@ -208,11 +210,11 @@ private fun FindPeopleRow(
                     .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(text = "Requested", fontFamily = PublicSansFontFamily, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.mutedDim)
+                Text(text = stringResource(R.string.find_people_requested), fontFamily = PublicSansFontFamily, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.mutedDim)
                 if (result.isPendingFromMe) {
                     Icon(
                         Icons.Rounded.Cancel,
-                        contentDescription = "Cancel request",
+                        contentDescription = stringResource(R.string.find_people_cancel_request_description),
                         tint = colors.mutedDim,
                         modifier = Modifier.padding(start = 6.dp).size(12.dp),
                     )
@@ -229,7 +231,7 @@ private fun FindPeopleRow(
             ) {
                 Icon(Icons.Rounded.PersonAdd, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(12.dp))
                 Text(
-                    text = "Add",
+                    text = stringResource(R.string.common_add),
                     fontFamily = PublicSansFontFamily,
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -253,13 +255,13 @@ private fun FindPeopleNoResults() {
 
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "Search for friends by name or username.",
+            text = stringResource(R.string.find_people_idle_hint),
             fontFamily = typography.body,
             fontSize = 13.sp,
             color = colors.muted,
         )
         Text(
-            text = "Not on Emigo yet? Invite them.",
+            text = stringResource(R.string.find_people_invite_hint),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,

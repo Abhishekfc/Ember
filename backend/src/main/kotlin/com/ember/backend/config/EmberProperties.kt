@@ -65,4 +65,5 @@ data class ModerationProperties(
 data class ResendProperties(
     val apiKey: String = "",
     val fromEmail: String = "Emigo <onboarding@resend.dev>",
+    val apiUrl: String = "https://api.resend.com/emails",
 )

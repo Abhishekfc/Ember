@@ -35,34 +35,33 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.emigo.app.AppLinks
+import com.emigo.app.R
+import com.emigo.app.openUrl
 import com.emigo.app.ui.components.LocalNavDockHeight
 import com.emigo.app.ui.components.TabScreenScaffold
+import com.emigo.app.ui.theme.EmberFixedColors
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.PublicSansFontFamily
 import com.emigo.app.ui.theme.ThemeKey
 import dev.chrisbanes.haze.HazeState
 
-/** Where "Help & Support" and "Send Feedback" open an email composer to — there's no dedicated
- * support inbox or feedback form yet, so both point at the same address for now. */
-private const val SUPPORT_EMAIL = "emigohq@gmail.com"
-
+/** "Help & Support" and "Send Feedback" both open an email composer to [AppLinks.SUPPORT_EMAIL] —
+ * there's no dedicated support inbox or feedback form yet. */
 private fun openSupportEmail(context: android.content.Context, subject: String) {
     val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")).apply {
-        putExtra(Intent.EXTRA_EMAIL, arrayOf(SUPPORT_EMAIL))
+        putExtra(Intent.EXTRA_EMAIL, arrayOf(AppLinks.SUPPORT_EMAIL))
         putExtra(Intent.EXTRA_SUBJECT, subject)
     }
     runCatching { context.startActivity(intent) }
 }
 
-private const val PRIVACY_POLICY_URL = "https://emigo.live/privacy-policy"
-
-private fun openPrivacyPolicy(context: android.content.Context) {
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL))) }
-}
+private fun openPrivacyPolicy(context: android.content.Context) = openUrl(context, AppLinks.PRIVACY_POLICY)
 
 /** Flat, straight on the screen's own background — no panel behind any row. Same language as
  * the Friends list: clarity comes from generous spacing and one consistent, quiet color accent
@@ -102,7 +101,7 @@ fun SettingsScreen(
     // No pull-to-refresh — nothing on this screen is fetched from the network, so there's
     // nothing for a pull gesture to refresh (isRefreshing/onRefresh both left at their defaults).
     TabScreenScaffold(
-        title = "Settings",
+        title = stringResource(R.string.settings_title),
         hazeState = hazeState,
         // Clears the floating nav dock rather than just the system nav bar behind it — same
         // reserve Home's own scrollable content uses, so Log out is reachable on every device,
@@ -127,7 +126,7 @@ fun SettingsScreen(
                     if (profilePhotoUrl != null) {
                         AsyncImage(
                             model = profilePhotoUrl,
-                            contentDescription = "Your profile photo",
+                            contentDescription = stringResource(R.string.settings_profile_photo_description),
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.size(56.dp).clip(CircleShape),
                         )
@@ -142,7 +141,7 @@ fun SettingsScreen(
                 }
                 Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
                     Text(
-                        text = displayName ?: "Your account",
+                        text = displayName ?: stringResource(R.string.settings_default_account_name),
                         fontFamily = PublicSansFontFamily,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
@@ -164,15 +163,15 @@ fun SettingsScreen(
 
         item(key = "gold") {
             FlatSettingsRow(
-                label = "Emigo Gold",
-                badge = if (isGoldMember) "Gold" else "Free",
+                label = stringResource(R.string.settings_gold_label),
+                badge = stringResource(if (isGoldMember) R.string.settings_badge_gold else R.string.settings_badge_free),
                 onClick = onGoldClick,
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
 
         item(key = "preferences-header") {
-            SectionLabel(text = "Preferences", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+            SectionLabel(text = stringResource(R.string.settings_section_preferences), modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
         }
         item(key = "notifications") {
             Row(
@@ -185,7 +184,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Notifications",
+                    text = stringResource(R.string.settings_notifications),
                     fontFamily = PublicSansFontFamily,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -212,42 +211,44 @@ fun SettingsScreen(
             }
         }
         item(key = "appearance") {
-            FlatSettingsRow("Appearance", currentTheme.displayName, onThemeClick)
+            FlatSettingsRow(stringResource(R.string.settings_appearance), stringResource(currentTheme.displayNameRes), onThemeClick)
         }
         item(key = "widget") {
             // widgetBadge reads "Anyone" (the default every account starts with) or a friend
             // count once a Gold subscriber has chosen who to feature — see WidgetSettingsScreen,
             // which is where choosing anyone at all is actually gated.
-            FlatSettingsRow("Widget", widgetBadge, onWidgetClick)
+            FlatSettingsRow(stringResource(R.string.settings_widget), widgetBadge, onWidgetClick)
         }
 
         item(key = "privacy-header") {
-            SectionLabel(text = "Privacy", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+            SectionLabel(text = stringResource(R.string.settings_section_privacy), modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
         }
         item(key = "blocked") {
-            FlatSettingsRow("Blocked accounts", null, onBlockedUsersClick)
+            FlatSettingsRow(stringResource(R.string.settings_blocked_accounts), null, onBlockedUsersClick)
         }
         item(key = "privacy-policy") {
-            FlatSettingsRow("Privacy policy", null, { openPrivacyPolicy(context) })
+            FlatSettingsRow(stringResource(R.string.settings_privacy_policy), null, { openPrivacyPolicy(context) })
         }
 
         item(key = "support-header") {
-            SectionLabel(text = "Support", modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+            SectionLabel(text = stringResource(R.string.settings_section_support), modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
         }
         item(key = "help") {
-            FlatSettingsRow("Help & support", null, { openSupportEmail(context, "Emigo support") })
+            val supportSubject = stringResource(R.string.settings_support_email_subject)
+            FlatSettingsRow(stringResource(R.string.settings_help_support), null, { openSupportEmail(context, supportSubject) })
         }
         item(key = "feedback") {
-            FlatSettingsRow("Send feedback", null, { openSupportEmail(context, "Emigo feedback") })
+            val feedbackSubject = stringResource(R.string.settings_feedback_email_subject)
+            FlatSettingsRow(stringResource(R.string.settings_send_feedback), null, { openSupportEmail(context, feedbackSubject) })
         }
         item(key = "about") {
-            FlatSettingsRow("About Emigo", versionName, null)
+            FlatSettingsRow(stringResource(R.string.settings_about), versionName, null)
         }
 
         item(key = "other") {
             // Deliberately generic — what's actually inside (Delete account) isn't named here at
             // all, so it's not sitting in front of the user every time this screen opens.
-            FlatSettingsRow("Other", null, onOtherClick)
+            FlatSettingsRow(stringResource(R.string.settings_other), null, onOtherClick)
         }
 
         item(key = "logout") {
@@ -265,13 +266,13 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null, tint = Color(0xFFB3261E), modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null, tint = EmberFixedColors.destructive, modifier = Modifier.size(16.dp))
                 Text(
-                    text = "Log out",
+                    text = stringResource(R.string.settings_log_out),
                     fontFamily = PublicSansFontFamily,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFB3261E),
+                    color = EmberFixedColors.destructive,
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }

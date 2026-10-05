@@ -1,5 +1,8 @@
 package com.emigo.app.ui.settings
 
+import androidx.compose.ui.res.stringResource
+import com.emigo.app.R
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -78,9 +81,9 @@ fun AppIconScreen(
             .navigationBarsPadding(),
     ) {
         Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp)) {
-            NestedScreenHeader(onBack = onBack, title = "App icon")
+            NestedScreenHeader(onBack = onBack, title = stringResource(R.string.app_icon_title))
             Text(
-                text = "Changes how Emigo looks on your home screen",
+                text = stringResource(R.string.app_icon_subtitle),
                 fontFamily = typography.body,
                 fontSize = 12.sp,
                 color = colors.muted,
@@ -132,9 +135,9 @@ fun AppIconScreen(
         ) {
             Text(
                 text = when {
-                    needsUpgrade -> "Get Emigo Gold"
-                    canApply -> "Apply icon"
-                    else -> "Applied"
+                    needsUpgrade -> stringResource(R.string.camera_get_gold)
+                    canApply -> stringResource(R.string.app_icon_apply)
+                    else -> stringResource(R.string.app_icon_applied)
                 },
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
@@ -218,20 +221,20 @@ private fun AppIconChip(
                         .background(colors.glow),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Filled.Check, contentDescription = "Selected", tint = colors.accentText, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.recipients_selected_description), tint = colors.accentText, modifier = Modifier.size(14.dp))
                 }
             }
         }
 
         Text(
-            text = option.displayName,
+            text = stringResource(option.displayNameRes),
             fontFamily = PublicSansFontFamily,
             fontSize = 12.5.sp,
             color = colors.cream,
             modifier = Modifier.padding(top = 8.dp),
         )
         Text(
-            text = if (option.locked) "Emigo Gold" else "Free",
+            text = stringResource(if (option.locked) R.string.gold_title else R.string.settings_badge_free),
             fontFamily = PublicSansFontFamily,
             fontSize = 10.5.sp,
             color = if (option.locked) colors.glow else colors.mutedDim,

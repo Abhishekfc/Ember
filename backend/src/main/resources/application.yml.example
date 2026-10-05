@@ -92,6 +92,7 @@ ember:
     # Resend's own shared sandbox sender, works immediately with no domain setup. Switch to a
     # verified @emigo.live address once that's set up on Resend's side for real branding.
     from-email: ${RESEND_FROM_EMAIL:Emigo <onboarding@resend.dev>}
+    api-url: ${RESEND_API_URL:https://api.resend.com/emails}
 
 logging:
   level:

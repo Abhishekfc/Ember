@@ -94,7 +94,25 @@ class UserService(
             r2StorageService.delete(previousKey)
         }
 
+        evictFriendCachesFor(userId)
         return user.toProfile()
+    }
+
+    /** A friend's cached [com.ember.backend.dto.FriendSummary] (their avatar URL, display name)
+     * is keyed under *this* method's caller's own friends, not the account that just changed — so
+     * a profile-photo or name change has to reach out and evict every friend's own cache entry,
+     * the same way [deleteAccount] already does. Without this, a friend's Friends screen only
+     * ever saw the new photo once its cache entry happened to expire on its own (see
+     * CacheConfig's 30s TTL, meant as a safety net for exactly this, not the primary path) rather
+     * than immediately. */
+    private fun evictFriendCachesFor(userId: UUID) {
+        val friendIds = friendshipRepository.findAllForUserWithStatus(userId, FriendshipStatus.ACCEPTED)
+            .map { if (it.requester.id == userId) it.addressee.id else it.requester.id }
+        friendIds.forEach { friendId ->
+            cacheManager.getCache("friends")?.evict(friendId.toString())
+            cacheManager.getCache("feed")?.evict(friendId.toString())
+            cacheManager.getCache("activity")?.evict(friendId.toString())
+        }
     }
 
     @Transactional
@@ -116,6 +134,7 @@ class UserService(
 
         userRepository.save(user)
         logger.info("Profile updated: userId={}", userId)
+        evictFriendCachesFor(userId)
         return user.toProfile()
     }
 

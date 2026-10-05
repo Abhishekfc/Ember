@@ -52,12 +52,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.emigo.app.AppLinks
+import com.emigo.app.R
 import com.emigo.app.data.GoldPeriod
 import com.emigo.app.data.GoldPlan
+import com.emigo.app.openUrl
 import com.emigo.app.ui.auth.AuthPalette
 import com.emigo.app.ui.components.NestedScreenHeader
 import com.emigo.app.ui.theme.EmberRadii
@@ -131,10 +135,10 @@ fun EmberGoldScreen(
     }
 
     val perks = listOf(
-        GoldPerk(Icons.Rounded.Restore, "Restore your streak", "Bring back a streak that slipped past midnight"),
-        GoldPerk(Icons.Rounded.Palette, "Exclusive themes", "Unlock Aurora, Cyber, Botanica, and Frost looks"),
-        GoldPerk(Icons.Rounded.PhotoLibrary, "Send from your gallery", "Share any photo, not just what you capture live"),
-        GoldPerk(Icons.Rounded.Widgets, "Choose who's on your widget", "Pick exactly whose photos always show on your home screen"),
+        GoldPerk(Icons.Rounded.Restore, stringResource(R.string.gold_perk_restore_streak_title), stringResource(R.string.gold_perk_restore_streak_detail)),
+        GoldPerk(Icons.Rounded.Palette, stringResource(R.string.gold_perk_themes_title), stringResource(R.string.gold_perk_themes_detail)),
+        GoldPerk(Icons.Rounded.PhotoLibrary, stringResource(R.string.gold_perk_gallery_title), stringResource(R.string.gold_perk_gallery_detail)),
+        GoldPerk(Icons.Rounded.Widgets, stringResource(R.string.gold_perk_widget_title), stringResource(R.string.gold_perk_widget_detail)),
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -182,7 +186,7 @@ fun EmberGoldScreen(
             }
 
             Text(
-                text = "Emigo Gold",
+                text = stringResource(R.string.gold_title),
                 fontFamily = colors.display,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Bold,
@@ -190,7 +194,7 @@ fun EmberGoldScreen(
                 modifier = Modifier.padding(top = 20.dp),
             )
             Text(
-                text = if (state.isGold) "Thank you for being an Emigo Gold member" else "A little extra glow for your favorite people",
+                text = stringResource(if (state.isGold) R.string.gold_subtitle_member else R.string.gold_subtitle_visitor),
                 fontFamily = colors.body,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
@@ -262,12 +266,7 @@ fun EmberGoldScreen(
             onUpgrade = { showPlanSheet = true },
             onManage = {
                 val productId = state.selectedProductId ?: state.plans.firstOrNull()?.productId
-                val uri = if (productId != null) {
-                    "https://play.google.com/store/account/subscriptions?sku=$productId&package=${context.packageName}"
-                } else {
-                    "https://play.google.com/store/account/subscriptions"
-                }
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri))) }
+                openUrl(context, AppLinks.playSubscription(productId, context.packageName))
             },
             onDone = onBack,
         )
@@ -350,7 +349,7 @@ private fun GoldPlanSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Choose your plan",
+                    text = stringResource(R.string.gold_choose_plan),
                     fontFamily = colors.display,
                     fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
@@ -359,7 +358,7 @@ private fun GoldPlanSheet(
                 )
                 Icon(
                     Icons.Filled.Close,
-                    contentDescription = "Close",
+                    contentDescription = stringResource(R.string.gold_close),
                     tint = colors.mutedDim,
                     modifier = Modifier
                         .size(20.dp)
@@ -381,7 +380,7 @@ private fun GoldPlanSheet(
                         plan = plan,
                         selected = plan.productId == state.selectedProductId,
                         savingsLabel = if (plan.period == GoldPeriod.YEARLY && state.yearlySavingsFraction != null) {
-                            "Save ${(state.yearlySavingsFraction * 100).roundToInt()}%"
+                            stringResource(R.string.gold_save_percent, (state.yearlySavingsFraction * 100).roundToInt())
                         } else null,
                         onClick = { onSelectPlan(plan.productId) },
                     )
@@ -390,10 +389,10 @@ private fun GoldPlanSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
             val label = when {
-                state.verifying -> "Confirming…"
-                state.purchaseInFlight -> "Opening Google Play…"
-                state.pendingPayment -> "Payment pending"
-                else -> "Continue"
+                state.verifying -> stringResource(R.string.gold_button_confirming)
+                state.purchaseInFlight -> stringResource(R.string.gold_button_opening_play)
+                state.pendingPayment -> stringResource(R.string.gold_button_payment_pending)
+                else -> stringResource(R.string.gold_button_continue)
             }
             FooterButton(
                 text = label,
@@ -402,7 +401,7 @@ private fun GoldPlanSheet(
                 showSpinner = state.purchaseInFlight || state.verifying,
             )
 
-            val caption = state.error ?: "Cancel anytime in Google Play"
+            val caption = state.error ?: stringResource(R.string.gold_caption_cancel_anytime)
             Text(
                 text = caption,
                 fontFamily = colors.body,
@@ -438,7 +437,7 @@ private fun PlanRow(
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (plan.period == GoldPeriod.YEARLY) "Yearly" else "Monthly",
+                    text = stringResource(if (plan.period == GoldPeriod.YEARLY) R.string.gold_plan_yearly else R.string.gold_plan_monthly),
                     fontFamily = colors.body,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -463,7 +462,7 @@ private fun PlanRow(
             }
         }
         Text(
-            text = plan.formattedPrice + if (plan.period == GoldPeriod.YEARLY) " / yr" else " / mo",
+            text = plan.formattedPrice + stringResource(if (plan.period == GoldPeriod.YEARLY) R.string.gold_per_year_suffix else R.string.gold_per_month_suffix),
             fontFamily = colors.body,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
@@ -482,9 +481,9 @@ private fun GoldFooter(
     val colors = GoldPalette
 
     if (state.isGold) {
-        FooterButton(text = "Manage subscription", onClick = onManage)
+        FooterButton(text = stringResource(R.string.gold_button_manage), onClick = onManage)
         Text(
-            text = "You're on Emigo Gold",
+            text = stringResource(R.string.gold_member_status),
             fontFamily = colors.body,
             fontSize = 11.5.sp,
             fontWeight = FontWeight.SemiBold,
@@ -499,12 +498,12 @@ private fun GoldFooter(
     }
 
     val label = when {
-        state.loadingPlans -> "Loading…"
-        state.billingUnavailable -> "Not available yet"
-        state.verifying -> "Confirming…"
-        state.purchaseInFlight -> "Opening Google Play…"
-        state.pendingPayment -> "Payment pending"
-        else -> "Upgrade to Gold"
+        state.loadingPlans -> stringResource(R.string.gold_button_loading)
+        state.billingUnavailable -> stringResource(R.string.gold_button_unavailable)
+        state.verifying -> stringResource(R.string.gold_button_confirming)
+        state.purchaseInFlight -> stringResource(R.string.gold_button_opening_play)
+        state.pendingPayment -> stringResource(R.string.gold_button_payment_pending)
+        else -> stringResource(R.string.gold_button_upgrade)
     }
     val enabled = state.canBuy
     FooterButton(
@@ -516,9 +515,9 @@ private fun GoldFooter(
 
     val caption = when {
         state.error != null -> state.error
-        state.pendingPayment -> "Payment pending — Gold unlocks once it clears"
-        state.billingUnavailable -> "Check back soon"
-        else -> "Cancel anytime in Google Play"
+        state.pendingPayment -> stringResource(R.string.gold_caption_payment_pending)
+        state.billingUnavailable -> stringResource(R.string.gold_caption_check_back)
+        else -> stringResource(R.string.gold_caption_cancel_anytime)
     }
     Text(
         text = caption,

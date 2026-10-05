@@ -1,3 +1,447 @@
 <resources>
     <string name="app_name">Emigo</string>
+
+    <!-- Shared -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_save">Save</string>
+    <string name="common_add">Add</string>
+    <string name="common_undo_warning">This can\'t be undone.</string>
+    <string name="common_continue">Continue</string>
+    <string name="common_close">Close</string>
+    <string name="common_more_options">More options</string>
+    <string name="common_back">Back</string>
+    <string name="common_done">Done</string>
+
+    <!-- Relative time -->
+    <string name="time_just_now">just now</string>
+    <string name="time_yesterday">yesterday</string>
+    <string name="time_expiring">expiring</string>
+    <string name="time_minutes_ago">%1$dm ago</string>
+    <string name="time_hours_ago">%1$dh ago</string>
+    <string name="time_days_ago">%1$dd ago</string>
+    <string name="time_minutes_left">%1$dm left</string>
+    <string name="time_hours_left">%1$dh left</string>
+
+    <!-- Activity -->
+    <string name="activity_title">Activity</string>
+    <string name="activity_retry">Tap to retry</string>
+    <string name="activity_day_earlier">Earlier</string>
+    <string name="activity_day_today">Today</string>
+    <string name="activity_day_yesterday">Yesterday</string>
+    <string name="activity_empty_title">Nothing here yet</string>
+    <string name="activity_empty_detail">Send or receive a photo and it\'ll show up here</string>
+
+    <!-- App icon -->
+    <string name="app_icon_title">App icon</string>
+    <string name="app_icon_subtitle">Changes how Emigo looks on your home screen</string>
+    <string name="app_icon_apply">Apply icon</string>
+    <string name="app_icon_applied">Applied</string>
+    <string name="app_icon_name_default">Default</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_camera">Camera</string>
+
+    <!-- Widget settings and widget -->
+    <string name="widget_settings_subtitle">Choose whose photos always show on your home-screen widget</string>
+    <string name="widget_settings_add_friends_first">Add friends first to feature them on your widget.</string>
+    <string name="widget_badge_anyone">Anyone</string>
+    <plurals name="widget_badge_friends">
+        <item quantity="one">%1$d friend</item>
+        <item quantity="other">%1$d friends</item>
+    </plurals>
+    <string name="widget_waiting_for_photo">Waiting for a photo from your chosen friends</string>
+    <string name="widget_open_app">Open the app to see friends\' photos here</string>
+
+    <!-- Blocked accounts -->
+    <string name="blocked_subtitle">They can\'t find your profile, send you requests, or send you photos</string>
+    <string name="blocked_empty">Nobody\'s blocked right now.</string>
+    <string name="blocked_unblock">Unblock</string>
+
+    <!-- Gallery download errors -->
+    <string name="gallery_create_failed">Couldn\'t create a gallery entry</string>
+    <string name="gallery_write_failed">Couldn\'t write image data</string>
+
+    <!-- Error messages shown when a request fails with no message of its own -->
+    <string name="error_something_went_wrong">Something went wrong</string>
+    <string name="error_load_friends">Couldn\'t load your friends</string>
+    <string name="error_accept_request">Couldn\'t accept request</string>
+    <string name="error_decline_request">Couldn\'t decline request</string>
+    <string name="error_send_request">Couldn\'t send request</string>
+    <string name="error_cancel_request">Couldn\'t cancel request</string>
+    <string name="error_restore_streak">Couldn\'t restore that streak</string>
+    <string name="error_pin">Couldn\'t update pin</string>
+    <string name="error_remove_friend">Couldn\'t remove friend</string>
+    <string name="error_block">Couldn\'t block this person</string>
+    <string name="error_report">Couldn\'t submit report</string>
+    <string name="error_search_failed">Search failed</string>
+    <string name="error_load_feed">Couldn\'t load your feed</string>
+    <string name="error_load_activity">Couldn\'t load activity</string>
+    <string name="error_load_blocked">Couldn\'t load blocked accounts</string>
+    <string name="error_unblock">Couldn\'t unblock</string>
+    <string name="error_load_sent">Couldn\'t load your sent photos</string>
+    <string name="error_unsend">Couldn\'t unsend that photo</string>
+    <string name="error_save_list">Couldn\'t save that list</string>
+    <string name="error_delete_list">Couldn\'t delete that list</string>
+    <string name="error_load_profile">Couldn\'t load your profile</string>
+    <string name="error_update_profile_photo">Couldn\'t update your profile photo</string>
+    <string name="error_save_name">Couldn\'t save your name</string>
+    <string name="error_save_username">Couldn\'t save your username</string>
+    <string name="error_change_password">Couldn\'t change your password</string>
+    <string name="error_username_too_short">Username must be at least 3 characters</string>
+    <string name="error_username_pick_available">Pick an available username first</string>
+
+    <!-- Sign-in and sign-up validation -->
+    <string name="login_error_email_taken">That email already has an Emigo account.</string>
+    <string name="login_error_fill_all">Please fill in every field</string>
+    <string name="login_error_invalid_email">Enter a valid email address</string>
+    <string name="login_error_bad_credentials">Incorrect email or password</string>
+    <string name="login_error_check_details">Please check your details</string>
+    <string name="login_error_first_name">Please enter your first name</string>
+    <string name="verify_resent">Verification email sent.</string>
+    <string name="verify_resend_failed">Couldn\'t send that. Please try again.</string>
+    <string name="verify_still_unverified">Still not verified. Check your inbox and spam folder.</string>
+
+    <!-- Profile validation -->
+    <string name="profile_error_name_empty">Name can\'t be empty</string>
+    <string name="profile_error_current_password">Enter your current password</string>
+    <string name="profile_error_new_password_short">New password must be at least 8 characters</string>
+    <string name="profile_error_password_mismatch">New passwords don\'t match</string>
+
+    <!-- Camera -->
+    <string name="camera_error_select_friend">Select at least one friend first</string>
+    <string name="camera_error_queue">Couldn\'t queue your photo — please try again</string>
+    <string name="camera_error_save">Couldn\'t save your photo — please try again</string>
+
+    <!-- Home greeting -->
+    <string name="home_greeting_morning">Good morning</string>
+    <string name="home_greeting_afternoon">Good afternoon</string>
+    <string name="home_greeting_evening">Good evening</string>
+
+    <!-- Theme -->
+    <string name="theme_title">Theme</string>
+    <string name="theme_subtitle">Applies to the app and your widgets</string>
+    <string name="theme_apply">Apply theme</string>
+    <string name="theme_badge_default">Default</string>
+    <string name="theme_name_cream">Cream</string>
+    <string name="theme_name_dusk">Dusk</string>
+    <string name="theme_name_blaze">Blaze</string>
+    <string name="theme_name_noir">Noir</string>
+    <string name="theme_name_aurora">Aurora</string>
+    <string name="theme_name_cyber">Cyber</string>
+    <string name="theme_name_botanica">Botanica</string>
+    <string name="theme_name_ember">Ember</string>
+    <string name="theme_name_frost">Frost</string>
+
+    <!-- Misc labels -->
+    <string name="profile_row_name">Name</string>
+    <string name="profile_row_username">Username</string>
+    <string name="profile_row_picture">Profile picture</string>
+    <string name="home_mode_moments">Moments</string>
+    <string name="recipients_badge_recent">Recent</string>
+    <string name="recipients_badge_everyone">Everyone</string>
+    <string name="widget_settings_anyone">Anyone (most recent)</string>
+
+    <!-- Notification channels -->
+    <string name="channel_new_photos_name">New photos</string>
+    <string name="channel_new_photos_description">A friend sent you a new photo</string>
+    <string name="channel_streaks_name">Streaks</string>
+    <string name="channel_streaks_description">When a streak with a friend is about to break, or just did</string>
+
+    <!-- Push notifications -->
+    <string name="push_new_photo_title">New photo from %1$s</string>
+    <string name="push_new_photo_text">Tap to view</string>
+    <string name="push_streak_broke_title">Your streak with %1$s broke</string>
+    <string name="push_streak_broke_text">Restore it before it\'s gone for good</string>
+
+    <!-- Gold purchase errors -->
+    <string name="gold_error_plan_unavailable">This plan isn\'t available right now</string>
+    <string name="gold_error_already_subscribed">You already have a subscription. Try reopening the app.</string>
+    <string name="gold_error_confirm">Couldn\'t confirm your purchase</string>
+
+    <!-- My profile -->
+    <string name="profile_section_account">Account</string>
+    <string name="profile_not_editable_description">Not editable</string>
+    <string name="profile_name_title">Your name</string>
+    <string name="profile_name_subtitle">This is the name your friends will see.</string>
+    <string name="profile_username_title">Your username</string>
+    <string name="profile_username_subtitle">Used to find and tag you around the app.</string>
+    <string name="profile_username_available">Available</string>
+    <string name="profile_username_taken">Already taken</string>
+    <string name="profile_password_title">Change password</string>
+    <string name="profile_password_subtitle">Use at least 8 characters. You\'ll stay signed in on this device.</string>
+    <string name="profile_current_password_hint">Current password</string>
+    <string name="profile_new_password_hint">New password</string>
+    <string name="profile_confirm_password_hint">Confirm new password</string>
+    <string name="profile_password_changed">Password changed</string>
+
+    <!-- Profile photo crop -->
+    <string name="crop_hint">Move and pinch to adjust</string>
+    <string name="crop_use_photo_description">Use photo</string>
+
+    <!-- Friend profile -->
+    <string name="friend_profile_unfriend">Unfriend</string>
+    <string name="friend_profile_block">Block</string>
+    <string name="friend_profile_report">Report</string>
+    <string name="friend_profile_pinned_as_partner">Pinned as partner</string>
+    <string name="friend_profile_pin_as_partner">Pin as partner</string>
+    <string name="friend_profile_block_title">Block %1$s?</string>
+    <string name="friend_profile_block_warning">They won\'t be able to find your profile, send you friend requests, or send you photos. This won\'t notify them.</string>
+    <string name="friend_profile_send_photo">Send a photo</string>
+    <string name="friend_profile_accept">Accept</string>
+    <string name="friend_profile_decline">Decline</string>
+    <string name="friend_profile_cancel_request">Cancel request</string>
+    <string name="report_title">Report this account</string>
+    <string name="report_submitted_title">Report submitted</string>
+    <string name="report_thanks">Thanks, we\'ll look into it.</string>
+    <string name="report_question">What\'s wrong with this account?</string>
+    <string name="report_submit">Submit report</string>
+    <string name="report_reason_spam">Spam</string>
+    <string name="report_reason_harassment">Harassment or bullying</string>
+    <string name="report_reason_inappropriate">Inappropriate content</string>
+    <string name="report_reason_fake_account">Fake account</string>
+    <string name="report_reason_other">Other</string>
+
+    <!-- Home -->
+    <string name="home_connect_error">Couldn\'t connect · Tap to retry</string>
+    <string name="home_card_empty_with_friends">Nothing shared yet. Their photos land here the moment they post, or you can send the first one.</string>
+    <string name="home_card_empty_no_friends">Once you\'re connected, their photos show up right here.</string>
+    <string name="home_activity_description">Activity</string>
+    <string name="home_profile_description">Your profile</string>
+    <string name="home_card_for_every_friend">A card for every friend</string>
+    <string name="home_card_once_sharing">Once your friends start sharing, their newest photo shows up here.</string>
+    <string name="home_add_friends_prompt">Add friends to start\nsharing moments</string>
+    <string name="home_add_friend_description">Add friend</string>
+
+    <!-- Camera -->
+    <string name="camera_saved_to_memories">Saved to Memories</string>
+    <string name="camera_save_to_memories">Save to Memories</string>
+    <string name="camera_sent_photos_description">Sent photos</string>
+    <string name="camera_flash_off">Turn flash off</string>
+    <string name="camera_flash_on">Turn flash on</string>
+    <string name="camera_permission_needed">Emigo needs camera access to take photos.</string>
+    <string name="camera_pick_from_gallery">Pick from gallery</string>
+    <string name="camera_flip">Flip camera</string>
+    <string name="camera_swipe_hint">Swipe to explore</string>
+    <string name="camera_captured_photo">Captured photo</string>
+    <string name="camera_add_text">Add text</string>
+    <string name="camera_send">Send</string>
+    <string name="camera_retake">Retake</string>
+    <string name="camera_gold_perk">Sending photos from your gallery is an Emigo Gold perk</string>
+    <string name="camera_get_gold">Get Emigo Gold</string>
+    <string name="camera_maybe_later">Maybe later</string>
+    <string name="camera_capture_failed">Couldn\'t capture photo</string>
+
+    <!-- Recipient picker -->
+    <string name="recipients_title">Send to</string>
+    <string name="recipients_pick_first">Pick who goes in it first, then save</string>
+    <string name="recipients_add_friends_first">Add friends first to send them photos.</string>
+    <string name="recipients_find_friends">Find friends</string>
+    <string name="recipients_empty_list">No one in this list</string>
+    <string name="recipients_create_list">Create a list</string>
+    <string name="recipients_name_list_hint">Name this list</string>
+    <string name="recipients_delete_list_title">Delete \"%1$s\"?</string>
+    <string name="recipients_selected_description">Selected</string>
+
+    <!-- Sent photos -->
+    <string name="sent_title">Sent</string>
+    <string name="sent_intro">Photos you\'ve sent in the last 24 hours. Tap one to unsend it.</string>
+    <string name="sent_empty">Nothing sent in the last 24 hours.</string>
+    <string name="sent_time_description">Sent %1$s</string>
+    <string name="sent_photo_description">Sent photo</string>
+    <string name="sent_unsend">Unsend</string>
+    <string name="sent_remaining_to_unsend">%1$s to unsend</string>
+    <string name="sent_unsend_title">Unsend this photo?</string>
+    <string name="sent_unsend_warning">This can\'t be undone. It\'ll be removed from their feed too.</string>
+
+    <!-- Auth: sign in, reset password, sign up -->
+    <string name="auth_login_title">Welcome back</string>
+    <string name="auth_login_identifier_hint">Email or username</string>
+    <string name="auth_password_hint">Password</string>
+    <string name="auth_forgot_password">Forgot password?</string>
+    <string name="auth_login_button">Log in</string>
+    <string name="auth_reset_title">Reset your password</string>
+    <string name="auth_reset_description">Enter your email and we\'ll send you a link to set a new password.</string>
+    <string name="auth_email_hint">Email</string>
+    <string name="auth_reset_sent">If that email has an account, we\'ve sent a link to reset your password.</string>
+    <string name="auth_reset_send_button">Send reset link</string>
+    <string name="auth_register_email_title">What\'s your email?</string>
+    <string name="auth_register_email_hint">you@email.com</string>
+    <string name="auth_legal_prefix">By tapping Continue, you\'re agreeing to our</string>
+    <string name="auth_legal_terms">Terms of Service</string>
+    <string name="auth_legal_and">and</string>
+    <string name="auth_legal_privacy">Privacy Policy</string>
+    <string name="auth_password_create_title">Create a password</string>
+    <string name="auth_password_rule">At least 8 characters</string>
+    <string name="auth_create_account_button">Create account</string>
+    <string name="auth_name_title">What\'s your name?</string>
+    <string name="auth_first_name_hint">First name</string>
+    <string name="auth_last_name_hint">Last name (optional)</string>
+    <string name="auth_username_title">Pick a username</string>
+    <string name="auth_username_hint">Username</string>
+    <string name="auth_username_checking">Checking availability…</string>
+    <string name="auth_username_available">Username available</string>
+    <string name="auth_username_taken">Username already taken</string>
+
+    <!-- Auth: email verification -->
+    <string name="auth_verify_failed_title">Verification failed</string>
+    <string name="auth_verify_check_inbox">Check your inbox</string>
+    <string name="auth_verify_expired_detail">That link wasn\'t confirmed in time. Start again to get a new one.</string>
+    <string name="auth_verify_sent_detail">We sent a verification link to</string>
+    <string name="auth_verify_link_expired">Link expired</string>
+    <string name="auth_verify_expires_in">Expires in %1$d:%2$02d</string>
+    <string name="auth_verify_done_button">I\'ve verified</string>
+    <string name="auth_verify_try_again_later">Try again later</string>
+    <string name="auth_verify_resend">Resend email</string>
+    <string name="auth_verify_resend_in">Resend in %1$d:%2$02d</string>
+    <string name="auth_show_password">Show password</string>
+    <string name="auth_hide_password">Hide password</string>
+
+    <!-- Auth: welcome screen -->
+    <string name="welcome_tagline">Your people. Always close.</string>
+    <string name="welcome_create_account">Create an account</string>
+    <string name="welcome_sign_in">Sign in</string>
+
+    <!-- Auth: widget setup -->
+    <string name="widget_setup_title">Add the widget</string>
+    <string name="widget_setup_subtitle">See their photos without opening the app.</string>
+    <string name="widget_setup_add_button">Add widget</string>
+    <string name="widget_setup_show_me_button">Show me how</string>
+    <string name="widget_setup_how_title">How to add it</string>
+    <string name="widget_setup_done_button">I\'ve added the widget</string>
+    <string name="widget_setup_next">Next</string>
+    <string name="widget_setup_step_1">Press and hold your home screen</string>
+    <string name="widget_setup_step_2">Tap Widgets</string>
+    <string name="widget_setup_step_3">Search for Emigo</string>
+    <string name="widget_setup_step_4">Drag it into place</string>
+
+    <!-- Invite friends -->
+    <string name="invite_message">Come add me on Emigo — it puts my photos right on your home screen.</string>
+    <string name="invite_message_with_username">Come add me on Emigo — I\'m @%1$s. It puts my photos right on your home screen.</string>
+    <string name="invite_chooser_title">Invite a friend</string>
+    <string name="invite_target_instagram" translatable="false">Instagram</string>
+    <string name="invite_target_snapchat" translatable="false">Snapchat</string>
+    <string name="invite_target_whatsapp" translatable="false">WhatsApp</string>
+    <string name="invite_target_telegram" translatable="false">Telegram</string>
+    <string name="invite_target_messages">Messages</string>
+    <string name="invite_target_more">More</string>
+    <string name="invite_first_friend_title">Add your first friend</string>
+    <string name="invite_first_friend_subtitle">Invite someone to get started</string>
+    <string name="invite_section_from">INVITE FROM</string>
+    <string name="invite_section_link">SHARE YOUR EMIGO LINK</string>
+    <string name="invite_copy_link_title">Copy link</string>
+    <string name="invite_copy_link_subtitle">Share your invite anywhere</string>
+    <string name="invite_whatsapp_subtitle">Invite via WhatsApp</string>
+    <string name="invite_instagram_dm_title">Instagram DM</string>
+    <string name="invite_instagram_dm_subtitle">Copies your invite, opens your inbox</string>
+    <string name="invite_instagram_story_title">Instagram Story</string>
+    <string name="invite_instagram_story_subtitle">Copies your invite, opens the camera</string>
+    <string name="invite_telegram_subtitle">Invite via Telegram</string>
+    <string name="invite_sms_subtitle">Invite via SMS</string>
+    <string name="invite_skip">I\'ll do this later</string>
+    <string name="invite_tagline">Real moments. Real people.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_profile_photo_description">Your profile photo</string>
+    <string name="settings_default_account_name">Your account</string>
+    <string name="settings_gold_label">Emigo Gold</string>
+    <string name="settings_badge_gold">Gold</string>
+    <string name="settings_badge_free">Free</string>
+    <string name="settings_section_preferences">Preferences</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_widget">Widget</string>
+    <string name="settings_section_privacy">Privacy</string>
+    <string name="settings_blocked_accounts">Blocked accounts</string>
+    <string name="settings_privacy_policy">Privacy policy</string>
+    <string name="settings_section_support">Support</string>
+    <string name="settings_help_support">Help &amp; support</string>
+    <string name="settings_support_email_subject">Emigo support</string>
+    <string name="settings_send_feedback">Send feedback</string>
+    <string name="settings_feedback_email_subject">Emigo feedback</string>
+    <string name="settings_about">About Emigo</string>
+    <string name="settings_other">Other</string>
+    <string name="settings_log_out">Log out</string>
+
+    <!-- Settings > Other (delete account) -->
+    <string name="other_settings_title">Other</string>
+    <string name="delete_account_row">Delete account</string>
+    <string name="delete_account_dialog_title">Delete account?</string>
+    <string name="delete_account_dialog_warning">This can\'t be undone. Your photos and friends will be deleted too.</string>
+    <string name="delete_account_dialog_confirm_prompt">Type \"delete\" to confirm</string>
+    <string name="delete_account_failed">Couldn\'t delete your account</string>
+
+    <!-- Emigo Gold -->
+    <string name="gold_title">Emigo Gold</string>
+    <string name="gold_subtitle_member">Thank you for being an Emigo Gold member</string>
+    <string name="gold_subtitle_visitor">A little extra glow for your favorite people</string>
+    <string name="gold_perk_restore_streak_title">Restore your streak</string>
+    <string name="gold_perk_restore_streak_detail">Bring back a streak that slipped past midnight</string>
+    <string name="gold_perk_themes_title">Exclusive themes</string>
+    <string name="gold_perk_themes_detail">Unlock Aurora, Cyber, Botanica, and Frost looks</string>
+    <string name="gold_perk_gallery_title">Send from your gallery</string>
+    <string name="gold_perk_gallery_detail">Share any photo, not just what you capture live</string>
+    <string name="gold_perk_widget_title">Choose who\'s on your widget</string>
+    <string name="gold_perk_widget_detail">Pick exactly whose photos always show on your home screen</string>
+    <string name="gold_choose_plan">Choose your plan</string>
+    <string name="gold_close">Close</string>
+    <string name="gold_save_percent">Save %1$d%%</string>
+    <string name="gold_plan_yearly">Yearly</string>
+    <string name="gold_plan_monthly">Monthly</string>
+    <string name="gold_per_year_suffix">" / yr"</string>
+    <string name="gold_per_month_suffix">" / mo"</string>
+    <string name="gold_button_confirming">Confirming…</string>
+    <string name="gold_button_opening_play">Opening Google Play…</string>
+    <string name="gold_button_payment_pending">Payment pending</string>
+    <string name="gold_button_continue">Continue</string>
+    <string name="gold_button_loading">Loading…</string>
+    <string name="gold_button_unavailable">Not available yet</string>
+    <string name="gold_button_upgrade">Upgrade to Gold</string>
+    <string name="gold_button_manage">Manage subscription</string>
+    <string name="gold_caption_cancel_anytime">Cancel anytime in Google Play</string>
+    <string name="gold_caption_payment_pending">Payment pending — Gold unlocks once it clears</string>
+    <string name="gold_caption_check_back">Check back soon</string>
+    <string name="gold_member_status">You\'re on Emigo Gold</string>
+
+    <!-- Friends -->
+    <string name="friends_title">Friends</string>
+    <string name="friends_find_people">Find people</string>
+    <string name="friends_search_icon_description">Search</string>
+    <string name="friends_search_hint">Search friends</string>
+    <string name="friends_no_match">No one matches \"%1$s\"</string>
+    <string name="friends_empty">No friends yet</string>
+    <string name="friends_section_requests">Added you · %1$d</string>
+    <string name="friends_section_my_friends">My friends</string>
+    <string name="friends_section_your_emigo">Your Emigo</string>
+    <string name="friends_pinned_partner">Pinned partner</string>
+    <string name="friends_streak_description">Streak</string>
+    <string name="friends_pinned_description">Pinned</string>
+    <string name="friends_you_sent">You sent %1$s</string>
+    <string name="friends_sent_to_you">Sent to you %1$s</string>
+    <string name="friends_no_photos_yet">No photos yet</string>
+    <string name="friends_restore_streak">Restore streak</string>
+    <string name="friends_streak_expiring_description">Streak expiring soon</string>
+
+    <!-- Find people -->
+    <string name="find_people_title">Find people</string>
+    <string name="find_people_search_hint">Search by name or username</string>
+    <string name="find_people_no_results">No one found.</string>
+    <string name="find_people_requested">Requested</string>
+    <string name="find_people_cancel_request_description">Cancel request</string>
+    <string name="find_people_idle_hint">Search for friends by name or username.</string>
+    <string name="find_people_invite_hint">Not on Emigo yet? Invite them.</string>
+
+    <!-- Memories -->
+    <string name="memories_title">Memories</string>
+    <string name="memories_section_recent">Recent</string>
+    <string name="memories_empty_title">No memories yet</string>
+    <string name="memories_empty_detail">Save a photo from the camera to see it here.</string>
+    <string name="memories_open_camera">Open camera</string>
+    <string name="memories_photo_description">Your photo</string>
+    <string name="memories_delete_title">Delete this photo?</string>
+    <string name="memories_delete_failed">Couldn\'t delete that photo</string>
+    <string name="memories_saved_to_gallery">Saved to your gallery</string>
+    <string name="memories_save_failed">Couldn\'t save that photo</string>
 </resources>

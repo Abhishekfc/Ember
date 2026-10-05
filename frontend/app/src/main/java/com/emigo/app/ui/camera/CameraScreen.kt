@@ -111,6 +111,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -456,7 +457,7 @@ private fun SaveToMemoriesButton(viewModel: CameraViewModel, modifier: Modifier 
     ) {
         Icon(
             painter = painterResource(if (viewModel.isSaved) R.drawable.ic_bookmark_filled else R.drawable.ic_bookmark_outline),
-            contentDescription = if (viewModel.isSaved) "Saved to Memories" else "Save to Memories",
+            contentDescription = stringResource(if (viewModel.isSaved) R.string.camera_saved_to_memories else R.string.camera_save_to_memories),
             tint = Color.White,
             modifier = Modifier.size(28.dp),
         )
@@ -516,11 +517,12 @@ private fun OutboxButton(sendAnimState: SendAnimState, lastSentPhotoUrl: String?
         animationSpec = tween(220),
         label = "outboxFillAlpha",
     )
+    val sentPhotosDescription = stringResource(R.string.camera_sent_photos_description)
 
     Box(
         modifier = modifier
             .size(40.dp)
-            .semantics { contentDescription = "Sent photos" }
+            .semantics { contentDescription = sentPhotosDescription }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -715,7 +717,7 @@ private fun LiveCameraStage(isReviewing: Boolean = false) {
                     // flashlight shape.
                     Icon(
                         imageVector = if (CameraSession.torchEnabled) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
-                        contentDescription = if (CameraSession.torchEnabled) "Turn flash off" else "Turn flash on",
+                        contentDescription = stringResource(if (CameraSession.torchEnabled) R.string.camera_flash_off else R.string.camera_flash_on),
                         tint = Color.White,
                         modifier = Modifier.size(18.dp),
                     )
@@ -725,7 +727,7 @@ private fun LiveCameraStage(isReviewing: Boolean = false) {
     } else {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Text(
-                text = "Emigo needs camera access to take photos.",
+                text = stringResource(R.string.camera_permission_needed),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 color = Color.White.copy(alpha = 0.8f),
@@ -1022,7 +1024,7 @@ private fun CaptureControls(
     ) {
         RoundIconButton(
             icon = Icons.Rounded.Image,
-            contentDescription = "Pick from gallery",
+            contentDescription = stringResource(R.string.camera_pick_from_gallery),
             onClick = onPickFromGallery,
         )
 
@@ -1060,7 +1062,7 @@ private fun CaptureControls(
 
         RoundIconButton(
             icon = Icons.Rounded.Cameraswitch,
-            contentDescription = "Flip camera",
+            contentDescription = stringResource(R.string.camera_flip),
             onClick = {
                 CameraSession.lensFacing = if (CameraSession.lensFacing == CameraSelector.LENS_FACING_BACK) {
                     CameraSelector.LENS_FACING_FRONT
@@ -1104,7 +1106,7 @@ private fun SwipeHint(modifier: Modifier = Modifier) {
             modifier = Modifier.size(16.dp).graphicsLayer { translationX = -nudge * 5.dp.toPx() },
         )
         Text(
-            text = "Swipe to explore",
+            text = stringResource(R.string.camera_swipe_hint),
             fontFamily = PublicSansFontFamily,
             fontSize = 11.5.sp,
             fontWeight = FontWeight.Medium,
@@ -1157,7 +1159,7 @@ private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
             // replaced by the bitmap layer above) because it's the one that handles the real
             // file's EXIF-orientation-aware decode correctly.
             model = remember(file) { ImageRequest.Builder(context).data(file).crossfade(false).build() },
-            contentDescription = "Captured photo",
+            contentDescription = stringResource(R.string.camera_captured_photo),
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
@@ -1203,7 +1205,7 @@ private fun CapturedPreview(viewModel: CameraViewModel, file: File) {
         if (!isEditingCaption) {
             Icon(
                 Icons.Rounded.TextFields,
-                contentDescription = "Add text",
+                contentDescription = stringResource(R.string.camera_add_text),
                 tint = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -1276,7 +1278,7 @@ private fun PreviewControls(
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
+                    contentDescription = stringResource(R.string.camera_send),
                     tint = if (canSend) colors.accentText else colors.mutedDim,
                     modifier = Modifier.size(26.dp),
                 )
@@ -1296,12 +1298,12 @@ private fun PreviewControls(
         ) {
             Icon(
                 Icons.Rounded.Replay,
-                contentDescription = "Retake",
+                contentDescription = stringResource(R.string.camera_retake),
                 tint = Color.White,
                 modifier = Modifier.size(30.dp),
             )
             Text(
-                text = "Retake",
+                text = stringResource(R.string.camera_retake),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 11.sp,
                 color = colors.muted,
@@ -1342,14 +1344,14 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
                 Icon(Icons.Rounded.WorkspacePremium, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(26.dp))
             }
             Text(
-                text = "Emigo Gold",
+                text = stringResource(R.string.gold_title),
                 fontFamily = typography.display,
                 fontSize = 19.sp,
                 color = colors.cream,
                 modifier = Modifier.padding(top = 16.dp),
             )
             Text(
-                text = "Sending photos from your gallery is an Emigo Gold perk",
+                text = stringResource(R.string.camera_gold_perk),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 12.5.sp,
                 color = colors.muted,
@@ -1367,7 +1369,7 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
                 horizontalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = "Get Emigo Gold",
+                    text = stringResource(R.string.camera_get_gold),
                     fontFamily = PublicSansFontFamily,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -1375,7 +1377,7 @@ private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
                 )
             }
             Text(
-                text = "Maybe later",
+                text = stringResource(R.string.camera_maybe_later),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 12.5.sp,
                 color = colors.mutedDim,
@@ -1425,7 +1427,7 @@ private fun capturePhoto(context: Context, viewModel: CameraViewModel) {
             }
 
             override fun onError(exception: ImageCaptureException) {
-                viewModel.captureFailed(exception.message ?: "Couldn't capture photo")
+                viewModel.captureFailed(exception.message ?: context.getString(R.string.camera_capture_failed))
             }
         },
     )

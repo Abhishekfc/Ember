@@ -124,6 +124,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -607,7 +608,7 @@ fun HomeScreen(
                         label = "connectionErrorAlpha",
                     )
                     Text(
-                        text = "Couldn't connect · Tap to retry",
+                        text = stringResource(R.string.home_connect_error),
                         fontFamily = PublicSansFontFamily,
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Medium,
@@ -786,11 +787,9 @@ fun HomeScreen(
                                     // "once you're connected" is describing something that has
                                     // already happened, which is what made the screen read as if
                                     // adding a friend had changed nothing.
-                                    caption = if (viewModel.friends.isNotEmpty()) {
-                                        "Nothing shared yet. Their photos land here the moment they post, or you can send the first one."
-                                    } else {
-                                        "Once you're connected, their photos show up right here."
-                                    },
+                                    caption = stringResource(
+                                        if (viewModel.friends.isNotEmpty()) R.string.home_card_empty_with_friends else R.string.home_card_empty_no_friends,
+                                    ),
                                     modifier = Modifier
                                         .weight(1f, fill = false)
                                         .padding(start = featuredCardSidePadding(), end = featuredCardSidePadding()),
@@ -1234,7 +1233,7 @@ private fun HomeBrandHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "Emigo",
+            text = stringResource(R.string.app_name),
             fontFamily = CourgetteFontFamily,
             fontSize = 34.sp,
             letterSpacing = (-0.5).sp,
@@ -1276,7 +1275,7 @@ private fun ActivityBellButton(badgeCount: Int, onClick: () -> Unit, modifier: M
             modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.panel),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.Notifications, contentDescription = "Activity", tint = colors.cream, modifier = Modifier.size(24.dp))
+            Icon(Icons.Filled.Notifications, contentDescription = stringResource(R.string.home_activity_description), tint = colors.cream, modifier = Modifier.size(24.dp))
         }
         AnimatedVisibility(
             visible = badgeCount > 0,
@@ -1371,7 +1370,7 @@ internal fun ProfileIconButton(onClick: () -> Unit, modifier: Modifier = Modifie
             modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.panel),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.Person, contentDescription = "Your profile", tint = colors.cream, modifier = Modifier.size(24.dp))
+            Icon(Icons.Filled.Person, contentDescription = stringResource(R.string.home_profile_description), tint = colors.cream, modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -1525,13 +1524,13 @@ private fun HomeViewModeToggleRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
     ) {
         HomeViewModePill(
-            label = "Home",
+            label = stringResource(R.string.nav_home),
             selected = mode == HomeViewMode.HOME,
             onClick = { onModeChange(HomeViewMode.HOME) },
             metrics = metrics,
         )
         HomeViewModePill(
-            label = "Moments",
+            label = stringResource(R.string.home_mode_moments),
             selected = mode == HomeViewMode.MOMENTS,
             onClick = { onModeChange(HomeViewMode.MOMENTS) },
             metrics = metrics,
@@ -2303,7 +2302,7 @@ private fun FeaturedPhotoCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Rounded.LocalFireDepartment,
-                            contentDescription = "Streak",
+                            contentDescription = stringResource(R.string.friends_streak_description),
                             tint = colors.glow,
                             modifier = Modifier.size(18.dp),
                         )
@@ -2381,7 +2380,7 @@ private fun MomentsEmptyState(modifier: Modifier = Modifier) {
         }
 
         Text(
-            text = "A card for every friend",
+            text = stringResource(R.string.home_card_for_every_friend),
             fontFamily = typography.body,
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
@@ -2393,7 +2392,7 @@ private fun MomentsEmptyState(modifier: Modifier = Modifier) {
             // Says what will be here, not what to do with it. The earlier version ended on "tap
             // any card to open it full size", which is an instruction for cards that don't exist
             // yet on the one screen where there is nothing to tap.
-            text = "Once your friends start sharing, their newest photo shows up here.",
+            text = stringResource(R.string.home_card_once_sharing),
             fontFamily = typography.body,
             fontSize = 13.sp,
             lineHeight = 19.sp,
@@ -2449,7 +2448,7 @@ private fun HomeEmptyStateCard(
                     .padding(start = 24.dp, end = 24.dp, bottom = 26.dp),
             ) {
                 Text(
-                    text = "Add friends to start\nsharing moments",
+                    text = stringResource(R.string.home_add_friends_prompt),
                     fontFamily = typography.display,
                     fontSize = 25.sp,
                     fontWeight = FontWeight.Bold,
@@ -2467,7 +2466,7 @@ private fun HomeEmptyStateCard(
                     horizontalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "Find friends",
+                        text = stringResource(R.string.recipients_find_friends),
                         fontFamily = PublicSansFontFamily,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
@@ -2787,14 +2786,14 @@ private fun FriendAvatarRow(
                     ) {
                         Icon(
                             Icons.Filled.Add,
-                            contentDescription = "Add friend",
+                            contentDescription = stringResource(R.string.home_add_friend_description),
                             tint = colors.muted,
                             modifier = Modifier.size(26.dp),
                         )
                     }
                 }
                 Text(
-                    text = "Add",
+                    text = stringResource(R.string.common_add),
                     fontFamily = typography.body,
                     fontSize = 12.sp,
                     color = colors.muted,

@@ -27,6 +27,12 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Chat
@@ -38,6 +44,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +58,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -74,6 +82,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -81,7 +90,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import com.emigo.app.AppLinks
 import com.emigo.app.R
+import com.emigo.app.openUrl
 import com.emigo.app.data.EMAIL_VERIFICATION_GRACE_PERIOD_MILLIS
 import com.emigo.app.ui.profile.UsernameCheckState
 import com.emigo.app.ui.theme.PublicSansFontFamily
@@ -158,6 +169,11 @@ fun LoginScreen(
 @Composable
 private fun AuthStepScaffold(
     onBack: (() -> Unit)?,
+    // 1.4f keeps every other step's content centered a little above the exact middle, same as
+    // before. RegisterEmailStep passes 0f so its own last element (the Continue button) instead
+    // sits flush against the bottom of the available space — right above the keyboard once one's
+    // showing, rather than leaving a gap below it.
+    bottomWeight: Float = 1.4f,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -165,6 +181,14 @@ private fun AuthStepScaffold(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
+            // Chained after navigationBarsPadding, not before — the recommended Compose order,
+            // so this doesn't double up with the nav bar inset on the gesture-nav devices where
+            // the IME inset already accounts for it. Keeps every step's content (and specifically
+            // RegisterEmailStep's Continue button and the legal disclaimer below it) lifted clear
+            // of the keyboard on every screen size, rather than relying on the Activity's own
+            // window-resize behavior, which isn't guaranteed to leave enough room once the
+            // keyboard and a small/short device are both eating into it at once.
+            .imePadding()
             .padding(horizontal = 28.dp, vertical = 32.dp),
     ) {
         if (onBack != null) {
@@ -172,22 +196,41 @@ private fun AuthStepScaffold(
         }
         Spacer(modifier = Modifier.weight(1f))
         content()
-        Spacer(modifier = Modifier.weight(1.4f))
+        // weight() throws for a non-positive value, so 0f (RegisterEmailStep's case) has to skip
+        // it entirely rather than pass it through — a plain zero-height Spacer either way.
+        if (bottomWeight > 0f) {
+            Spacer(modifier = Modifier.weight(bottomWeight))
+        }
+    }
+}
+
+/** Every auth step that auto-focuses its first field on open calls this instead of requesting
+ * focus and showing the keyboard directly. Showing the keyboard in the very same instant as the
+ * focus request — before this screen's own layout, and the window's IME inset-animation
+ * callback, have had a chance to actually attach — is what made the Continue button sometimes
+ * jump straight above the keyboard instead of sliding up to it: the animated inset path wasn't
+ * wired up yet at that exact moment, so it fell back to an instant snap, inconsistently. Waiting
+ * one frame before showing the keyboard gives that a chance to settle first, so the slide-up
+ * animation actually runs every time instead of only when the device happened to be slow enough
+ * for it to win the race on its own. */
+@Composable
+private fun AutoFocusAndShowKeyboard(focusRequester: FocusRequester) {
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        withFrameNanos {}
+        keyboard?.show()
     }
 }
 
 @Composable
 private fun LoginStep(viewModel: LoginViewModel, onAuthenticated: () -> Unit) {
     val colors = AuthPalette
-    val keyboard = LocalSoftwareKeyboardController.current
     val emailFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        emailFocus.requestFocus()
-        keyboard?.show()
-    }
+    AutoFocusAndShowKeyboard(emailFocus)
 
-    AuthStepScaffold(onBack = viewModel::goBack) {
-        Text(text = "Welcome back", fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
+    AuthStepScaffold(onBack = viewModel::goBack, bottomWeight = 0f) {
+        Text(text = stringResource(R.string.auth_login_title), fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
         AuthTextField(
             value = viewModel.loginIdentifier,
             onValueChange = viewModel::onLoginIdentifierChange,
@@ -195,7 +238,7 @@ private fun LoginStep(viewModel: LoginViewModel, onAuthenticated: () -> Unit) {
             // has no concept of a username at all, but AuthRepository.signIn resolves one back to
             // its email via a small backend lookup before handing it to Firebase — so this field
             // still accepts either, same as before the Firebase migration.
-            placeholder = "Email or username",
+            placeholder = stringResource(R.string.auth_login_identifier_hint),
             keyboardType = KeyboardType.Email,
             imeAction = ImeAction.Next,
             modifier = Modifier.padding(top = 24.dp).focusRequester(emailFocus),
@@ -203,13 +246,13 @@ private fun LoginStep(viewModel: LoginViewModel, onAuthenticated: () -> Unit) {
         AuthPasswordField(
             value = viewModel.password,
             onValueChange = viewModel::onPasswordChange,
-            placeholder = "Password",
+            placeholder = stringResource(R.string.auth_password_hint),
             imeAction = ImeAction.Done,
             onImeAction = { viewModel.submitLogin(onAuthenticated) },
             modifier = Modifier.padding(top = 10.dp),
         )
         Text(
-            text = "Forgot password?",
+            text = stringResource(R.string.auth_forgot_password),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
@@ -221,11 +264,11 @@ private fun LoginStep(viewModel: LoginViewModel, onAuthenticated: () -> Unit) {
         if (viewModel.errorMessage != null) {
             AuthInlineMessage(text = viewModel.errorMessage.orEmpty(), modifier = Modifier.padding(top = 12.dp))
         }
+        Spacer(modifier = Modifier.weight(1f))
         AuthPrimaryButton(
-            text = "Log in",
+            text = stringResource(R.string.auth_login_button),
             onClick = { viewModel.submitLogin(onAuthenticated) },
             isLoading = viewModel.isLoading,
-            modifier = Modifier.padding(top = 22.dp),
         )
     }
 }
@@ -237,17 +280,13 @@ private fun LoginStep(viewModel: LoginViewModel, onAuthenticated: () -> Unit) {
 @Composable
 private fun ForgotPasswordStep(viewModel: LoginViewModel) {
     val colors = AuthPalette
-    val keyboard = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboard?.show()
-    }
+    AutoFocusAndShowKeyboard(focusRequester)
 
-    AuthStepScaffold(onBack = viewModel::goBack) {
-        Text(text = "Reset your password", fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
+    AuthStepScaffold(onBack = viewModel::goBack, bottomWeight = 0f) {
+        Text(text = stringResource(R.string.auth_reset_title), fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
         Text(
-            text = "Enter your email and we'll send you a link to set a new password.",
+            text = stringResource(R.string.auth_reset_description),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.5.sp,
             fontWeight = FontWeight.Medium,
@@ -257,7 +296,7 @@ private fun ForgotPasswordStep(viewModel: LoginViewModel) {
         AuthTextField(
             value = viewModel.forgotPasswordEmail,
             onValueChange = viewModel::onForgotPasswordEmailChange,
-            placeholder = "Email",
+            placeholder = stringResource(R.string.auth_email_hint),
             keyboardType = KeyboardType.Email,
             imeAction = ImeAction.Done,
             onImeAction = viewModel::sendPasswordReset,
@@ -265,7 +304,7 @@ private fun ForgotPasswordStep(viewModel: LoginViewModel) {
         )
         if (viewModel.passwordResetSent) {
             Text(
-                text = "If that email has an account, we've sent a link to reset your password.",
+                text = stringResource(R.string.auth_reset_sent),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold,
@@ -273,12 +312,12 @@ private fun ForgotPasswordStep(viewModel: LoginViewModel) {
                 modifier = Modifier.padding(top = 14.dp),
             )
         }
+        Spacer(modifier = Modifier.weight(1f))
         AuthPrimaryButton(
-            text = "Send reset link",
+            text = stringResource(R.string.auth_reset_send_button),
             onClick = viewModel::sendPasswordReset,
             enabled = viewModel.isForgotPasswordEmailValid,
             isLoading = viewModel.isSendingPasswordReset,
-            modifier = Modifier.padding(top = 22.dp),
         )
     }
 }
@@ -286,19 +325,15 @@ private fun ForgotPasswordStep(viewModel: LoginViewModel) {
 @Composable
 private fun RegisterEmailStep(viewModel: LoginViewModel) {
     val colors = AuthPalette
-    val keyboard = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboard?.show()
-    }
+    AutoFocusAndShowKeyboard(focusRequester)
 
-    AuthStepScaffold(onBack = viewModel::goBack) {
-        Text(text = "What's your email?", fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
+    AuthStepScaffold(onBack = viewModel::goBack, bottomWeight = 0f) {
+        Text(text = stringResource(R.string.auth_register_email_title), fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
         AuthTextField(
             value = viewModel.email,
             onValueChange = viewModel::onEmailChange,
-            placeholder = "you@email.com",
+            placeholder = stringResource(R.string.auth_register_email_hint),
             keyboardType = KeyboardType.Email,
             imeAction = ImeAction.Done,
             onImeAction = viewModel::onEmailStepContinue,
@@ -316,38 +351,85 @@ private fun RegisterEmailStep(viewModel: LoginViewModel) {
                 modifier = Modifier.padding(top = 12.dp),
             )
         }
+        // Pushes everything below it (the legal notice + Continue button) down to sit flush
+        // against the bottom of the available space — right above the keyboard once it's up —
+        // instead of that block floating in the middle with dead space beneath it. The title and
+        // field above stay put; this is the only other weighted sibling in AuthStepScaffold's own
+        // Column now that bottomWeight is 0f there, so it soaks up all the slack that used to go
+        // to that trailing spacer.
+        Spacer(modifier = Modifier.weight(1f))
+        LegalAgreementNotice(modifier = Modifier.fillMaxWidth())
         AuthPrimaryButton(
-            text = "Continue",
+            text = stringResource(R.string.common_continue),
             onClick = viewModel::onEmailStepContinue,
             enabled = viewModel.isEmailValid,
             isLoading = viewModel.isLoading,
-            modifier = Modifier.padding(top = 20.dp),
+            modifier = Modifier.padding(top = 14.dp),
         )
     }
+}
+
+/** Shown only on [RegisterEmailStep] — the one point in account creation that's actually
+ * irreversible-ish (every later step just fills in details for the account this one already
+ * commits to creating), so it's the single right place for this rather than repeating it on
+ * every step. */
+@Composable
+private fun LegalAgreementNotice(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    // Same muted color as the surrounding sentence, just a touch bolder — a link here only needs
+    // to read as slightly more solid on close reading, not compete for attention with the email
+    // field or the Continue button below it, which are what this whole step is actually about.
+    val linkStyle = SpanStyle(color = AuthPalette.muted, fontWeight = FontWeight.SemiBold)
+    val prefix = stringResource(R.string.auth_legal_prefix)
+    val termsLabel = stringResource(R.string.auth_legal_terms)
+    val andWord = stringResource(R.string.auth_legal_and)
+    val privacyLabel = stringResource(R.string.auth_legal_privacy)
+    val text = buildAnnotatedString {
+        withStyle(SpanStyle(color = AuthPalette.muted)) {
+            append("$prefix ")
+            withLink(
+                LinkAnnotation.Url(
+                    url = AppLinks.TERMS_OF_SERVICE,
+                    styles = TextLinkStyles(style = linkStyle),
+                ) { openUrl(context, AppLinks.TERMS_OF_SERVICE) },
+            ) { append(termsLabel) }
+            append(" $andWord ")
+            withLink(
+                LinkAnnotation.Url(
+                    url = AppLinks.PRIVACY_POLICY,
+                    styles = TextLinkStyles(style = linkStyle),
+                ) { openUrl(context, AppLinks.PRIVACY_POLICY) },
+            ) { append(privacyLabel) }
+        }
+    }
+    Text(
+        text = text,
+        fontFamily = PublicSansFontFamily,
+        fontSize = 12.sp,
+        lineHeight = 17.sp,
+        textAlign = TextAlign.Center,
+        modifier = modifier,
+    )
 }
 
 @Composable
 private fun RegisterPasswordStep(viewModel: LoginViewModel) {
     val colors = AuthPalette
-    val keyboard = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboard?.show()
-    }
+    AutoFocusAndShowKeyboard(focusRequester)
 
-    AuthStepScaffold(onBack = viewModel::goBack) {
-        Text(text = "Create a password", fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
+    AuthStepScaffold(onBack = viewModel::goBack, bottomWeight = 0f) {
+        Text(text = stringResource(R.string.auth_password_create_title), fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
         AuthPasswordField(
             value = viewModel.password,
             onValueChange = viewModel::onPasswordChange,
-            placeholder = "Password",
+            placeholder = stringResource(R.string.auth_password_hint),
             imeAction = ImeAction.Done,
             onImeAction = viewModel::submitRegister,
             modifier = Modifier.padding(top = 24.dp).focusRequester(focusRequester),
         )
         Text(
-            text = "At least 8 characters",
+            text = stringResource(R.string.auth_password_rule),
             fontFamily = PublicSansFontFamily,
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Bold,
@@ -357,12 +439,12 @@ private fun RegisterPasswordStep(viewModel: LoginViewModel) {
         if (viewModel.errorMessage != null) {
             AuthInlineMessage(text = viewModel.errorMessage.orEmpty(), modifier = Modifier.padding(top = 10.dp))
         }
+        Spacer(modifier = Modifier.weight(1f))
         AuthPrimaryButton(
-            text = "Create account",
+            text = stringResource(R.string.auth_create_account_button),
             onClick = viewModel::submitRegister,
             enabled = viewModel.isPasswordValid,
             isLoading = viewModel.isLoading,
-            modifier = Modifier.padding(top = 20.dp),
         )
     }
 }
@@ -370,26 +452,22 @@ private fun RegisterPasswordStep(viewModel: LoginViewModel) {
 @Composable
 private fun RegisterNameStep(viewModel: LoginViewModel) {
     val colors = AuthPalette
-    val keyboard = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboard?.show()
-    }
+    AutoFocusAndShowKeyboard(focusRequester)
 
-    AuthStepScaffold(onBack = viewModel::goBack) {
-        Text(text = "What's your name?", fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
+    AuthStepScaffold(onBack = viewModel::goBack, bottomWeight = 0f) {
+        Text(text = stringResource(R.string.auth_name_title), fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
         AuthTextField(
             value = viewModel.firstName,
             onValueChange = viewModel::onFirstNameChange,
-            placeholder = "First name",
+            placeholder = stringResource(R.string.auth_first_name_hint),
             imeAction = ImeAction.Next,
             modifier = Modifier.padding(top = 24.dp).focusRequester(focusRequester),
         )
         AuthTextField(
             value = viewModel.lastName,
             onValueChange = viewModel::onLastNameChange,
-            placeholder = "Last name (optional)",
+            placeholder = stringResource(R.string.auth_last_name_hint),
             imeAction = ImeAction.Done,
             onImeAction = viewModel::submitName,
             modifier = Modifier.padding(top = 10.dp),
@@ -397,12 +475,12 @@ private fun RegisterNameStep(viewModel: LoginViewModel) {
         if (viewModel.errorMessage != null) {
             AuthInlineMessage(text = viewModel.errorMessage.orEmpty(), modifier = Modifier.padding(top = 12.dp))
         }
+        Spacer(modifier = Modifier.weight(1f))
         AuthPrimaryButton(
-            text = "Continue",
+            text = stringResource(R.string.common_continue),
             onClick = viewModel::submitName,
             enabled = viewModel.isNameValid,
             isLoading = viewModel.isLoading,
-            modifier = Modifier.padding(top = 22.dp),
         )
     }
 }
@@ -410,23 +488,19 @@ private fun RegisterNameStep(viewModel: LoginViewModel) {
 @Composable
 private fun RegisterUsernameStep(viewModel: LoginViewModel) {
     val colors = AuthPalette
-    val keyboard = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboard?.show()
-    }
+    AutoFocusAndShowKeyboard(focusRequester)
 
     val check = viewModel.usernameCheck
 
-    AuthStepScaffold(onBack = viewModel::goBack) {
-        Text(text = "Pick a username", fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
+    AuthStepScaffold(onBack = viewModel::goBack, bottomWeight = 0f) {
+        Text(text = stringResource(R.string.auth_username_title), fontFamily = AuthPalette.display, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.cream)
         // Plain field, no availability hint inside it — status only ever appears below, never
         // overlapping the placeholder/typed text.
         AuthTextField(
             value = viewModel.usernameDraft,
             onValueChange = viewModel::onUsernameDraftChange,
-            placeholder = "Username",
+            placeholder = stringResource(R.string.auth_username_hint),
             imeAction = ImeAction.Done,
             onImeAction = viewModel::submitUsername,
             modifier = Modifier.padding(top = 24.dp).focusRequester(focusRequester),
@@ -437,9 +511,9 @@ private fun RegisterUsernameStep(viewModel: LoginViewModel) {
         // than snapping) the moment there's a status line or suggestion chips to make room for.
         Column(modifier = Modifier.fillMaxWidth().animateContentSize()) {
             val statusText = viewModel.errorMessage ?: when (check) {
-                UsernameCheckState.Checking -> "Checking availability…"
-                UsernameCheckState.Available -> "Username available"
-                is UsernameCheckState.Taken -> "Username already taken"
+                UsernameCheckState.Checking -> stringResource(R.string.auth_username_checking)
+                UsernameCheckState.Available -> stringResource(R.string.auth_username_available)
+                is UsernameCheckState.Taken -> stringResource(R.string.auth_username_taken)
                 UsernameCheckState.Idle -> null
             }
             if (statusText != null) {
@@ -481,12 +555,12 @@ private fun RegisterUsernameStep(viewModel: LoginViewModel) {
             }
         }
 
+        Spacer(modifier = Modifier.weight(1f))
         AuthPrimaryButton(
-            text = "Continue",
+            text = stringResource(R.string.common_continue),
             onClick = viewModel::submitUsername,
             enabled = check is UsernameCheckState.Available,
             isLoading = viewModel.isLoading,
-            modifier = Modifier.padding(top = 20.dp),
         )
     }
 }
@@ -551,7 +625,7 @@ private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Un
     }
     val canResend = resendCooldownRemainingMillis <= 0L
 
-    AuthStepScaffold(onBack = null) {
+    AuthStepScaffold(onBack = null, bottomWeight = 0f) {
         Icon(
             Icons.Filled.MarkEmailRead,
             contentDescription = null,
@@ -562,7 +636,7 @@ private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Un
             // Names what the person actually does next, in their words, rather than the system's
             // task ("verify your email"). The spent state keeps the system's own language, because
             // by then what matters is what went wrong, not what to do.
-            text = if (hasExpired) "Verification failed" else "Check your inbox",
+            text = stringResource(if (hasExpired) R.string.auth_verify_failed_title else R.string.auth_verify_check_inbox),
             fontFamily = AuthPalette.display,
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
@@ -570,11 +644,7 @@ private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Un
             modifier = Modifier.padding(top = 20.dp),
         )
         Text(
-            text = if (hasExpired) {
-                "That link wasn't confirmed in time. Start again to get a new one."
-            } else {
-                "We sent a verification link to"
-            },
+            text = stringResource(if (hasExpired) R.string.auth_verify_expired_detail else R.string.auth_verify_sent_detail),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.5.sp,
             fontWeight = FontWeight.Medium,
@@ -609,7 +679,11 @@ private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Un
         Crossfade(targetState = hasExpired, animationSpec = tween(320), label = "verifyCountdown") { expired ->
             val remainingSeconds = (remainingMillis / 1000).coerceAtLeast(0)
             Text(
-                text = if (expired) "Link expired" else "Expires in %d:%02d".format(remainingSeconds / 60, remainingSeconds % 60),
+                text = if (expired) {
+                    stringResource(R.string.auth_verify_link_expired)
+                } else {
+                    stringResource(R.string.auth_verify_expires_in, remainingSeconds / 60, remainingSeconds % 60)
+                },
                 fontFamily = PublicSansFontFamily,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
@@ -624,12 +698,12 @@ private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Un
         if (!hasExpired && viewModel.verificationResendMessage != null) {
             AuthInlineMessage(text = viewModel.verificationResendMessage.orEmpty(), modifier = Modifier.padding(top = 16.dp))
         }
+        Spacer(modifier = Modifier.weight(1f))
         AuthPrimaryButton(
-            text = "I've verified",
+            text = stringResource(R.string.auth_verify_done_button),
             onClick = { viewModel.onEmailVerifiedContinue(onAuthenticated) },
             enabled = !hasExpired,
             isLoading = viewModel.isCheckingVerification,
-            modifier = Modifier.padding(top = 24.dp),
         )
         // Same slot, two jobs: while the window is open it's the way to get another email; once
         // it's closed there's nothing left to resend against, so it becomes the way back out to
@@ -637,14 +711,18 @@ private fun VerifyEmailStep(viewModel: LoginViewModel, onAuthenticated: () -> Un
         Crossfade(targetState = hasExpired, animationSpec = tween(320), label = "verifySecondaryAction") { expired ->
             if (expired) {
                 AuthSecondaryButton(
-                    text = "Try again later",
+                    text = stringResource(R.string.auth_verify_try_again_later),
                     onClick = { viewModel.resetAfterSignOut(onSignOut) },
                     modifier = Modifier.padding(top = 12.dp),
                 )
             } else {
                 val resendCooldownSeconds = (resendCooldownRemainingMillis / 1000).coerceAtLeast(0)
                 AuthSecondaryButton(
-                    text = if (canResend) "Resend email" else "Resend in %d:%02d".format(resendCooldownSeconds / 60, resendCooldownSeconds % 60),
+                    text = if (canResend) {
+                        stringResource(R.string.auth_verify_resend)
+                    } else {
+                        stringResource(R.string.auth_verify_resend_in, resendCooldownSeconds / 60, resendCooldownSeconds % 60)
+                    },
                     onClick = viewModel::resendVerificationEmail,
                     enabled = canResend,
                     modifier = Modifier.padding(top = 12.dp),
@@ -731,7 +809,7 @@ internal fun shareInvite(context: android.content.Context, message: String, pack
             return
         }
     }
-    context.startActivity(Intent.createChooser(base, "Invite a friend"))
+    context.startActivity(Intent.createChooser(base, context.getString(R.string.invite_chooser_title)))
 }
 
 /**
@@ -769,20 +847,21 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val username = viewModel.usernameDraft.trim()
-    val inviteMessage = remember(username) {
-        if (username.isEmpty()) {
-            "Come add me on Emigo — it puts my photos right on your home screen."
-        } else {
-            "Come add me on Emigo — I'm @$username. It puts my photos right on your home screen."
-        }
-    }
+    val inviteMessage = stringResource(
+        if (username.isEmpty()) R.string.invite_message else R.string.invite_message_with_username,
+        username,
+    )
 
-    val quickTargets = remember {
+    val instagramLabel = stringResource(R.string.invite_target_instagram)
+    val snapchatLabel = stringResource(R.string.invite_target_snapchat)
+    val messagesLabel = stringResource(R.string.invite_target_messages)
+    val moreLabel = stringResource(R.string.invite_target_more)
+    val quickTargets = remember(instagramLabel, snapchatLabel, messagesLabel, moreLabel) {
         listOf(
-            InviteTarget("Instagram", Icons.Filled.PhotoCamera, "com.instagram.android", R.drawable.ic_invite_instagram),
-            InviteTarget("Snapchat", Icons.Filled.PhotoCamera, "com.snapchat.android", R.drawable.ic_invite_snapchat),
-            InviteTarget("Messages", Icons.Filled.Sms, null),
-            InviteTarget("More", Icons.Filled.MoreHoriz, null),
+            InviteTarget(instagramLabel, Icons.Filled.PhotoCamera, "com.instagram.android", R.drawable.ic_invite_instagram),
+            InviteTarget(snapchatLabel, Icons.Filled.PhotoCamera, "com.snapchat.android", R.drawable.ic_invite_snapchat),
+            InviteTarget(messagesLabel, Icons.Filled.Sms, null),
+            InviteTarget(moreLabel, Icons.Filled.MoreHoriz, null),
         )
     }
 
@@ -811,7 +890,7 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
             // Same display face, size and weight every other step of this flow uses for its
             // heading, so arriving here doesn't look like a different app.
             Text(
-                text = "Add your first friend",
+                text = stringResource(R.string.invite_first_friend_title),
                 fontFamily = AuthPalette.display,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
@@ -820,7 +899,7 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
             )
             Text(
-                text = "Invite someone to get started",
+                text = stringResource(R.string.invite_first_friend_subtitle),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
@@ -829,7 +908,7 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             )
 
-            SectionLabel(text = "INVITE FROM", modifier = Modifier.padding(top = 32.dp, bottom = 16.dp))
+            SectionLabel(text = stringResource(R.string.invite_section_from), modifier = Modifier.padding(top = 32.dp, bottom = 16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -842,26 +921,26 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
                 }
             }
 
-            SectionLabel(text = "SHARE YOUR EMIGO LINK", modifier = Modifier.padding(top = 34.dp, bottom = 6.dp))
+            SectionLabel(text = stringResource(R.string.invite_section_link), modifier = Modifier.padding(top = 34.dp, bottom = 6.dp))
 
             InviteListRow(
-                title = "Copy link",
-                subtitle = "Share your invite anywhere",
+                title = stringResource(R.string.invite_copy_link_title),
+                subtitle = stringResource(R.string.invite_copy_link_subtitle),
                 packageName = null,
                 fallbackIcon = Icons.Rounded.Link,
                 onClick = { clipboard.setText(AnnotatedString(inviteMessage)) },
             )
             InviteListRow(
-                title = "WhatsApp",
-                subtitle = "Invite via WhatsApp",
+                title = stringResource(R.string.invite_target_whatsapp),
+                subtitle = stringResource(R.string.invite_whatsapp_subtitle),
                 packageName = "com.whatsapp",
                 fallbackIcon = Icons.Filled.Chat,
                 onClick = { shareInvite(context, inviteMessage, "com.whatsapp") },
                 drawableResId = R.drawable.ic_invite_whatsapp,
             )
             InviteListRow(
-                title = "Instagram DM",
-                subtitle = "Copies your invite, opens your inbox",
+                title = stringResource(R.string.invite_instagram_dm_title),
+                subtitle = stringResource(R.string.invite_instagram_dm_subtitle),
                 packageName = "com.instagram.android",
                 fallbackIcon = Icons.Filled.PhotoCamera,
                 onClick = {
@@ -871,8 +950,8 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
                 drawableResId = R.drawable.ic_invite_instagram,
             )
             InviteListRow(
-                title = "Instagram Story",
-                subtitle = "Copies your invite, opens the camera",
+                title = stringResource(R.string.invite_instagram_story_title),
+                subtitle = stringResource(R.string.invite_instagram_story_subtitle),
                 packageName = "com.instagram.android",
                 fallbackIcon = Icons.Filled.PhotoCamera,
                 onClick = {
@@ -882,15 +961,15 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
                 drawableResId = R.drawable.ic_invite_instagram,
             )
             InviteListRow(
-                title = "Telegram",
-                subtitle = "Invite via Telegram",
+                title = stringResource(R.string.invite_target_telegram),
+                subtitle = stringResource(R.string.invite_telegram_subtitle),
                 packageName = "org.telegram.messenger",
                 fallbackIcon = Icons.AutoMirrored.Filled.Send,
                 onClick = { shareInvite(context, inviteMessage, "org.telegram.messenger") },
             )
             InviteListRow(
-                title = "Messages",
-                subtitle = "Invite via SMS",
+                title = stringResource(R.string.invite_target_messages),
+                subtitle = stringResource(R.string.invite_sms_subtitle),
                 packageName = null,
                 fallbackIcon = Icons.Filled.Sms,
                 onClick = { shareInvite(context, inviteMessage, null) },
@@ -908,7 +987,7 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
         // for a caption.
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
             AuthSecondaryButton(
-                text = "I'll do this later",
+                text = stringResource(R.string.invite_skip),
                 onClick = onAuthenticated,
             )
 
@@ -916,7 +995,7 @@ private fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () -
             // — smaller, dimmer, un-bolded is what marks it as a closing line rather than a
             // second thing to press.
             Text(
-                text = "Real moments. Real people.",
+                text = stringResource(R.string.invite_tagline),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Normal,

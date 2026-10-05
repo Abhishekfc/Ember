@@ -1,5 +1,8 @@
 package com.emigo.app.ui.settings
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import android.app.Activity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +49,7 @@ data class GoldUiState(
  * is never trusted on its own.
  */
 class EmberGoldViewModel(
+    private val strings: StringProvider,
     private val billingManager: BillingManager,
     private val subscriptionRepository: SubscriptionRepository,
 ) : ViewModel() {
@@ -115,7 +119,7 @@ class EmberGoldViewModel(
         when (val result = billingManager.launchPurchase(activity, productId)) {
             BillingLaunchResult.Launched -> Unit // outcome arrives on purchaseEvents
             BillingLaunchResult.Unavailable ->
-                uiState = uiState.copy(purchaseInFlight = false, error = "This plan isn't available right now")
+                uiState = uiState.copy(purchaseInFlight = false, error = strings.get(R.string.gold_error_plan_unavailable))
             is BillingLaunchResult.Failed ->
                 uiState = uiState.copy(purchaseInFlight = false, error = result.message)
         }
@@ -143,7 +147,7 @@ class EmberGoldViewModel(
                 } else {
                     uiState = uiState.copy(
                         purchaseInFlight = false,
-                        error = "You already have a subscription. Try reopening the app.",
+                        error = strings.get(R.string.gold_error_already_subscribed),
                     )
                 }
             }
@@ -170,7 +174,7 @@ class EmberGoldViewModel(
                         uiState = uiState.copy(
                             purchaseInFlight = false,
                             verifying = false,
-                            error = e.message ?: "Couldn't confirm your purchase",
+                            error = e.message ?: strings.get(R.string.gold_error_confirm),
                         )
                     }
                 },

@@ -1,5 +1,7 @@
 package com.emigo.app.ui.home
 
+import com.emigo.app.R
+
 import android.content.ContentValues
 import android.content.Context
 import android.os.Build
@@ -34,8 +36,8 @@ suspend fun saveImageToGallery(context: Context, photoUrl: String): Result<Unit>
             @Suppress("DEPRECATION")
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         }
-        val itemUri = resolver.insert(collection, values) ?: error("Couldn't create a gallery entry")
-        resolver.openOutputStream(itemUri)?.use { it.write(bytes) } ?: error("Couldn't write image data")
+        val itemUri = resolver.insert(collection, values) ?: error(context.getString(R.string.gallery_create_failed))
+        resolver.openOutputStream(itemUri)?.use { it.write(bytes) } ?: error(context.getString(R.string.gallery_write_failed))
         // IS_PENDING=1 above hides the file from other apps/the gallery while bytes are still
         // being written — clearing it is what actually makes it show up once done.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

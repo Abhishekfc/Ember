@@ -2,6 +2,7 @@
 
 package com.emigo.app.ui.theme
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,30 +34,30 @@ import com.emigo.app.R
  * reset every device that had it selected back to [DEFAULT]. Only the user-facing label needs
  * to change to drop the old brand.
  */
-enum class ThemeKey(val displayName: String, val locked: Boolean) {
-    EMBER("Cream", locked = false),
+enum class ThemeKey(@StringRes val displayNameRes: Int, val locked: Boolean) {
+    EMBER(R.string.theme_name_cream, locked = false),
     // Same background, panel, and overlayPanel (nav dock) as EMBER, pixel-for-pixel — only the
     // accent trio (glow/glow2/violet, a user-supplied purple/blue/green gradient) and the
     // camera/featured-card fill change. See emberNewDefinition's own comment for the full reasoning.
-    EMBER_NEW("Dusk", locked = false),
+    EMBER_NEW(R.string.theme_name_dusk, locked = false),
     // The original warm-orange/violet "Ember" look, kept as its own free theme under a new name
     // once EMBER itself became the icon-matched cream/black look instead — nothing was deleted,
     // just renamed and given its own slot alongside it.
-    BLAZE("Blaze", locked = false),
-    NOIR("Noir", locked = false),
-    AURORA("Aurora", locked = true),
-    CYBER("Cyber", locked = true),
-    BOTANICA("Botanica", locked = true),
+    BLAZE(R.string.theme_name_blaze, locked = false),
+    NOIR(R.string.theme_name_noir, locked = false),
+    AURORA(R.string.theme_name_aurora, locked = true),
+    CYBER(R.string.theme_name_cyber, locked = true),
+    BOTANICA(R.string.theme_name_botanica, locked = true),
     // Free, and the app's default (see [ThemeKey.DEFAULT]) — moved out of Gold deliberately, not
     // an oversight: the theme every new account actually opens the app in can't be one they're
     // locked out of. Displayed as "Ember" (renamed from "Citrus") since this is the theme the app
     // actually opens in for everyone — the enum constant keeps its original name regardless, per
     // this enum's own top-of-file doc comment, so nobody's persisted selection resets.
-    CITRUS("Ember", locked = false),
+    CITRUS(R.string.theme_name_ember, locked = false),
     // Added directly against a user-supplied accent color (#A9D7FF, a pale icy blue) rather than
     // from the ember-complete-app.jsx reference this enum's own doc comment describes — not in
     // that file, a deliberate one-off addition.
-    FROST("Frost", locked = true),
+    FROST(R.string.theme_name_frost, locked = true),
     ;
 
     companion object {

@@ -1,5 +1,8 @@
 package com.emigo.app.ui.friends
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +20,7 @@ import kotlinx.coroutines.launch
 private const val FULL_FRIENDS_LOOKUP_LIMIT = 500
 
 class FriendProfileViewModel(
+    private val strings: StringProvider,
     private val repository: FriendRepository,
     private val safetyRepository: SafetyRepository,
     initialSubject: ProfileSubject,
@@ -88,7 +92,7 @@ class FriendProfileViewModel(
                     subject = ProfileSubject.Friend(updated)
                     onUpdated(updated)
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't update pin" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_pin) },
             )
             isUpdatingPin = false
         }
@@ -101,7 +105,7 @@ class FriendProfileViewModel(
             errorMessage = null
             repository.removeFriend(friendshipId).fold(
                 onSuccess = { onRemoved() },
-                onFailure = { errorMessage = it.message ?: "Couldn't remove friend" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_remove_friend) },
             )
             isRemoving = false
         }
@@ -117,7 +121,7 @@ class FriendProfileViewModel(
             errorMessage = null
             repository.acceptFriendRequest(friendshipId).fold(
                 onSuccess = { onAccepted(it) },
-                onFailure = { errorMessage = it.message ?: "Couldn't accept request" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_accept_request) },
             )
             isAccepting = false
         }
@@ -134,7 +138,7 @@ class FriendProfileViewModel(
             errorMessage = null
             repository.removeFriend(friendshipId).fold(
                 onSuccess = { onRejected() },
-                onFailure = { errorMessage = it.message ?: "Couldn't decline request" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_decline_request) },
             )
             isRejecting = false
         }
@@ -154,7 +158,7 @@ class FriendProfileViewModel(
                         result.copy(requested = true, friendshipId = sent.friendshipId, isPendingFromMe = true),
                     )
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't send request" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_send_request) },
             )
             isSendingRequest = false
         }
@@ -174,7 +178,7 @@ class FriendProfileViewModel(
                         result.copy(requested = false, friendshipId = null, isPendingFromMe = false),
                     )
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't cancel request" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_cancel_request) },
             )
             isCancelling = false
         }
@@ -190,7 +194,7 @@ class FriendProfileViewModel(
             errorMessage = null
             safetyRepository.blockUser(subject.userId).fold(
                 onSuccess = { onBlocked() },
-                onFailure = { errorMessage = it.message ?: "Couldn't block this person" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_block) },
             )
             isBlocking = false
         }
@@ -206,7 +210,7 @@ class FriendProfileViewModel(
             errorMessage = null
             safetyRepository.reportUser(subject.userId, reason, details).fold(
                 onSuccess = { reportSubmitted = true },
-                onFailure = { errorMessage = it.message ?: "Couldn't submit report" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_report) },
             )
             isReporting = false
         }

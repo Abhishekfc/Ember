@@ -36,6 +36,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -44,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.emigo.app.ui.components.NestedScreenHeader
+import com.emigo.app.R
+import com.emigo.app.ui.theme.EmberFixedColors
 import com.emigo.app.ui.theme.EmberRadii
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.PublicSansFontFamily
@@ -67,7 +70,7 @@ fun OtherSettingsScreen(onClose: () -> Unit, onDeleteAccount: suspend () -> Resu
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
-        NestedScreenHeader(onBack = onClose, title = "Other")
+        NestedScreenHeader(onBack = onClose, title = stringResource(R.string.other_settings_title))
 
         Row(
             modifier = Modifier
@@ -80,7 +83,7 @@ fun OtherSettingsScreen(onClose: () -> Unit, onDeleteAccount: suspend () -> Resu
         ) {
             Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = DeleteAccountDestructiveColor, modifier = Modifier.size(20.dp))
             Text(
-                text = "Delete account",
+                text = stringResource(R.string.delete_account_row),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -103,7 +106,7 @@ fun OtherSettingsScreen(onClose: () -> Unit, onDeleteAccount: suspend () -> Resu
 // other confirm dialogs in the app use — two different destructive-red tones would read as
 // inconsistent. `internal`, not `private` — MyProfileScreen reuses this exact red for its
 // username-taken status pill rather than picking a second, differently-tuned red.
-internal val DeleteAccountDestructiveColor = Color(0xFFB3261E)
+internal val DeleteAccountDestructiveColor = EmberFixedColors.destructive
 private const val DELETE_CONFIRM_WORD = "delete"
 
 /** Gated on literally typing the word "delete" (case-insensitive), not just tapping a button —
@@ -124,6 +127,7 @@ private fun DeleteAccountDialog(
     var typedText by remember { mutableStateOf("") }
     var isDeleting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val deleteFailedMessage = stringResource(R.string.delete_account_failed)
     val canDelete = typedText.trim().equals(DELETE_CONFIRM_WORD, ignoreCase = true) && !isDeleting
 
     // A custom shell instead of the shared EditDialogShell other dialogs use — that one fills
@@ -140,17 +144,17 @@ private fun DeleteAccountDialog(
                 .background(colors.background.baseColor())
                 .padding(20.dp),
         ) {
-            Text(text = "Delete account?", fontFamily = typography.display, fontSize = 18.sp, color = colors.cream)
+            Text(text = stringResource(R.string.delete_account_dialog_title), fontFamily = typography.display, fontSize = 18.sp, color = colors.cream)
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "This can't be undone. Your photos and friends will be deleted too.",
+                text = stringResource(R.string.delete_account_dialog_warning),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 13.sp,
                 color = colors.muted,
                 modifier = Modifier.padding(top = 14.dp),
             )
             Text(
-                text = "Type \"delete\" to confirm",
+                text = stringResource(R.string.delete_account_dialog_confirm_prompt),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -200,7 +204,7 @@ private fun DeleteAccountDialog(
                         .padding(vertical = 13.dp),
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    Text(text = "Cancel", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
+                    Text(text = stringResource(R.string.common_cancel), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
                 }
                 Row(
                     modifier = Modifier
@@ -217,7 +221,7 @@ private fun DeleteAccountDialog(
                                     onSuccess = { onAccountDeleted() },
                                     onFailure = {
                                         isDeleting = false
-                                        errorMessage = it.message ?: "Couldn't delete your account"
+                                        errorMessage = it.message ?: deleteFailedMessage
                                     },
                                 )
                             }
@@ -229,7 +233,7 @@ private fun DeleteAccountDialog(
                         CircularProgressIndicator(modifier = Modifier.size(15.dp), color = Color.White, strokeWidth = 2.dp)
                     } else {
                         Text(
-                            text = "Delete",
+                            text = stringResource(R.string.common_delete),
                             fontFamily = PublicSansFontFamily,
                             fontSize = 13.5.sp,
                             fontWeight = FontWeight.Bold,

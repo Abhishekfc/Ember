@@ -1,5 +1,8 @@
 package com.emigo.app.ui.activity
 
+import androidx.compose.ui.res.stringResource
+import com.emigo.app.R
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -59,10 +62,15 @@ fun ActivityScreen(
 ) {
     val colors = EmberTheme.colors
     val typography = EmberTheme.typography
-    val groups = remember(viewModel.events) { groupByDay(viewModel.events) }
+    val dayLabels = DayLabels(
+        earlier = stringResource(R.string.activity_day_earlier),
+        today = stringResource(R.string.activity_day_today),
+        yesterday = stringResource(R.string.activity_day_yesterday),
+    )
+    val groups = remember(viewModel.events, dayLabels) { groupByDay(viewModel.events, dayLabels) }
 
     TabScreenScaffold(
-        title = "Activity",
+        title = stringResource(R.string.activity_title),
         hazeState = hazeState,
         // Only true once there's already content on screen — the cold-start load is covered by
         // the full-screen spinner instead, so the pull indicator doesn't animate in from the top
@@ -91,7 +99,7 @@ fun ActivityScreen(
                             textAlign = TextAlign.Center,
                         )
                         Text(
-                            text = "Tap to retry",
+                            text = stringResource(R.string.activity_retry),
                             fontFamily = typography.body,
                             fontSize = 13.sp,
                             color = colors.glow,
@@ -147,16 +155,19 @@ fun ActivityScreen(
  * backend's newest-first order both across and within groups. Grouping earns its place here
  * because the content genuinely is chronological — unlike a numbered list on a page where order
  * is just decoration, when something happened is real information on an activity log. */
-private fun groupByDay(events: List<ActivityEventDto>): List<Pair<String, List<ActivityEventDto>>> =
-    events.groupBy { dayLabel(it.createdAt) }.toList()
+private fun groupByDay(events: List<ActivityEventDto>, labels: DayLabels): List<Pair<String, List<ActivityEventDto>>> =
+    events.groupBy { dayLabel(it.createdAt, labels) }.toList()
 
-private fun dayLabel(isoInstant: String): String {
+/** The words [dayLabel] uses for the days that aren't named by a weekday or a date. */
+private data class DayLabels(val earlier: String, val today: String, val yesterday: String)
+
+private fun dayLabel(isoInstant: String, labels: DayLabels): String {
     val zone = ZoneId.systemDefault()
-    val then = runCatching { Instant.parse(isoInstant) }.getOrNull()?.atZone(zone)?.toLocalDate() ?: return "Earlier"
+    val then = runCatching { Instant.parse(isoInstant) }.getOrNull()?.atZone(zone)?.toLocalDate() ?: return labels.earlier
     val today = LocalDate.now(zone)
     return when {
-        then == today -> "Today"
-        then == today.minusDays(1) -> "Yesterday"
+        then == today -> labels.today
+        then == today.minusDays(1) -> labels.yesterday
         then.isAfter(today.minusDays(7)) -> then.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
         else -> "${then.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${then.dayOfMonth}"
     }
@@ -324,14 +335,14 @@ private fun EmptyActivityState(modifier: Modifier = Modifier) {
             Icon(Icons.Rounded.NotificationsNone, contentDescription = null, tint = colors.glow, modifier = Modifier.size(30.dp))
         }
         Text(
-            text = "Nothing here yet",
+            text = stringResource(R.string.activity_empty_title),
             fontFamily = typography.display,
             fontSize = 19.sp,
             color = colors.cream,
             modifier = Modifier.padding(top = 18.dp),
         )
         Text(
-            text = "Send or receive a photo and it'll show up here",
+            text = stringResource(R.string.activity_empty_detail),
             fontFamily = typography.body,
             fontSize = 12.5.sp,
             color = colors.muted,

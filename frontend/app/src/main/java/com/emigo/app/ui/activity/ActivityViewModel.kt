@@ -1,5 +1,8 @@
 package com.emigo.app.ui.activity
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,6 +19,7 @@ import kotlinx.coroutines.launch
 private const val PAGE_SIZE = 30
 
 class ActivityViewModel(
+    private val strings: StringProvider,
     private val repository: ActivityRepository,
     private val localCache: LocalListCache,
 ) : ViewModel() {
@@ -141,7 +145,7 @@ class ActivityViewModel(
                     localCache.write(LocalListCache.KEY_ACTIVITY, page.items)
                     recomputeNewActivityCount()
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't load activity" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_load_activity) },
             )
             isLoading = false
             isPullRefreshing = false

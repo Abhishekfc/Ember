@@ -1,5 +1,8 @@
 package com.emigo.app.ui.camera
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,6 +16,7 @@ import kotlinx.coroutines.launch
  * cached (see PhotoRepository.getSentPhotos' own doc comment): always refetched fresh whenever
  * this screen opens, since the whole list is defined by a moving 24h window, not a stable one. */
 class SentPhotosViewModel(
+    private val strings: StringProvider,
     private val repository: PhotoRepository,
 ) : ViewModel() {
 
@@ -39,7 +43,7 @@ class SentPhotosViewModel(
             errorMessage = null
             repository.getSentPhotos().fold(
                 onSuccess = { photos = it },
-                onFailure = { errorMessage = it.message ?: "Couldn't load your sent photos" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_load_sent) },
             )
             isLoading = false
         }
@@ -57,7 +61,7 @@ class SentPhotosViewModel(
         val result = repository.unsendPhoto(photoId).onSuccess {
             photos = photos.filterNot { it.photoId == photoId }
         }.onFailure {
-            errorMessage = it.message ?: "Couldn't unsend that photo"
+            errorMessage = it.message ?: strings.get(R.string.error_unsend)
         }
         unsendingPhotoId = null
         return result

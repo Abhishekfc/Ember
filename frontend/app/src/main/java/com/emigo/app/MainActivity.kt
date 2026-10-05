@@ -1,5 +1,8 @@
 package com.emigo.app
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -179,6 +182,7 @@ class MainActivity : ComponentActivity() {
     private val photoRepository get() = emberApplication.photoRepository
     private val friendRepository get() = emberApplication.friendRepository
     private val activityRepository get() = emberApplication.activityRepository
+    private val stringProvider get() = emberApplication.stringProvider
     private val userRepository get() = emberApplication.userRepository
     private val subscriptionRepository get() = emberApplication.subscriptionRepository
     private val billingManager get() = emberApplication.billingManager
@@ -342,6 +346,7 @@ class MainActivity : ComponentActivity() {
                     factory = viewModelFactory {
                         initializer {
                             LoginViewModel(
+                                stringProvider,
                                 authRepository,
                                 initialPendingVerificationEmail = pendingVerification?.email,
                                 initialPendingVerificationDeadlineMillis = pendingVerification?.deadlineMillis,
@@ -603,6 +608,20 @@ class MainActivity : ComponentActivity() {
                         // subscriber just because the live check couldn't reach the server (see
                         // SubscriptionRepository's own doc comment on that function).
                         isGoldMember = subscriptionRepository.isGoldMemberOrLastKnown()
+
+                        // Our backend only re-checks Google when something actually calls
+                        // verifyPurchase — it doesn't notice a renewal on its own, so its stored
+                        // expiresAt can lapse even though Play already renewed the subscription.
+                        // The same reconciliation EmberGoldViewModel.refresh() already does for a
+                        // reinstall/new device runs here too, so a subscriber who never reopens
+                        // the Gold screen again after buying doesn't see Gold quietly disappear
+                        // app-wide on their first renewal.
+                        if (!isGoldMember) {
+                            billingManager.findActivePurchase()?.let { existing ->
+                                subscriptionRepository.verifyPurchase(existing.productId, existing.purchaseToken)
+                                    .onSuccess { isGoldMember = it.isActive }
+                            }
+                        }
                         widgetPreferenceStore.setCachedIsGoldMember(isGoldMember)
                     }
                 }
@@ -706,6 +725,7 @@ class MainActivity : ComponentActivity() {
                         factory = viewModelFactory {
                             initializer {
                                 FriendsViewModel(
+                                    stringProvider,
                                     friendRepository,
                                     localListCache,
                                     subscriptionRepository,
@@ -718,6 +738,7 @@ class MainActivity : ComponentActivity() {
                         factory = viewModelFactory {
                             initializer {
                                 HomeViewModel(
+                                    stringProvider,
                                     photoRepository,
                                     networkModule.tokenStore,
                                     userRepository,
@@ -770,7 +791,7 @@ class MainActivity : ComponentActivity() {
                     // whose ViewModels (and therefore their network calls) were already hoisted.
                     val activityViewModel: ActivityViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { ActivityViewModel(activityRepository, localListCache) }
+                            initializer { ActivityViewModel(stringProvider, activityRepository, localListCache) }
                         },
                     )
                     // Camera is a page of the main pager now, not a screen only created on
@@ -781,6 +802,7 @@ class MainActivity : ComponentActivity() {
                         factory = viewModelFactory {
                             initializer {
                                 CameraViewModel(
+                                    stringProvider,
                                     friendRepository,
                                     photoRepository,
                                     subscriptionRepository,
@@ -998,6 +1020,7 @@ class MainActivity : ComponentActivity() {
                                 factory = viewModelFactory {
                                     initializer {
                                         MyProfileViewModel(
+                                            stringProvider,
                                             userRepository,
                                             localListCache,
                                             initialProfile = initialHomeCache.profile,
@@ -1056,7 +1079,7 @@ class MainActivity : ComponentActivity() {
                             val widgetSettingsViewModel: WidgetSettingsViewModel = viewModel(
                                 factory = viewModelFactory {
                                     initializer {
-                                        WidgetSettingsViewModel(friendRepository, subscriptionRepository, widgetPreferenceStore)
+                                        WidgetSettingsViewModel(stringProvider, friendRepository, subscriptionRepository, widgetPreferenceStore)
                                     }
                                 },
                             )
@@ -1070,7 +1093,7 @@ class MainActivity : ComponentActivity() {
                         nestedScreen == NestedScreen.BLOCKED_USERS -> {
                             val blockedUsersViewModel: BlockedUsersViewModel = viewModel(
                                 factory = viewModelFactory {
-                                    initializer { BlockedUsersViewModel(safetyRepository) }
+                                    initializer { BlockedUsersViewModel(stringProvider, safetyRepository) }
                                 },
                             )
                             BlockedUsersScreen(
@@ -1082,7 +1105,7 @@ class MainActivity : ComponentActivity() {
                         nestedScreen == NestedScreen.SENT_PHOTOS -> {
                             val sentPhotosViewModel: SentPhotosViewModel = viewModel(
                                 factory = viewModelFactory {
-                                    initializer { SentPhotosViewModel(photoRepository) }
+                                    initializer { SentPhotosViewModel(stringProvider, photoRepository) }
                                 },
                             )
                             SentPhotosScreen(
@@ -1105,7 +1128,7 @@ class MainActivity : ComponentActivity() {
                         nestedScreen == NestedScreen.FIND_PEOPLE -> {
                             val findPeopleViewModel: FindPeopleViewModel = viewModel(
                                 factory = viewModelFactory {
-                                    initializer { FindPeopleViewModel(friendRepository) }
+                                    initializer { FindPeopleViewModel(stringProvider, friendRepository) }
                                 },
                             )
                             FindPeopleScreen(
@@ -1148,7 +1171,7 @@ class MainActivity : ComponentActivity() {
                             val friendProfileViewModel: FriendProfileViewModel = viewModel(
                                 viewModelStoreOwner = profileViewModelStoreOwner,
                                 factory = viewModelFactory {
-                                    initializer { FriendProfileViewModel(friendRepository, safetyRepository, subject) }
+                                    initializer { FriendProfileViewModel(stringProvider, friendRepository, safetyRepository, subject) }
                                 },
                             )
                             FriendProfileScreen(
@@ -1213,6 +1236,7 @@ class MainActivity : ComponentActivity() {
                                 factory = viewModelFactory {
                                     initializer {
                                         RecipientPickerViewModel(
+                                            stringProvider,
                                             friendRepository,
                                             localListCache,
                                             cameraViewModel.selectedRecipientIds,
@@ -1397,9 +1421,13 @@ class MainActivity : ComponentActivity() {
                                                 currentTheme = themeViewModel.selectedTheme,
                                                 isGoldMember = isGoldMember,
                                                 widgetBadge = if (widgetFeaturedFriendIds.isEmpty()) {
-                                                    "Anyone"
+                                                    stringResource(R.string.widget_badge_anyone)
                                                 } else {
-                                                    "${widgetFeaturedFriendIds.size} friend${if (widgetFeaturedFriendIds.size == 1) "" else "s"}"
+                                                    pluralStringResource(
+                                                        R.plurals.widget_badge_friends,
+                                                        widgetFeaturedFriendIds.size,
+                                                        widgetFeaturedFriendIds.size,
+                                                    )
                                                 },
                                                 notificationsEnabled = notificationsEnabled,
                                                 onNotificationsChange = { enabled ->
@@ -1457,7 +1485,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         val goldViewModel: EmberGoldViewModel = viewModel(
                             factory = viewModelFactory {
-                                initializer { EmberGoldViewModel(billingManager, subscriptionRepository) }
+                                initializer { EmberGoldViewModel(stringProvider, billingManager, subscriptionRepository) }
                             },
                         )
                         EmberGoldScreen(

@@ -1,5 +1,8 @@
 package com.emigo.app.ui.settings
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,7 +12,10 @@ import com.emigo.app.data.SafetyRepository
 import com.emigo.app.data.remote.dto.BlockedUserDto
 import kotlinx.coroutines.launch
 
-class BlockedUsersViewModel(private val repository: SafetyRepository) : ViewModel() {
+class BlockedUsersViewModel(
+    private val strings: StringProvider,
+    private val repository: SafetyRepository,
+) : ViewModel() {
 
     var blockedUsers by mutableStateOf<List<BlockedUserDto>>(emptyList())
         private set
@@ -32,7 +38,7 @@ class BlockedUsersViewModel(private val repository: SafetyRepository) : ViewMode
             errorMessage = null
             repository.getBlockedUsers().fold(
                 onSuccess = { blockedUsers = it },
-                onFailure = { errorMessage = it.message ?: "Couldn't load blocked accounts" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_load_blocked) },
             )
             isLoading = false
         }
@@ -44,7 +50,7 @@ class BlockedUsersViewModel(private val repository: SafetyRepository) : ViewMode
             errorMessage = null
             repository.unblockUser(userId).fold(
                 onSuccess = { blockedUsers = blockedUsers.filterNot { it.userId == userId } },
-                onFailure = { errorMessage = it.message ?: "Couldn't unblock" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_unblock) },
             )
             unblockingUserId = null
         }

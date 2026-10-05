@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.emigo.app.ui.theme.EmberAppTheme
+import com.emigo.app.ui.theme.EmberFixedColors
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.ThemeKey
 
@@ -109,7 +110,7 @@ fun GlowPhotoTile(
                 Text(
                     text = name,
                     fontFamily = typography.display,
-                    color = if (colors.isLight && photoUrl == null) colors.cream else Color(0xFFFBF8F3),
+                    color = if (colors.isLight && photoUrl == null) colors.cream else EmberFixedColors.onPhotoText,
                     fontSize = if (size > 80.dp) 15.sp else 11.sp,
                     fontWeight = FontWeight.Medium,
                 )

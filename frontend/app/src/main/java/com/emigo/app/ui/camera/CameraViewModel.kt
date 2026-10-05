@@ -1,5 +1,8 @@
 package com.emigo.app.ui.camera
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -59,6 +62,7 @@ private const val SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING = false
 enum class SendAnimState { IDLE, SENDING, COMPLETE }
 
 class CameraViewModel(
+    private val strings: StringProvider,
     private val friendRepository: FriendRepository,
     private val photoRepository: PhotoRepository,
     private val subscriptionRepository: SubscriptionRepository,
@@ -283,7 +287,7 @@ class CameraViewModel(
     // Always the plain word "Friends" now, never a specific name — the avatar stack (plus its
     // own "+N" circle once there's more than a couple) already shows exactly who's selected, so
     // naming them again in text was saying the same thing twice.
-    val recipientLabel: String = "Friends"
+    val recipientLabel: String = strings.get(R.string.friends_title)
 
     val hasPinnedSelected: Boolean
         get() = friends.any { it.friendId in selectedRecipientIds && it.pinnedByMe }
@@ -305,7 +309,7 @@ class CameraViewModel(
             // pagination boundary.
             friendRepository.getFriends(limit = RECIPIENT_PICKER_FRIENDS_LIMIT).fold(
                 onSuccess = { page -> applyFriends(page.items) },
-                onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_load_friends) },
             )
         }
     }
@@ -451,7 +455,7 @@ class CameraViewModel(
         val file = capturedFile ?: return
         val workName = uploadWorkName ?: file.name
         if (selectedRecipientIds.isEmpty()) {
-            errorMessage = "Select at least one friend first"
+            errorMessage = strings.get(R.string.camera_error_select_friend)
             return
         }
         val recipientIds = selectedRecipientIds.toList()
@@ -477,7 +481,7 @@ class CameraViewModel(
                 // needs it.
                 if (baked != file) file.delete()
                 if (queuedFile == null) {
-                    errorMessage = "Couldn't queue your photo — please try again"
+                    errorMessage = strings.get(R.string.camera_error_queue)
                     isQueuingSend = false
                     sendAnimState = SendAnimState.IDLE
                     return@launch
@@ -522,7 +526,7 @@ class CameraViewModel(
                 runCatching { File(file.parentFile, "save_${file.name}").also { file.copyTo(it, overwrite = true) } }.getOrNull()
             }
             if (sourceCopy == null) {
-                errorMessage = "Couldn't save your photo — please try again"
+                errorMessage = strings.get(R.string.camera_error_save)
                 isSavingToMemories = false
                 return@launch
             }
@@ -534,7 +538,7 @@ class CameraViewModel(
                 runCatching { moveToPendingSendStorage(context, baked) }.getOrNull()
             }
             if (queuedFile == null) {
-                errorMessage = "Couldn't save your photo — please try again"
+                errorMessage = strings.get(R.string.camera_error_save)
                 isSavingToMemories = false
                 return@launch
             }

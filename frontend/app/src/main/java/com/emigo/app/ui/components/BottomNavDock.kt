@@ -1,5 +1,8 @@
 package com.emigo.app.ui.components
 
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -77,11 +80,11 @@ val LocalNavDockHeight = compositionLocalOf { FALLBACK_NAV_DOCK_HEIGHT_DP }
 // reached as a pushed NestedScreen (see MainActivity) exactly like Theme/Profile/Settings' own
 // sub-screens, not a swipeable pager page with a corresponding dock tab. These four are the only
 // destinations that still are.
-enum class NavDestination(val label: String) {
-    MEMORIES("Memories"),
-    HOME("Home"),
-    FRIENDS("Friends"),
-    SETTINGS("Settings"),
+enum class NavDestination(@StringRes val labelRes: Int) {
+    MEMORIES(R.string.memories_title),
+    HOME(R.string.nav_home),
+    FRIENDS(R.string.friends_title),
+    SETTINGS(R.string.settings_title),
 }
 
 /**
@@ -172,22 +175,22 @@ fun BottomNavDock(
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             NavItem(NavDestination.MEMORIES, active, onNavigate) { tint ->
-                Icon(Icons.Filled.CalendarMonth, contentDescription = NavDestination.MEMORIES.label, tint = tint, modifier = Modifier.size(23.dp))
+                Icon(Icons.Filled.CalendarMonth, contentDescription = stringResource(NavDestination.MEMORIES.labelRes), tint = tint, modifier = Modifier.size(23.dp))
             }
             NavItem(NavDestination.HOME, active, onNavigate) { tint ->
                 Icon(
                     painter = painterResource(R.drawable.ic_layers_2),
-                    contentDescription = NavDestination.HOME.label,
+                    contentDescription = stringResource(NavDestination.HOME.labelRes),
                     tint = tint,
                     modifier = Modifier.size(23.dp),
                 )
             }
             CameraButton(onCameraClick)
             NavItem(NavDestination.FRIENDS, active, onNavigate, badgeCount = friendsBadgeCount) { tint ->
-                Icon(Icons.Filled.People, contentDescription = NavDestination.FRIENDS.label, tint = tint, modifier = Modifier.size(23.dp))
+                Icon(Icons.Filled.People, contentDescription = stringResource(NavDestination.FRIENDS.labelRes), tint = tint, modifier = Modifier.size(23.dp))
             }
             NavItem(NavDestination.SETTINGS, active, onNavigate) { tint ->
-                Icon(Icons.Filled.Settings, contentDescription = NavDestination.SETTINGS.label, tint = tint, modifier = Modifier.size(23.dp))
+                Icon(Icons.Filled.Settings, contentDescription = stringResource(NavDestination.SETTINGS.labelRes), tint = tint, modifier = Modifier.size(23.dp))
             }
         }
     }
@@ -214,7 +217,7 @@ private fun CameraButton(onCameraClick: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.Outlined.CameraAlt,
-            contentDescription = "Camera",
+            contentDescription = stringResource(R.string.nav_camera),
             tint = colors.accentText,
             modifier = Modifier.size(22.dp),
         )

@@ -1,5 +1,8 @@
 package com.emigo.app.ui.settings
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +20,7 @@ import kotlinx.coroutines.launch
 private const val WIDGET_FRIENDS_LIMIT = 500
 
 class WidgetSettingsViewModel(
+    private val strings: StringProvider,
     private val friendRepository: FriendRepository,
     private val subscriptionRepository: SubscriptionRepository,
     private val widgetPreferenceStore: WidgetPreferenceStore,
@@ -66,7 +70,7 @@ class WidgetSettingsViewModel(
             errorMessage = null
             friendRepository.getFriends(limit = WIDGET_FRIENDS_LIMIT).fold(
                 onSuccess = { page -> friends = page.items },
-                onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_load_friends) },
             )
             isLoading = false
         }

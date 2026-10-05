@@ -48,8 +48,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.emigo.app.R
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,7 +93,7 @@ fun WidgetSetupStep(onAddWidget: () -> Unit) {
             // one used to sit is worse than either having it or not.
             StaggeredEntrance(delayMillis = 60) {
                 Text(
-                    text = "Add the widget",
+                    text = stringResource(R.string.widget_setup_title),
                     fontFamily = AuthPalette.display,
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
@@ -103,7 +105,7 @@ fun WidgetSetupStep(onAddWidget: () -> Unit) {
             }
             StaggeredEntrance(delayMillis = 130) {
                 Text(
-                    text = "See their photos without opening the app.",
+                    text = stringResource(R.string.widget_setup_subtitle),
                     fontFamily = AuthPalette.body,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
@@ -133,14 +135,14 @@ fun WidgetSetupStep(onAddWidget: () -> Unit) {
 
             StaggeredEntrance(delayMillis = 200) {
                 AuthPrimaryButton(
-                    text = "Add widget",
+                    text = stringResource(R.string.widget_setup_add_button),
                     onClick = onAddWidget,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             StaggeredEntrance(delayMillis = 260) {
                 Text(
-                    text = "Show me how",
+                    text = stringResource(R.string.widget_setup_show_me_button),
                     fontFamily = AuthPalette.body,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
@@ -194,7 +196,7 @@ private fun WidgetInstructionsOverlay(onDone: () -> Unit, onDismiss: () -> Unit)
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "How to add it",
+            text = stringResource(R.string.widget_setup_how_title),
             fontFamily = AuthPalette.display,
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
@@ -259,7 +261,7 @@ private fun WidgetInstructionsOverlay(onDone: () -> Unit, onDismiss: () -> Unit)
         // A separate "next" and "done" pair was the alternative and reads as more choice than
         // there actually is here; there's only ever one way on from any of these pages.
         AuthPrimaryButton(
-            text = if (isLastPage) "I've added the widget" else "Next",
+            text = stringResource(if (isLastPage) R.string.widget_setup_done_button else R.string.widget_setup_next),
             onClick = {
                 if (isLastPage) {
                     onDone()
@@ -274,12 +276,15 @@ private fun WidgetInstructionsOverlay(onDone: () -> Unit, onDismiss: () -> Unit)
 
 private const val WIDGET_INSTRUCTION_COUNT = 4
 
-private fun widgetInstructionCaption(page: Int): String = when (page) {
-    0 -> "Press and hold your home screen"
-    1 -> "Tap Widgets"
-    2 -> "Search for Emigo"
-    else -> "Drag it into place"
-}
+@Composable
+private fun widgetInstructionCaption(page: Int): String = stringResource(
+    when (page) {
+        0 -> R.string.widget_setup_step_1
+        1 -> R.string.widget_setup_step_2
+        2 -> R.string.widget_setup_step_3
+        else -> R.string.widget_setup_step_4
+    },
+)
 
 /** The hero: the widget already on a home screen. Literally the same mockup the welcome screen
  * opens with — same phone, same tilt, same sample photo — so arriving here reads as the promise
@@ -379,7 +384,7 @@ private fun WidgetInstructionArt(page: Int, modifier: Modifier = Modifier) {
                         modifier = Modifier.size(cell * 0.4f),
                     )
                     Text(
-                        text = "Emigo",
+                        text = stringResource(R.string.app_name),
                         fontFamily = AuthPalette.body,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,

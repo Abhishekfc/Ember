@@ -1,5 +1,8 @@
 package com.emigo.app.ui.settings
 
+import androidx.compose.ui.res.stringResource
+import com.emigo.app.R
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,9 +66,9 @@ fun WidgetSettingsScreen(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
-        NestedScreenHeader(onBack = onClose, title = "Widget")
+        NestedScreenHeader(onBack = onClose, title = stringResource(R.string.settings_widget))
         Text(
-            text = "Choose whose photos always show on your home-screen widget",
+            text = stringResource(R.string.widget_settings_subtitle),
             fontFamily = typography.body,
             fontSize = 12.sp,
             color = colors.muted,
@@ -74,7 +77,7 @@ fun WidgetSettingsScreen(
 
         Row(modifier = Modifier.padding(top = 18.dp)) {
             QuickSelectLink(
-                label = "Anyone (most recent)",
+                label = stringResource(R.string.widget_settings_anyone),
                 active = viewModel.selectedFriendIds.isEmpty(),
                 onClick = viewModel::clearSelection,
             )
@@ -88,7 +91,7 @@ fun WidgetSettingsScreen(
 
                 viewModel.friends.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "Add friends first to feature them on your widget.",
+                        text = stringResource(R.string.widget_settings_add_friends_first),
                         fontFamily = PublicSansFontFamily,
                         fontSize = 13.sp,
                         color = colors.muted,
@@ -128,7 +131,7 @@ fun WidgetSettingsScreen(
             horizontalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = if (needsUpgrade) "Get Emigo Gold" else "Save",
+                text = stringResource(if (needsUpgrade) R.string.camera_get_gold else R.string.common_save),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,

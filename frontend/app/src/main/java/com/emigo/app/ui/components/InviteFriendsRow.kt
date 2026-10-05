@@ -1,5 +1,7 @@
 package com.emigo.app.ui.components
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -47,13 +49,17 @@ import com.emigo.app.ui.theme.PublicSansFontFamily
 @Composable
 fun InviteFriendsRow(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val inviteMessage = "Come add me on Emigo — it puts my photos right on your home screen."
-    val quickTargets = remember {
+    val inviteMessage = stringResource(R.string.invite_message)
+    val instagramLabel = stringResource(R.string.invite_target_instagram)
+    val snapchatLabel = stringResource(R.string.invite_target_snapchat)
+    val whatsappLabel = stringResource(R.string.invite_target_whatsapp)
+    val moreLabel = stringResource(R.string.invite_target_more)
+    val quickTargets = remember(instagramLabel, snapchatLabel, whatsappLabel, moreLabel) {
         listOf(
-            InviteTarget("Instagram", Icons.Filled.PhotoCamera, "com.instagram.android", R.drawable.ic_invite_instagram),
-            InviteTarget("Snapchat", Icons.Filled.PhotoCamera, "com.snapchat.android", R.drawable.ic_invite_snapchat),
-            InviteTarget("WhatsApp", Icons.Filled.Chat, "com.whatsapp", R.drawable.ic_invite_whatsapp),
-            InviteTarget("More", Icons.Filled.MoreHoriz, null),
+            InviteTarget(instagramLabel, Icons.Filled.PhotoCamera, "com.instagram.android", R.drawable.ic_invite_instagram),
+            InviteTarget(snapchatLabel, Icons.Filled.PhotoCamera, "com.snapchat.android", R.drawable.ic_invite_snapchat),
+            InviteTarget(whatsappLabel, Icons.Filled.Chat, "com.whatsapp", R.drawable.ic_invite_whatsapp),
+            InviteTarget(moreLabel, Icons.Filled.MoreHoriz, null),
         )
     }
 

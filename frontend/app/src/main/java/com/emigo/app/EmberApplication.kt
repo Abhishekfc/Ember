@@ -78,6 +78,7 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
     // visits and matches how every other repository here is scoped.
     val billingManager by lazy { BillingManager(this) }
     val safetyRepository by lazy { SafetyRepository(networkModule.api) }
+    val stringProvider by lazy { StringProvider(this) }
     val themePreferenceStore by lazy { ThemePreferenceStore(this) }
     val appIconPreferenceStore by lazy { AppIconPreferenceStore(this) }
     val notificationPreferenceStore by lazy { NotificationPreferenceStore(this) }
@@ -130,14 +131,14 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NEW_PHOTO_NOTIFICATION_CHANNEL_ID,
-                "New photos",
+                getString(R.string.channel_new_photos_name),
                 NotificationManager.IMPORTANCE_HIGH,
-            ).apply { description = "A friend sent you a new photo" }
+            ).apply { description = getString(R.string.channel_new_photos_description) }
             val streakChannel = NotificationChannel(
                 STREAK_NOTIFICATION_CHANNEL_ID,
-                "Streaks",
+                getString(R.string.channel_streaks_name),
                 NotificationManager.IMPORTANCE_HIGH,
-            ).apply { description = "When a streak with a friend is about to break, or just did" }
+            ).apply { description = getString(R.string.channel_streaks_description) }
             getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(channel, streakChannel))
         }
     }

@@ -1,5 +1,8 @@
 package com.emigo.app.ui.home
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +79,7 @@ data class InitialHomeCache(
 )
 
 class HomeViewModel(
+    private val strings: StringProvider,
     private val repository: PhotoRepository,
     private val tokenStore: TokenStore,
     private val userRepository: UserRepository,
@@ -327,9 +331,9 @@ class HomeViewModel(
     val greeting: String = run {
         val hour = LocalDateTime.now().hour
         when {
-            hour < 12 -> "Good morning"
-            hour < 17 -> "Good afternoon"
-            else -> "Good evening"
+            hour < 12 -> strings.get(R.string.home_greeting_morning)
+            hour < 17 -> strings.get(R.string.home_greeting_afternoon)
+            else -> strings.get(R.string.home_greeting_evening)
         }
     }
 
@@ -371,6 +375,16 @@ class HomeViewModel(
         // more recently, and each sets isLoading/isPullRefreshing independently so the spinner
         // could flip off mid-refresh while the other call is still running.
         if (isFetchingFeed) return
+        // friends (and so FriendAvatarRow's pictures) is otherwise only ever fetched once, in
+        // init — nothing else on this screen ever re-asks for it. A pull-to-refresh is the one
+        // explicit "check for anything new" gesture this screen has, so it re-fetches friends
+        // alongside the feed itself rather than leaving a friend's updated profile photo stuck
+        // showing whatever this screen first loaded at cold start, for the rest of the session.
+        if (isPullRefresh) {
+            viewModelScope.launch {
+                friendRepository.getFriends(forceRefresh = true, limit = ALL_FRIENDS_LIMIT).onSuccess { friends = it.items }
+            }
+        }
         viewModelScope.launch {
             isFetchingFeed = true
             isLoading = true
@@ -396,7 +410,7 @@ class HomeViewModel(
                     onFeedLoaded(items)
                     viewModelScope.launch { localCache.write(LocalListCache.KEY_FEED, items) }
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't load your feed" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_load_feed) },
             )
             isLoading = false
             isPullRefreshing = false

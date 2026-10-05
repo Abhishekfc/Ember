@@ -70,6 +70,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +83,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
+import com.emigo.app.R
 import com.emigo.app.ui.auth.AuthPalette
 import com.emigo.app.ui.components.NestedScreenHeader
 import com.emigo.app.ui.settings.DeleteAccountDestructiveColor
@@ -166,7 +168,7 @@ fun MyProfileScreen(
                     if (photoUrl != null) {
                         AsyncImage(
                             model = photoUrl,
-                            contentDescription = "Your profile photo",
+                            contentDescription = stringResource(R.string.settings_profile_photo_description),
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize().clip(CircleShape),
                         )
@@ -215,20 +217,20 @@ fun MyProfileScreen(
             // comes from generous spacing and one consistent accent per row, not a card boundary").
             // This used to be a bordered panel card, a deliberate one-off that had drifted from
             // every other screen's look — that's the "old design" this replaces.
-            SectionLabel(text = "Account", modifier = Modifier.padding(top = 28.dp, bottom = 2.dp))
-            FlatProfileRow(label = "Name") {
+            SectionLabel(text = stringResource(R.string.profile_section_account), modifier = Modifier.padding(top = 28.dp, bottom = 2.dp))
+            FlatProfileRow(label = stringResource(R.string.profile_row_name)) {
                 viewModel.openNameEditor()
                 showNameDialog = true
             }
-            FlatProfileRow(label = "Username") {
+            FlatProfileRow(label = stringResource(R.string.profile_row_username)) {
                 viewModel.openUsernameEditor()
                 showUsernameDialog = true
             }
-            FlatProfileRow(label = "Change password") {
+            FlatProfileRow(label = stringResource(R.string.profile_password_title)) {
                 viewModel.openPasswordEditor()
                 showPasswordDialog = true
             }
-            FlatProfileRow(label = "Profile picture") {
+            FlatProfileRow(label = stringResource(R.string.profile_row_picture)) {
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
 
@@ -239,7 +241,7 @@ fun MyProfileScreen(
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp, start = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.Lock, contentDescription = "Not editable", tint = colors.mutedDim, modifier = Modifier.size(12.dp))
+                Icon(Icons.Filled.Lock, contentDescription = stringResource(R.string.profile_not_editable_description), tint = colors.mutedDim, modifier = Modifier.size(12.dp))
                 Text(
                     text = viewModel.profile?.email.orEmpty(),
                     fontFamily = PublicSansFontFamily,
@@ -319,7 +321,7 @@ private fun AvatarFullScreenViewer(photoUrl: String?, initial: String, onDismiss
             if (photoUrl != null) {
                 AsyncImage(
                     model = photoUrl,
-                    contentDescription = "Your profile photo",
+                    contentDescription = stringResource(R.string.settings_profile_photo_description),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().clip(CircleShape),
                 )
@@ -579,7 +581,7 @@ private fun PasswordDialogTextField(value: String, onValueChange: (String) -> Un
         }
         Icon(
             imageVector = if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-            contentDescription = if (visible) "Hide password" else "Show password",
+            contentDescription = stringResource(if (visible) R.string.auth_hide_password else R.string.auth_show_password),
             tint = colors.mutedDim,
             modifier = Modifier
                 .padding(start = 10.dp)
@@ -641,7 +643,7 @@ private fun DialogActions(
                 .padding(vertical = 13.dp),
             horizontalArrangement = Arrangement.Center,
         ) {
-            Text(text = "Cancel", fontFamily = PublicSansFontFamily, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.muted)
+            Text(text = stringResource(R.string.common_cancel), fontFamily = PublicSansFontFamily, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.muted)
         }
         Row(
             modifier = Modifier
@@ -656,7 +658,7 @@ private fun DialogActions(
                 CircularProgressIndicator(modifier = Modifier.size(15.dp), color = colors.onLight, strokeWidth = 2.dp)
             } else {
                 Text(
-                    text = "Save",
+                    text = stringResource(R.string.common_save),
                     fontFamily = PublicSansFontFamily,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
@@ -679,8 +681,8 @@ private fun NameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> Unit)
         }
     }
     EditDialogShell(
-        title = "Your name",
-        subtitle = "This is the name your friends will see.",
+        title = stringResource(R.string.profile_name_title),
+        subtitle = stringResource(R.string.profile_name_subtitle),
         onDismiss = onDismiss,
         errorToast = viewModel.nameError,
     ) {
@@ -709,8 +711,8 @@ private fun UsernameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> U
     }
 
     EditDialogShell(
-        title = "Your username",
-        subtitle = "Used to find and tag you around the app.",
+        title = stringResource(R.string.profile_username_title),
+        subtitle = stringResource(R.string.profile_username_subtitle),
         onDismiss = onDismiss,
         errorToast = viewModel.usernameError,
     ) {
@@ -725,7 +727,7 @@ private fun UsernameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> U
             } else if (check == UsernameCheckState.Available && !unchanged) {
                 Icon(
                     Icons.Filled.Check,
-                    contentDescription = "Available",
+                    contentDescription = stringResource(R.string.profile_username_available),
                     tint = colors.fieldFocus,
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 14.dp).size(16.dp),
                 )
@@ -736,7 +738,7 @@ private fun UsernameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> U
             unchanged -> {}
             check is UsernameCheckState.Available -> {
                 StatusPill(
-                    text = "Available",
+                    text = stringResource(R.string.profile_username_available),
                     icon = Icons.Filled.Check,
                     tint = colors.fieldFocus,
                     modifier = Modifier.padding(top = 10.dp),
@@ -747,7 +749,7 @@ private fun UsernameEditDialog(viewModel: MyProfileViewModel, onDismiss: () -> U
                 // inventing a second one — a distinct color from the "Available" state's yellow,
                 // which the two states need to actually look different from each other.
                 StatusPill(
-                    text = "Already taken",
+                    text = stringResource(R.string.profile_username_taken),
                     icon = Icons.Filled.Close,
                     tint = DeleteAccountDestructiveColor,
                     modifier = Modifier.padding(top = 10.dp),
@@ -824,29 +826,30 @@ private fun PasswordChangeDialog(viewModel: MyProfileViewModel, onDismiss: () ->
         }
     }
     EditDialogShell(
-        title = "Change password",
-        subtitle = "Use at least 8 characters. You'll stay signed in on this device.",
+        title = stringResource(R.string.profile_password_title),
+        subtitle = stringResource(R.string.profile_password_subtitle),
         onDismiss = cancelAndDismiss,
         errorToast = viewModel.passwordError,
     ) {
         PasswordDialogTextField(
             value = viewModel.currentPasswordDraft,
             onValueChange = viewModel::onCurrentPasswordDraftChange,
-            placeholder = "Current password",
+            placeholder = stringResource(R.string.profile_current_password_hint),
         )
         Spacer(modifier = Modifier.height(10.dp))
         PasswordDialogTextField(
             value = viewModel.newPasswordDraft,
             onValueChange = viewModel::onNewPasswordDraftChange,
-            placeholder = "New password",
+            placeholder = stringResource(R.string.profile_new_password_hint),
         )
         Spacer(modifier = Modifier.height(10.dp))
         PasswordDialogTextField(
             value = viewModel.confirmPasswordDraft,
             onValueChange = viewModel::onConfirmPasswordDraftChange,
-            placeholder = "Confirm new password",
+            placeholder = stringResource(R.string.profile_confirm_password_hint),
         )
 
+        val passwordChangedMessage = stringResource(R.string.profile_password_changed)
         DialogActions(
             canSave = viewModel.currentPasswordDraft.isNotEmpty() &&
                 viewModel.newPasswordDraft.length >= 8 &&
@@ -859,7 +862,7 @@ private fun PasswordChangeDialog(viewModel: MyProfileViewModel, onDismiss: () ->
             // the save actually landed versus silently doing nothing.
             onSave = {
                 viewModel.savePassword(onSaved = {
-                    Toast.makeText(context, "Password changed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, passwordChangedMessage, Toast.LENGTH_SHORT).show()
                     onDismiss()
                 })
             },

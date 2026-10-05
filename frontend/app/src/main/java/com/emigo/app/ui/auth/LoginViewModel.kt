@@ -1,5 +1,8 @@
 package com.emigo.app.ui.auth
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import android.util.Patterns
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +50,7 @@ private const val USERNAME_DEBOUNCE_MS = 400L
  * Null for every other case (a fresh WELCOME start, or a returning session with nothing pending).
  */
 class LoginViewModel(
+    private val strings: StringProvider,
     private val repository: AuthRepository,
     initialPendingVerificationEmail: String? = null,
     initialPendingVerificationDeadlineMillis: Long? = null,
@@ -242,7 +246,7 @@ class LoginViewModel(
                     if (result.available) {
                         goTo(AuthStep.REGISTER_PASSWORD)
                     } else {
-                        errorMessage = "That email already has an Emigo account."
+                        errorMessage = strings.get(R.string.login_error_email_taken)
                     }
                 },
                 // A check that couldn't reach the server must not become a wall in front of
@@ -263,7 +267,7 @@ class LoginViewModel(
         // that won, so a successful sign-in could still end up showing an error.
         if (isLoading) return
         if (loginIdentifier.isBlank() || password.isBlank()) {
-            errorMessage = "Please fill in every field"
+            errorMessage = strings.get(R.string.login_error_fill_all)
             return
         }
         // A separate check from the blank case above, and only for something that actually looks
@@ -275,7 +279,7 @@ class LoginViewModel(
         // fired for *anything* that wasn't a valid email, including a genuine username — showing
         // "Please fill in every field" for someone who'd filled in both fields correctly.
         if (loginIdentifier.contains("@") && !isLoginEmailValid) {
-            errorMessage = "Enter a valid email address"
+            errorMessage = strings.get(R.string.login_error_invalid_email)
             return
         }
         viewModelScope.launch {
@@ -283,7 +287,7 @@ class LoginViewModel(
             errorMessage = null
             repository.signIn(loginIdentifier.trim(), password).fold(
                 onSuccess = { outcome -> handleSignInOutcome(outcome, onSuccess) },
-                onFailure = { errorMessage = it.message ?: "Something went wrong" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_something_went_wrong) },
             )
             isLoading = false
         }
@@ -322,7 +326,7 @@ class LoginViewModel(
                 // password, not a distinct one: identical wording is what makes the two cases
                 // indistinguishable, so nobody typing guesses can use the difference to work out
                 // which addresses are registered.
-                errorMessage = "Incorrect email or password"
+                errorMessage = strings.get(R.string.login_error_bad_credentials)
             }
             is SignInOutcome.NeedsVerification -> {
                 // accountCreated stays false here (unlike the fresh sign-up path in
@@ -341,7 +345,7 @@ class LoginViewModel(
      * file's own top-of-file doc comment for where it actually gets created. */
     fun submitRegister() {
         if (!isEmailValid || !isPasswordValid) {
-            errorMessage = "Please check your details"
+            errorMessage = strings.get(R.string.login_error_check_details)
             return
         }
         goTo(AuthStep.REGISTER_NAME)
@@ -366,7 +370,7 @@ class LoginViewModel(
      * until a username is confirmed too. */
     fun submitName() {
         if (!isNameValid) {
-            errorMessage = "Please enter your first name"
+            errorMessage = strings.get(R.string.login_error_first_name)
             return
         }
         goTo(AuthStep.REGISTER_USERNAME)
@@ -426,11 +430,11 @@ class LoginViewModel(
         // with an error message for an account that was in fact created.
         if (isLoading) return
         if (usernameDraft.length < 3) {
-            errorMessage = "Username must be at least 3 characters"
+            errorMessage = strings.get(R.string.error_username_too_short)
             return
         }
         if (usernameCheck !is UsernameCheckState.Available) {
-            errorMessage = "Pick an available username first"
+            errorMessage = strings.get(R.string.error_username_pick_available)
             return
         }
         viewModelScope.launch {
@@ -462,7 +466,7 @@ class LoginViewModel(
                         goTo(AuthStep.REGISTER_WIDGET)
                     }
                 },
-                onFailure = { errorMessage = it.message ?: "Something went wrong" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_something_went_wrong) },
             )
             isLoading = false
         }
@@ -498,8 +502,8 @@ class LoginViewModel(
             isResendingVerification = true
             verificationResendMessage = null
             runCatching { FirebaseAuth.getInstance().currentUser?.sendEmailVerification()?.await() }
-                .onSuccess { verificationResendMessage = "Verification email sent." }
-                .onFailure { verificationResendMessage = firebaseErrorMessage(it) ?: "Couldn't send that. Please try again." }
+                .onSuccess { verificationResendMessage = strings.get(R.string.verify_resent) }
+                .onFailure { verificationResendMessage = firebaseErrorMessage(it) ?: strings.get(R.string.verify_resend_failed) }
             isResendingVerification = false
         }
     }
@@ -551,18 +555,18 @@ class LoginViewModel(
                     pendingVerificationEmail = outcome.email
                     pendingVerificationDeadlineMillis = outcome.verifyByEpochMillis
                     isCheckingVerification = false
-                    verificationCheckError = "Still not verified. Check your inbox and spam folder."
+                    verificationCheckError = strings.get(R.string.verify_still_unverified)
                 } else {
                     // A genuine network failure, or NeedsProfile (this account no longer exists —
                     // EmailVerificationExpiryService already deleted it). Neither is "try again in
                     // a second," so this reuses the same message rather than claiming to know
                     // which one happened.
                     isCheckingVerification = false
-                    verificationCheckError = "Still not verified. Check your inbox and spam folder."
+                    verificationCheckError = strings.get(R.string.verify_still_unverified)
                 }
             } else {
                 isCheckingVerification = false
-                verificationCheckError = "Still not verified. Check your inbox and spam folder."
+                verificationCheckError = strings.get(R.string.verify_still_unverified)
             }
         }
     }

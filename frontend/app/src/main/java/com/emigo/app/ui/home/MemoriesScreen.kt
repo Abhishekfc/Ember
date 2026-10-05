@@ -82,6 +82,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Velocity
@@ -91,10 +92,12 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.emigo.app.R
 import com.emigo.app.data.remote.dto.MemoryPhotoDto
 import com.emigo.app.ui.components.LocalNavDockHeight
 import com.emigo.app.ui.components.TabScreenHeader
 import com.emigo.app.ui.profile.EditDialogShell
+import com.emigo.app.ui.theme.EmberFixedColors
 import com.emigo.app.ui.theme.EmberRadii
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.PublicSansFontFamily
@@ -131,7 +134,7 @@ private data class MemoriesSection(val label: String, val photos: List<MemoryPho
  * [RECENT_SECTION_DAYS] days) followed by one section per calendar month for everything older,
  * each labeled with that month's own name — no month-navigation state to keep around any more,
  * this is the entire grouping. */
-private fun buildMemoriesSections(memories: List<MemoryPhotoDto>): List<MemoriesSection> {
+private fun buildMemoriesSections(memories: List<MemoryPhotoDto>, recentLabel: String): List<MemoriesSection> {
     if (memories.isEmpty()) return emptyList()
     val recentCutoff = Instant.now().minus(RECENT_SECTION_DAYS, ChronoUnit.DAYS)
     val recent = mutableListOf<MemoryPhotoDto>()
@@ -150,7 +153,7 @@ private fun buildMemoriesSections(memories: List<MemoryPhotoDto>): List<Memories
         }
     }
     val sections = mutableListOf<MemoriesSection>()
-    if (recent.isNotEmpty()) sections += MemoriesSection("Recent", recent)
+    if (recent.isNotEmpty()) sections += MemoriesSection(recentLabel, recent)
     olderByMonth.forEach { (month, photos) ->
         sections += MemoriesSection("${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}", photos)
     }
@@ -226,7 +229,8 @@ internal fun MemoriesPhotoGrid(
     val gridBlur by rememberFocusBlur(isOpen)
     val gridFade by rememberFocusFade(isOpen)
 
-    val sections = remember(memories) { buildMemoriesSections(memories) }
+    val recentLabel = stringResource(R.string.memories_section_recent)
+    val sections = remember(memories, recentLabel) { buildMemoriesSections(memories, recentLabel) }
 
     Box(modifier = modifier) {
         when {
@@ -287,14 +291,14 @@ private fun MemoriesEmptyState(onCameraClick: () -> Unit, modifier: Modifier = M
     val typography = EmberTheme.typography
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            text = "No memories yet",
+            text = stringResource(R.string.memories_empty_title),
             fontFamily = typography.body,
             fontWeight = FontWeight.SemiBold,
             fontSize = 15.sp,
             color = colors.cream,
         )
         Text(
-            text = "Save a photo from the camera to see it here.",
+            text = stringResource(R.string.memories_empty_detail),
             fontFamily = typography.body,
             fontSize = 13.sp,
             color = colors.muted,
@@ -316,7 +320,7 @@ private fun MemoriesEmptyState(onCameraClick: () -> Unit, modifier: Modifier = M
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Open camera",
+                text = stringResource(R.string.memories_open_camera),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
@@ -345,7 +349,7 @@ private fun MemoryPhotoCell(
     ) {
         AsyncImage(
             model = photo.photoUrl,
-            contentDescription = "Your photo",
+            contentDescription = stringResource(R.string.memories_photo_description),
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
@@ -381,6 +385,7 @@ internal fun MemoryFeaturedOverlay(
     val typography = EmberTheme.typography
     val density = LocalDensity.current
     val context = LocalContext.current
+    val deleteFailedMessage = stringResource(R.string.memories_delete_failed)
     val coroutineScope = rememberCoroutineScope()
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -514,7 +519,7 @@ internal fun MemoryFeaturedOverlay(
                             .size(cardWidthPx.roundToInt(), cardHeightPx.roundToInt())
                             .build()
                     },
-                    contentDescription = "Your photo",
+                    contentDescription = stringResource(R.string.memories_photo_description),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -545,7 +550,7 @@ internal fun MemoryFeaturedOverlay(
                 },
                 fontFamily = typography.display,
                 fontSize = 24.sp,
-                color = Color(0xFFFBF8F3),
+                color = EmberFixedColors.onPhotoText,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(start = 22.dp, bottom = 22.dp)
@@ -573,7 +578,7 @@ internal fun MemoryFeaturedOverlay(
                     .clickable(enabled = !isDeleting) { menuExpanded = true },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.common_more_options), tint = Color.White, modifier = Modifier.size(18.dp))
             }
             // Material3's DropdownMenu already fades+scales in/out by default — that's the
             // "fade animation" here, rather than a second, hand-rolled AnimatedVisibility on
@@ -588,7 +593,7 @@ internal fun MemoryFeaturedOverlay(
                 border = BorderStroke(1.dp, colors.border),
             ) {
                 DropdownMenuItem(
-                    text = { Text("Save", fontFamily = PublicSansFontFamily, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = colors.cream) },
+                    text = { Text(stringResource(R.string.common_save), fontFamily = PublicSansFontFamily, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = colors.cream) },
                     leadingIcon = { Icon(Icons.Rounded.Download, contentDescription = null, tint = colors.cream, modifier = Modifier.size(18.dp)) },
                     onClick = {
                         menuExpanded = false
@@ -606,7 +611,7 @@ internal fun MemoryFeaturedOverlay(
                 )
                 HorizontalDivider(color = colors.border, thickness = 1.dp, modifier = Modifier.padding(horizontal = 12.dp))
                 DropdownMenuItem(
-                    text = { Text("Delete", fontFamily = PublicSansFontFamily, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MemoriesDestructiveColor) },
+                    text = { Text(stringResource(R.string.common_delete), fontFamily = PublicSansFontFamily, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MemoriesDestructiveColor) },
                     leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = MemoriesDestructiveColor, modifier = Modifier.size(18.dp)) },
                     onClick = {
                         menuExpanded = false
@@ -635,7 +640,7 @@ internal fun MemoryFeaturedOverlay(
                         onDismiss()
                     }.onFailure {
                         isDeleting = false
-                        Toast.makeText(context, it.message ?: "Couldn't delete that photo", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, it.message ?: deleteFailedMessage, Toast.LENGTH_SHORT).show()
                     }
                 }
             },
@@ -645,8 +650,8 @@ internal fun MemoryFeaturedOverlay(
 
 private suspend fun downloadPhoto(context: Context, photoUrl: String) {
     saveImageToGallery(context, photoUrl).fold(
-        onSuccess = { Toast.makeText(context, "Saved to your gallery", Toast.LENGTH_SHORT).show() },
-        onFailure = { Toast.makeText(context, it.message ?: "Couldn't save that photo", Toast.LENGTH_SHORT).show() },
+        onSuccess = { Toast.makeText(context, context.getString(R.string.memories_saved_to_gallery), Toast.LENGTH_SHORT).show() },
+        onFailure = { Toast.makeText(context, it.message ?: context.getString(R.string.memories_save_failed), Toast.LENGTH_SHORT).show() },
     )
 }
 
@@ -654,7 +659,7 @@ private suspend fun downloadPhoto(context: Context, photoUrl: String) {
 // SettingsScreen/RecipientPickerScreen's own DeleteAccountDestructiveColor/
 // DeleteListDestructiveColor) — kept as its own local constant rather than a shared one across
 // three unrelated packages purely for one hex value.
-private val MemoriesDestructiveColor = Color(0xFFB3261E)
+private val MemoriesDestructiveColor = EmberFixedColors.destructive
 
 /** Same shell every other confirm-before-delete dialog in the app uses (see
  * RecipientPickerScreen's DeleteListConfirmDialog) — plain "This can't be undone.", no dash, dark
@@ -664,9 +669,9 @@ private val MemoriesDestructiveColor = Color(0xFFB3261E)
 @Composable
 private fun DeleteMemoryConfirmDialog(isDeleting: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val colors = EmberTheme.colors
-    EditDialogShell(title = "Delete this photo?", onDismiss = onDismiss) {
+    EditDialogShell(title = stringResource(R.string.memories_delete_title), onDismiss = onDismiss) {
         Text(
-            text = "This can't be undone.",
+            text = stringResource(R.string.common_undo_warning),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.sp,
             color = colors.muted,
@@ -685,7 +690,7 @@ private fun DeleteMemoryConfirmDialog(isDeleting: Boolean, onDismiss: () -> Unit
                     .padding(vertical = 13.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Text(text = "Cancel", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
+                Text(text = stringResource(R.string.common_cancel), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
             }
             Row(
                 modifier = Modifier
@@ -699,7 +704,7 @@ private fun DeleteMemoryConfirmDialog(isDeleting: Boolean, onDismiss: () -> Unit
                 if (isDeleting) {
                     CircularProgressIndicator(modifier = Modifier.size(15.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text(text = "Delete", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(text = stringResource(R.string.common_delete), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
@@ -752,7 +757,7 @@ fun MemoriesTabScreen(
                 .statusBarsPadding(),
         ) {
             TabScreenHeader(
-                title = "Memories",
+                title = stringResource(R.string.memories_title),
                 modifier = Modifier
                     .blur(chromeBlur, BlurredEdgeTreatment.Unbounded)
                     .graphicsLayer { alpha = chromeFade },

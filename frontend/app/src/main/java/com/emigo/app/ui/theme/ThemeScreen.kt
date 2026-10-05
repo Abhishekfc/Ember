@@ -1,5 +1,7 @@
 package com.emigo.app.ui.theme
 
+import com.emigo.app.R
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
@@ -83,9 +86,9 @@ fun ThemeScreen(
             .navigationBarsPadding(),
     ) {
         Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp)) {
-            NestedScreenHeader(onBack = onBack, title = "Theme")
+            NestedScreenHeader(onBack = onBack, title = stringResource(R.string.theme_title))
             Text(
-                text = "Applies to the app and your widgets",
+                text = stringResource(R.string.theme_subtitle),
                 fontFamily = typography.body,
                 fontSize = 12.sp,
                 color = colors.muted,
@@ -151,9 +154,9 @@ fun ThemeScreen(
         ) {
             Text(
                 text = when {
-                    needsUpgrade -> "Get Emigo Gold"
-                    canApply -> "Apply theme"
-                    else -> "Applied"
+                    needsUpgrade -> stringResource(R.string.camera_get_gold)
+                    canApply -> stringResource(R.string.theme_apply)
+                    else -> stringResource(R.string.app_icon_applied)
                 },
                 fontFamily = PublicSansFontFamily,
                 fontSize = 14.sp,
@@ -239,7 +242,7 @@ private fun ThemeChip(
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
             Text(
-                text = option.displayName,
+                text = stringResource(option.displayNameRes),
                 fontFamily = PublicSansFontFamily,
                 fontSize = 12.5.sp,
                 fontWeight = if (isDefault) FontWeight.Bold else FontWeight.Medium,
@@ -248,9 +251,9 @@ private fun ThemeChip(
         }
         Text(
             text = when {
-                isDefault -> "Default"
-                option.locked -> "Emigo Gold"
-                else -> "Free"
+                isDefault -> stringResource(R.string.theme_badge_default)
+                option.locked -> stringResource(R.string.gold_title)
+                else -> stringResource(R.string.settings_badge_free)
             },
             fontFamily = PublicSansFontFamily,
             fontSize = 10.5.sp,

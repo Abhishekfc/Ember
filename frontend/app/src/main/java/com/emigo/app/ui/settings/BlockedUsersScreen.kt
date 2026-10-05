@@ -1,5 +1,8 @@
 package com.emigo.app.ui.settings
 
+import androidx.compose.ui.res.stringResource
+import com.emigo.app.R
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,9 +59,9 @@ fun BlockedUsersScreen(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
-        NestedScreenHeader(onBack = onClose, title = "Blocked accounts")
+        NestedScreenHeader(onBack = onClose, title = stringResource(R.string.settings_blocked_accounts))
         Text(
-            text = "They can't find your profile, send you requests, or send you photos",
+            text = stringResource(R.string.blocked_subtitle),
             fontFamily = typography.body,
             fontSize = 12.sp,
             color = colors.muted,
@@ -73,7 +76,7 @@ fun BlockedUsersScreen(
 
                 viewModel.blockedUsers.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "Nobody's blocked right now.",
+                        text = stringResource(R.string.blocked_empty),
                         fontFamily = PublicSansFontFamily,
                         fontSize = 13.sp,
                         color = colors.muted,
@@ -130,7 +133,7 @@ private fun BlockedUserRow(blocked: BlockedUserDto, isUnblocking: Boolean, onUnb
             if (isUnblocking) {
                 CircularProgressIndicator(modifier = Modifier.size(13.dp), color = colors.cream, strokeWidth = 2.dp)
             } else {
-                Text(text = "Unblock", fontFamily = PublicSansFontFamily, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = colors.cream)
+                Text(text = stringResource(R.string.blocked_unblock), fontFamily = PublicSansFontFamily, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = colors.cream)
             }
         }
     }

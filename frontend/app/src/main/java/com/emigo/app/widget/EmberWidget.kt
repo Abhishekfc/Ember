@@ -10,6 +10,7 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import androidx.glance.LocalContext
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -97,11 +98,9 @@ class EmberWidget : GlanceAppWidget() {
                     modifier = GlanceModifier.padding(bottom = 8.dp),
                 )
                 Text(
-                    text = if (hasFeaturedFriends) {
-                        "Waiting for a photo from your chosen friends"
-                    } else {
-                        "Open the app to see friends' photos here"
-                    },
+                    text = LocalContext.current.getString(
+                        if (hasFeaturedFriends) R.string.widget_waiting_for_photo else R.string.widget_open_app,
+                    ),
                     style = TextStyle(color = ColorProvider(Color(0xFFB9B2C9)), fontSize = 11.sp),
                 )
             }

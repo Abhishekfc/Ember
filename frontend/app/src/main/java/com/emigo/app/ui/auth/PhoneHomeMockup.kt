@@ -134,7 +134,6 @@ internal fun AuthPhoneFrame(
     content: @Composable BoxScope.(cellSize: Dp, gap: Dp) -> Unit,
 ) {
     val colors = AuthPalette
-    val outlineShape = RoundedCornerShape(40.dp)
 
     // The outline's own fade-in, independent of whatever entrance animation the caller wraps
     // this in (slide, scale, ...) — tying the border's color to a transform on a rotated shape
@@ -153,21 +152,25 @@ internal fun AuthPhoneFrame(
             .aspectRatio(0.5f)
             // A slight tilt — like a photo resting on a table, not a perfectly axis-aligned
             // diagram — is what keeps this feeling like a candid object instead of a spec sheet.
-            .graphicsLayer { rotationZ = -4f }
-            .clip(outlineShape)
-            // colors.border is a very faint (8%-opacity) hairline elsewhere in the app — too
-            // faint to read as a bold outline at any width, hence colors.muted instead.
-            .border(5.dp, colors.muted.copy(alpha = borderAlpha), outlineShape)
-            .padding(18.dp),
+            .graphicsLayer { rotationZ = -4f },
     ) {
-        val cellSize: Dp = (maxWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
+        val outlineShape = RoundedCornerShape(40.dp)
+        // Computed rather than measured a second time — this frame's own padding (18dp a side) is
+        // the only thing between maxWidth (the true, unpadded frame width the radius above is
+        // also based on) and the content area's real width.
+        val cellSize: Dp = (maxWidth - 36.dp - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
 
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(outlineShape)
+                // colors.border is a very faint (8%-opacity) hairline elsewhere in the app — too
+                // faint to read as a bold outline at any width, hence colors.muted instead.
+                .border(5.dp, colors.muted.copy(alpha = borderAlpha), outlineShape)
+                .padding(18.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Box(modifier = Modifier.fillMaxWidth()) { content(cellSize, GRID_GAP) }
-
 
             Box(
                 modifier = Modifier

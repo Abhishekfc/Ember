@@ -1,5 +1,8 @@
 package com.emigo.app.ui.friends
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,6 +21,7 @@ import kotlinx.coroutines.launch
 private const val PAGE_SIZE = 30
 
 class FriendsViewModel(
+    private val strings: StringProvider,
     private val repository: FriendRepository,
     private val localCache: LocalListCache,
     private val subscriptionRepository: SubscriptionRepository,
@@ -150,7 +154,7 @@ class FriendsViewModel(
                     hasMore = page.hasMore
                     localCache.write(LocalListCache.KEY_FRIENDS, page.items)
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't load your friends" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_load_friends) },
             )
             // Requests load is best-effort: a failure here shouldn't blank the friends list.
             repository.getPendingRequests().onSuccess { updatePendingRequests(it) }
@@ -241,7 +245,7 @@ class FriendsViewModel(
                     friends = friends + newFriend
                     onFriendsChanged()
                 },
-                onFailure = { errorMessage = it.message ?: "Couldn't accept request" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_accept_request) },
             )
             acceptingRequestIds = acceptingRequestIds - request.friendshipId
         }
@@ -259,7 +263,7 @@ class FriendsViewModel(
             acceptingRequestIds = acceptingRequestIds + request.friendshipId
             repository.removeFriend(request.friendshipId).fold(
                 onSuccess = { updatePendingRequests(pendingRequests.filterNot { it.friendshipId == request.friendshipId }) },
-                onFailure = { errorMessage = it.message ?: "Couldn't decline request" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_decline_request) },
             )
             acceptingRequestIds = acceptingRequestIds - request.friendshipId
         }
@@ -276,7 +280,7 @@ class FriendsViewModel(
             restoringStreakFriendshipIds = restoringStreakFriendshipIds + friendshipId
             repository.restoreStreak(friendshipId).fold(
                 onSuccess = { applyUpdatedFriend(it) },
-                onFailure = { errorMessage = it.message ?: "Couldn't restore that streak" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_restore_streak) },
             )
             restoringStreakFriendshipIds = restoringStreakFriendshipIds - friendshipId
         }

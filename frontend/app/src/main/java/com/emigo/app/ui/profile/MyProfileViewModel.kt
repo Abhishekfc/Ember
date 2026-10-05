@@ -1,5 +1,8 @@
 package com.emigo.app.ui.profile
 
+import com.emigo.app.R
+import com.emigo.app.StringProvider
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -27,6 +30,7 @@ sealed interface UsernameCheckState {
 private const val USERNAME_DEBOUNCE_MS = 400L
 
 class MyProfileViewModel(
+    private val strings: StringProvider,
     private val repository: UserRepository,
     private val localCache: LocalListCache,
     initialProfile: UserProfileDto? = null,
@@ -112,7 +116,7 @@ class MyProfileViewModel(
                     // picture/name/username exactly as-is, not a "couldn't connect" state where
                     // their profile used to be — only surface the error when there's truly
                     // nothing cached yet to fall back on (mirrors Home's own empty-state rule).
-                    if (profile == null) errorMessage = it.message ?: "Couldn't load your profile"
+                    if (profile == null) errorMessage = it.message ?: strings.get(R.string.error_load_profile)
                 },
             )
             isLoading = false
@@ -125,7 +129,7 @@ class MyProfileViewModel(
             errorMessage = null
             repository.uploadProfilePhoto(file).fold(
                 onSuccess = { applyProfile(it) },
-                onFailure = { errorMessage = it.message ?: "Couldn't update your profile photo" },
+                onFailure = { errorMessage = it.message ?: strings.get(R.string.error_update_profile_photo) },
             )
             isUploadingPhoto = false
         }
@@ -150,7 +154,7 @@ class MyProfileViewModel(
     fun saveName(onSaved: () -> Unit) {
         val trimmed = nameDraft.trim()
         if (trimmed.isEmpty()) {
-            nameError = "Name can't be empty"
+            nameError = strings.get(R.string.profile_error_name_empty)
             nameErrorNonce++
             return
         }
@@ -167,7 +171,7 @@ class MyProfileViewModel(
                     onSaved()
                 },
                 onFailure = {
-                    nameError = it.message ?: "Couldn't save your name"
+                    nameError = it.message ?: strings.get(R.string.error_save_name)
                     nameErrorNonce++
                 },
             )
@@ -221,12 +225,12 @@ class MyProfileViewModel(
         val current = profile?.username
         val canSave = usernameDraft == current || usernameCheck is UsernameCheckState.Available
         if (usernameDraft.length < 3) {
-            usernameError = "Username must be at least 3 characters"
+            usernameError = strings.get(R.string.error_username_too_short)
             usernameErrorNonce++
             return
         }
         if (!canSave) {
-            usernameError = "Pick an available username first"
+            usernameError = strings.get(R.string.error_username_pick_available)
             usernameErrorNonce++
             return
         }
@@ -243,7 +247,7 @@ class MyProfileViewModel(
                     onSaved()
                 },
                 onFailure = {
-                    usernameError = it.message ?: "Couldn't save your username"
+                    usernameError = it.message ?: strings.get(R.string.error_save_username)
                     usernameErrorNonce++
                 },
             )
@@ -279,17 +283,17 @@ class MyProfileViewModel(
 
     fun savePassword(onSaved: () -> Unit) {
         if (currentPasswordDraft.isEmpty()) {
-            passwordError = "Enter your current password"
+            passwordError = strings.get(R.string.profile_error_current_password)
             passwordErrorNonce++
             return
         }
         if (newPasswordDraft.length < 8) {
-            passwordError = "New password must be at least 8 characters"
+            passwordError = strings.get(R.string.profile_error_new_password_short)
             passwordErrorNonce++
             return
         }
         if (newPasswordDraft != confirmPasswordDraft) {
-            passwordError = "New passwords don't match"
+            passwordError = strings.get(R.string.profile_error_password_mismatch)
             passwordErrorNonce++
             return
         }
@@ -299,7 +303,7 @@ class MyProfileViewModel(
             repository.changePassword(currentPasswordDraft, newPasswordDraft).fold(
                 onSuccess = { onSaved() },
                 onFailure = {
-                    passwordError = it.message ?: "Couldn't change your password"
+                    passwordError = it.message ?: strings.get(R.string.error_change_password)
                     passwordErrorNonce++
                 },
             )

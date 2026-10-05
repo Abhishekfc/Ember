@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,6 +59,7 @@ import com.emigo.app.ui.home.featuredCardSidePadding
 import com.emigo.app.ui.home.formatRelativeTime
 import com.emigo.app.ui.home.formatRemainingTime
 import com.emigo.app.ui.profile.EditDialogShell
+import com.emigo.app.ui.theme.EmberFixedColors
 import com.emigo.app.ui.theme.EmberRadii
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.PublicSansFontFamily
@@ -72,7 +74,7 @@ private const val UNSEND_WINDOW_HOURS = 24L
 // Same dark red every other destructive confirm in the app uses (Settings/RecipientPicker/
 // Memories' own delete dialogs) — kept as its own local constant rather than a shared one, matching
 // that same established convention.
-private val UnsendDestructiveColor = Color(0xFFB3261E)
+private val UnsendDestructiveColor = EmberFixedColors.destructive
 
 /** This account's own outbox — recent, unsaved sends still within their unsend window (see
  * SentPhotosViewModel/PhotoService.getRecentSent). Reached from Camera's own outbox button;
@@ -102,9 +104,9 @@ fun SentPhotosScreen(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
-        NestedScreenHeader(onBack = onBack, title = "Sent")
+        NestedScreenHeader(onBack = onBack, title = stringResource(R.string.sent_title))
         Text(
-            text = "Photos you've sent in the last 24 hours. Tap one to unsend it.",
+            text = stringResource(R.string.sent_intro),
             fontFamily = PublicSansFontFamily,
             fontSize = 12.sp,
             color = colors.muted,
@@ -119,7 +121,7 @@ fun SentPhotosScreen(
 
                 viewModel.photos.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "Nothing sent in the last 24 hours.",
+                        text = stringResource(R.string.sent_empty),
                         fontFamily = PublicSansFontFamily,
                         fontSize = 13.sp,
                         color = colors.muted,
@@ -152,7 +154,7 @@ fun SentPhotosScreen(
                         ) {
                             AsyncImage(
                                 model = photo.photoUrl,
-                                contentDescription = "Sent ${formatRelativeTime(photo.createdAt)}",
+                                contentDescription = stringResource(R.string.sent_time_description, formatRelativeTime(photo.createdAt)),
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -231,7 +233,7 @@ private fun SentPhotoViewer(
             // not a bare edge-to-edge image with black letterbox bars top and bottom.
             AsyncImage(
                 model = photo.photoUrl,
-                contentDescription = "Sent photo",
+                contentDescription = stringResource(R.string.sent_photo_description),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -256,7 +258,7 @@ private fun SentPhotoViewer(
                     .clickable(onClick = onDismiss),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_close), tint = Color.White, modifier = Modifier.size(18.dp))
             }
 
             Box {
@@ -271,7 +273,7 @@ private fun SentPhotoViewer(
                     if (isUnsending) {
                         CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                     } else {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = Color.White, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.common_more_options), tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                 }
                 DropdownMenu(
@@ -286,7 +288,7 @@ private fun SentPhotoViewer(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                "Unsend",
+                                stringResource(R.string.sent_unsend),
                                 fontFamily = PublicSansFontFamily,
                                 fontSize = 14.5.sp,
                                 fontWeight = FontWeight.Bold,
@@ -317,10 +319,10 @@ private fun SentPhotoViewer(
                 .navigationBarsPadding()
                 .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
         ) {
-            Text(text = "Sent ${formatRelativeTime(photo.createdAt)}", fontFamily = PublicSansFontFamily, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(text = stringResource(R.string.sent_time_description, formatRelativeTime(photo.createdAt)), fontFamily = PublicSansFontFamily, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
             if (expiresAt != null) {
                 Text(
-                    text = "${formatRemainingTime(expiresAt)} to unsend",
+                    text = stringResource(R.string.sent_remaining_to_unsend, formatRemainingTime(expiresAt)),
                     fontFamily = PublicSansFontFamily,
                     fontSize = 12.sp,
                     color = Color.White.copy(alpha = 0.7f),
@@ -347,9 +349,9 @@ private fun SentPhotoViewer(
 @Composable
 private fun UnsendConfirmDialog(isUnsending: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val colors = EmberTheme.colors
-    EditDialogShell(title = "Unsend this photo?", onDismiss = onDismiss) {
+    EditDialogShell(title = stringResource(R.string.sent_unsend_title), onDismiss = onDismiss) {
         Text(
-            text = "This can't be undone. It'll be removed from their feed too.",
+            text = stringResource(R.string.sent_unsend_warning),
             fontFamily = PublicSansFontFamily,
             fontSize = 13.sp,
             color = colors.muted,
@@ -367,7 +369,7 @@ private fun UnsendConfirmDialog(isUnsending: Boolean, onDismiss: () -> Unit, onC
                     .padding(vertical = 13.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Text(text = "Cancel", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
+                Text(text = stringResource(R.string.common_cancel), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, color = colors.muted)
             }
             Row(
                 modifier = Modifier
@@ -381,7 +383,7 @@ private fun UnsendConfirmDialog(isUnsending: Boolean, onDismiss: () -> Unit, onC
                 if (isUnsending) {
                     CircularProgressIndicator(modifier = Modifier.size(15.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text(text = "Unsend", fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(text = stringResource(R.string.sent_unsend), fontFamily = PublicSansFontFamily, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
