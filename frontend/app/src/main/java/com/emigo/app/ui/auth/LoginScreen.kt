@@ -35,7 +35,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 
 /** The whole sign-in / sign-up flow as a step machine (see [AuthStep]) rather than a NavHost.
- * MainActivity only sees "still loading" or [onAuthenticated]. New accounts get one question per
+ * EmberRoot only sees "still loading" or [onAuthenticated]. New accounts get one question per
  * screen; returning users get a single login screen (see [LoginViewModel] for why). */
 @Composable
 fun LoginScreen(

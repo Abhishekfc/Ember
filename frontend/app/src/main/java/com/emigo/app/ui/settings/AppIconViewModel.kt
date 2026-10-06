@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.SubscriptionRepository
+import com.emigo.app.data.repository.SubscriptionRepository
 import com.emigo.app.data.local.AppIconPreferenceStore
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch

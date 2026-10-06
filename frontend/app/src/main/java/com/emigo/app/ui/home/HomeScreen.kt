@@ -99,7 +99,7 @@ private fun Modifier.overlayNoHeight(): Modifier = layout { measurable, constrai
 
 /** Home page: header, then the loading / error / empty state or the featured carousel. Memories is
  * its own tab (see [MemoriesTabScreen]). [isPhotoFocused], [onToggleFocus] and [onDismissFocus]
- * live in MainActivity because the shared nav dock must blur in step with tap-to-focus.
+ * live in ShellState (see SignedInShell) so the focus is cleared when you swipe away from Home.
  * [scrollState] is hoisted so pull-to-refresh registers even when the content fits on screen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,7 +108,7 @@ fun HomeScreen(
     onCameraClick: () -> Unit,
     onAddFriendClick: () -> Unit,
     onProfileClick: () -> Unit,
-    // Bell icon next to the profile avatar; activityBadgeCount is MainActivity's "events since
+    // Bell icon next to the profile avatar; activityBadgeCount is ActivityViewModel's "events since
     // last viewed" count.
     onActivityClick: () -> Unit,
     activityBadgeCount: Int,
@@ -224,7 +224,7 @@ fun HomeScreen(
     LaunchedEffect(homeViewMode) { pillHeightOffsetPx = 0f }
 
     // A tapped Moments card grown into a featured overlay. Kept apart from isPhotoFocused, which
-    // is HOME's carousel focus and lives in MainActivity for the nav dock blur; this only affects
+    // is HOME's carousel focus and is hoisted into ShellState; this only affects
     // what's drawn here.
     val momentFocusState = remember { MomentFocusState() }
     LaunchedEffect(momentFocusState.isOpen) {
@@ -254,8 +254,7 @@ fun HomeScreen(
     // auto-advance it mid-gesture.
     val isHomeAtDefaultScrollPosition by remember { derivedStateOf { scrollState.value == 0 } }
 
-    // Local copy of the animation MainActivity drives for the nav dock blur, so the animated value
-    // needn't be passed down. Both react to the same isPhotoFocused change.
+    // Blurs Home's own chrome while a photo is focused.
     val chromeBlur by rememberFocusBlur(isPhotoFocused)
     // Fully hides the chrome that chromeBlur recedes (see rememberFocusFade for why blur alone
     // isn't enough with AmbientPhotoBackdrop).

@@ -1,4 +1,4 @@
-package com.emigo.app.ui.home
+package com.emigo.app.ui.memories
 
 import com.emigo.app.R
 

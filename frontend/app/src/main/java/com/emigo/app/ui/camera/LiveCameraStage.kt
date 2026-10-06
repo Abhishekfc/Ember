@@ -81,7 +81,7 @@ internal fun LiveCameraStage(isReviewing: Boolean = false) {
 
     // Re-read the real permission state each time the screen returns to the foreground. The
     // snapshot above is taken once, and Camera is the opening page, so it composes before the
-    // startup permission dialog (see MainActivity) is answered. Granting there doesn't reach this
+    // startup permission dialog (see SignedInShell) is answered. Granting there doesn't reach this
     // screen's own launcher, so its cached `false` stood until the process restarted: the "blank
     // camera until you reopen the app" symptom. Keying on the lifecycle covers every route a grant
     // can arrive by: the startup dialog, this screen's prompt, or system settings.

@@ -60,7 +60,7 @@ import dev.chrisbanes.haze.hazeEffect
 
 /** A generous guess for the one frame before the dock's own real [onSizeChanged] below has
  * landed — every screen that needs to keep content clear of the floating dock should read
- * [LocalNavDockHeight] instead of this directly. Internal (not private) purely so MainActivity
+ * [LocalNavDockHeight] instead of this directly. Internal (not private) purely so ShellState
  * can seed [LocalNavDockHeight]'s hoisted state with the same starting value, rather than a
  * second copy of this same magic number living in a different file. */
 internal val FALLBACK_NAV_DOCK_HEIGHT_DP = 140.dp
@@ -70,14 +70,14 @@ internal val FALLBACK_NAV_DOCK_HEIGHT_DP = 140.dp
  * navigationBarsPadding() value (gesture nav vs. 3-button nav vs. taller custom skins all
  * differ), which is exactly what still left the Settings screen's Log out button partly covered
  * by the dock on at least one real device even after a generous fixed reserve. Provided once
- * near the root (see MainActivity, wired from this composable's own onSizeChanged below), read
+ * near the root (see MainPager, wired from this composable's own onSizeChanged below), read
  * wherever a screen needs to keep content clear of the dock (Settings' trailing spacer, Home's
  * Memories grid padding + top-fold height clamp, Memories' day-card centering). */
 val LocalNavDockHeight = compositionLocalOf { FALLBACK_NAV_DOCK_HEIGHT_DP }
 
 // Activity is deliberately NOT one of these any more — it moved to a bell icon in Home's own
 // header, next to the profile avatar (the same slot notifications sit in on most apps), and is
-// reached as a pushed NestedScreen (see MainActivity) exactly like Theme/Profile/Settings' own
+// reached as a pushed NestedScreen (see AppNavigation) exactly like Theme/Profile/Settings' own
 // sub-screens, not a swipeable pager page with a corresponding dock tab. These four are the only
 // destinations that still are.
 enum class NavDestination(@StringRes val labelRes: Int) {
@@ -106,7 +106,7 @@ fun BottomNavDock(
     onCameraClick: () -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
-    // How many pending incoming friend requests — see MainActivity's own doc comment on where
+    // How many pending incoming friend requests — see MainPager for where
     // this is computed; this composable just renders whatever it's handed.
     friendsBadgeCount: Int = 0,
     // Reports this Box's own real laid-out height — after navigationBarsPadding() and this

@@ -1,15 +1,15 @@
 package com.emigo.app.ui.camera
 
 import com.emigo.app.R
-import com.emigo.app.StringProvider
+import com.emigo.app.core.StringProvider
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.ALL_FRIENDS_LIMIT
-import com.emigo.app.data.FriendRepository
+import com.emigo.app.data.repository.ALL_FRIENDS_LIMIT
+import com.emigo.app.data.repository.FriendRepository
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.data.remote.dto.RecipientListDto
@@ -41,7 +41,7 @@ class RecipientPickerViewModel(
 
     /** What [visibleFriends] actually sorts by — a frozen snapshot of [selectedFriendIds], not
      * that live property itself. Refreshed once per picker *open* (see [refreshSortSnapshot],
-     * called from MainActivity's own per-open LaunchedEffect, right alongside loadFriends()), and
+     * called from NestedScreenHost's own per-open LaunchedEffect, right alongside loadFriends()), and
      * never again until the next open — this ViewModel is a single long-lived instance reused
      * across every open (same store as CameraViewModel), so without this the "float selected rows
      * to the top" behavior would live-react to every tap and every badge switch during a single
@@ -163,7 +163,7 @@ class RecipientPickerViewModel(
         }
     }
 
-    /** Called on every picker open (see MainActivity's own doc comment on why), which used to mean
+    /** Called on every picker open (see the comment in NestedScreenHost on why), which used to mean
      * a visible spinner-then-content flash every single time, even when the list already had
      * perfectly good data on screen from the last open. Now mirrors FriendsViewModel's own
      * refreshSilently: the loading/error UI is reserved for the genuine first load (nothing to

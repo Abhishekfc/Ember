@@ -1,7 +1,7 @@
 package com.emigo.app.ui.auth
 
 import com.emigo.app.R
-import com.emigo.app.StringProvider
+import com.emigo.app.core.StringProvider
 
 import android.util.Patterns
 import androidx.compose.runtime.getValue
@@ -9,12 +9,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.AuthRepository
-import com.emigo.app.data.EMAIL_VERIFICATION_GRACE_PERIOD_MILLIS
-import com.emigo.app.data.SignInOutcome
+import com.emigo.app.data.repository.AuthRepository
+import com.emigo.app.data.repository.EMAIL_VERIFICATION_GRACE_PERIOD_MILLIS
+import com.emigo.app.data.repository.SignInOutcome
 import com.emigo.app.data.firebaseErrorMessage
-import com.emigo.app.data.needsEmailVerification
-import com.emigo.app.data.verificationDeadlineFor
+import com.emigo.app.data.repository.needsEmailVerification
+import com.emigo.app.data.repository.verificationDeadlineFor
 import com.emigo.app.ui.profile.UsernameCheckState
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Job
@@ -447,7 +447,7 @@ class LoginViewModel(
         }
     }
 
-    /** Routes a session resumed at cold start (see AuthRepository.resumeSession; MainActivity is the
+    /** Routes a session resumed at cold start (see AuthRepository.resumeSession; EmberRoot is the
      * one caller) onto the verification screen. Unlike the passive 403 listener it replaced, this
      * comes only from a single authoritative check per launch against a freshly refreshed token,
      * never a stale token some background request carried, so it can't put an already-verified user
@@ -537,7 +537,7 @@ class LoginViewModel(
 
     /** The escape hatch for what this screen exists to prevent: someone who typed an email they can't
      * access. The real sign-out (clearing the Firebase session, unregistering this device, wiping
-     * cached account data) is MainActivity's onSignOut, passed in from LoginScreen; this only resets
+     * cached account data) is EmberRoot's onSignOut, passed in from LoginScreen; this only resets
      * this ViewModel's state so the login screen it lands on starts fresh, not mid-flow for an
      * account that no longer exists in this session. */
     fun resetAfterSignOut(onSignOut: () -> Unit, welcomeMessage: String? = null) {

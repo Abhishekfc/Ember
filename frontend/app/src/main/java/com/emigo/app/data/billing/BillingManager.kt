@@ -1,4 +1,4 @@
-package com.emigo.app.data
+package com.emigo.app.data.billing
 
 import android.app.Activity
 import android.content.Context

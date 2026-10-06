@@ -44,7 +44,7 @@ class ThemePreferenceStore(private val context: Context) {
         syncPrefs.edit().putString(syncThemeKeyPref, themeKey.name).apply()
     }
 
-    /** Called on sign-out, alongside every other per-account cache (see MainActivity's own
+    /** Called on sign-out, alongside every other per-account cache (see EmberRoot's own
      * onSignOut) — theme has no backend representation of its own, it's purely a local,
      * device-scoped preference, so without this a different account signing in on the same
      * device would inherit whatever the previous account had chosen, Gold-gated theme included. */

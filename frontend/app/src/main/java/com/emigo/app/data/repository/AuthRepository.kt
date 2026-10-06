@@ -1,6 +1,8 @@
-package com.emigo.app.data
+package com.emigo.app.data.repository
 
+import com.emigo.app.data.firebaseErrorMessage
 import com.emigo.app.data.local.TokenStore
+import com.emigo.app.data.safeCall
 import com.emigo.app.data.remote.EmberApi
 import com.emigo.app.data.remote.dto.CompleteProfileRequestDto
 import com.emigo.app.data.remote.dto.DeviceTokenRequestDto
@@ -169,7 +171,7 @@ class AuthRepository(
 
     /**
      * The third way into the app, besides [signUp] and [signIn]: a session resumed from what
-     * Firebase already has on disk, with no sign-in screen. MainActivity renders the app shell from
+     * Firebase already has on disk, with no sign-in screen. EmberRoot renders the app shell from
      * that cached session on the first frame (hasSavedSession), so without this an account that
      * never verified could be reopened straight into the app. The backend deletes unverified
      * accounts on its own schedule, so there is always a window between the deadline and the row
@@ -256,7 +258,7 @@ class AuthRepository(
 
     /** Called when a new FCM token arrives (see EmberFirebaseMessagingService) and when a session
      * becomes authenticated (fresh login, or a valid session found at cold start, see
-     * MainActivity), since either can be the first time a token and a signed-in user coexist. A
+     * EmberRoot), since either can be the first time a token and a signed-in user coexist. A
      * failure only means no pushes until the next attempt, so callers fire and forget. */
     suspend fun registerDeviceToken(fcmToken: String): Result<Unit> = safeCall {
         val response = api.registerDevice(DeviceTokenRequestDto(fcmToken))

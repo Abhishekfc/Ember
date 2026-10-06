@@ -89,7 +89,7 @@ fun SentPhotosScreen(
     var selectedPhoto by remember { mutableStateOf<SentPhotoDto?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
-    // viewModel is a plain Activity-scoped instance (see MainActivity's own viewModel() call for
+    // viewModel is a plain Activity-scoped instance (see NestedScreenHost's own viewModel() call for
     // this screen) reused across every visit within a session, not recreated per-visit — without
     // this, reopening the outbox later in the same session would keep showing whatever [load]
     // last returned, even though the whole point of its 24h window is that it keeps moving.

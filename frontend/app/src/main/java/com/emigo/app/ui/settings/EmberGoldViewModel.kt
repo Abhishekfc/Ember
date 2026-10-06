@@ -1,7 +1,7 @@
 package com.emigo.app.ui.settings
 
 import com.emigo.app.R
-import com.emigo.app.StringProvider
+import com.emigo.app.core.StringProvider
 
 import android.app.Activity
 import androidx.compose.runtime.getValue
@@ -9,12 +9,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.BillingLaunchResult
-import com.emigo.app.data.BillingManager
-import com.emigo.app.data.GoldPeriod
-import com.emigo.app.data.GoldPlan
-import com.emigo.app.data.PurchaseEvent
-import com.emigo.app.data.SubscriptionRepository
+import com.emigo.app.data.billing.BillingLaunchResult
+import com.emigo.app.data.billing.BillingManager
+import com.emigo.app.data.billing.GoldPeriod
+import com.emigo.app.data.billing.GoldPlan
+import com.emigo.app.data.billing.PurchaseEvent
+import com.emigo.app.data.repository.SubscriptionRepository
 import kotlinx.coroutines.launch
 
 data class GoldUiState(

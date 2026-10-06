@@ -80,7 +80,7 @@ fun FriendsScreen(
     onPendingRequestClick: (PendingFriendRequestDto) -> Unit,
     onUpgradeToGold: () -> Unit,
     hazeState: HazeState,
-    // Defaults to a local state. MainActivity passes a hoisted one so the scroll position survives
+    // Defaults to a local state. SignedInShell passes a hoisted one so the scroll position survives
     // opening a friend's profile and coming back (same reasoning as Home's hoisted scroll state).
     listState: LazyListState = rememberLazyListState(),
 ) {

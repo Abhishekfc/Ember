@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.map
  * to a free account, so this is also what a lapsed subscription reverts to.
  *
  * Also holds the last-known subscription status ([cachedIsGoldMember]), refreshed once per app
- * open (see MainActivity) rather than on every widget sync. That single per-session check — the
+ * open (see EmberRoot) rather than on every widget sync. That single per-session check — the
  * same shape CameraViewModel/ThemeViewModel already use for their own Gold checks, not a new
  * pattern — is what lets [WidgetPhotoSync]'s background refresh (WidgetUpdateWorker) and push
  * handling honor a featured-friend choice without a network call of their own on every sync,
@@ -37,7 +37,7 @@ class WidgetPreferenceStore(private val context: Context) {
     }
 
     /** Read by [WidgetPhotoSync]'s background/push paths in place of a live subscription check —
-     * see this class's own doc comment for why. Written once per app open (MainActivity), never
+     * see this class's own doc comment for why. Written once per app open (EmberRoot), never
      * inside a sync itself. */
     suspend fun cachedIsGoldMember(): Boolean =
         context.emberDataStore.data.first()[cachedIsGoldMemberKey] ?: false

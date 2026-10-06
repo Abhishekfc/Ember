@@ -1,6 +1,10 @@
-package com.emigo.app.data
+package com.emigo.app.data.repository
 
+import com.emigo.app.data.SingleFlight
+import com.emigo.app.data.TtlCache
+import com.emigo.app.data.UnauthorizedException
 import com.emigo.app.data.remote.EmberApi
+import com.emigo.app.data.safeCall
 import com.emigo.app.data.remote.dto.AddPhotoRecipientsBody
 import com.emigo.app.data.remote.dto.ErrorResponse
 import com.emigo.app.data.remote.dto.FeedItem
@@ -32,7 +36,7 @@ class PhotoRepository(private val api: EmberApi) {
     // signed-in account, but feedCache's key (Unit) doesn't carry any account identity — without
     // clearing it on sign-out, signing into a different account within the TTL window could serve
     // that account the *previous* one's feed straight out of cache, on what looks like a perfectly
-    // normal fresh fetch. Called from MainActivity's onSignOut, alongside the equivalent clear on
+    // normal fresh fetch. Called from EmberRoot's onSignOut, alongside the equivalent clear on
     // FriendRepository/ActivityRepository and LocalListCache.
     fun clearCache() {
         feedCache.invalidateAll()

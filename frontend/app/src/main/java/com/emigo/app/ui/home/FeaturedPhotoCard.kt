@@ -133,7 +133,7 @@ internal fun FeaturedPhotoCard(
         }
     }
 
-    // This pager and MainActivity's outer pager are both horizontal and nested. Compose's
+    // This pager and MainPager's outer pager are both horizontal and nested. Compose's
     // nested-scroll handoff between two same-axis pagers is unreliable: leftover velocity from a
     // drag here could reach the outer pager mid-gesture and cause the "stops partway, showing two
     // pages" glitch. Rather than tune fling thresholds, this connection consumes all leftover

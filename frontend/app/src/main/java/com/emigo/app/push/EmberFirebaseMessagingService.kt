@@ -9,14 +9,14 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.emigo.app.EXTRA_NOTIFICATION_ACTION
-import com.emigo.app.EXTRA_STREAK_FRIENDSHIP_ID
 import com.emigo.app.EmberApplication
 import com.emigo.app.MainActivity
 import com.emigo.app.NEW_PHOTO_NOTIFICATION_CHANNEL_ID
-import com.emigo.app.NOTIFICATION_ACTION_RESTORE_STREAK
 import com.emigo.app.R
 import com.emigo.app.STREAK_NOTIFICATION_CHANNEL_ID
+import com.emigo.app.ui.navigation.EXTRA_NOTIFICATION_ACTION
+import com.emigo.app.ui.navigation.EXTRA_STREAK_FRIENDSHIP_ID
+import com.emigo.app.ui.navigation.NOTIFICATION_ACTION_RESTORE_STREAK
 import com.emigo.app.widget.WidgetPhotoSync
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -47,7 +47,7 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
         super.onNewToken(token)
         val app = application as EmberApplication
         scope.launch {
-            // If nobody's signed in yet, there's nothing to register against — MainActivity
+            // If nobody's signed in yet, there's nothing to register against — EmberRoot
             // fetches and registers the current token itself the moment a session becomes
             // authenticated (see its own LaunchedEffect(authenticated)), covering that case.
             if (FirebaseAuth.getInstance().currentUser != null) {
@@ -152,7 +152,7 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
         NotificationManagerCompat.from(this).notify(NEW_PHOTO_NOTIFICATION_ID, notification)
     }
 
-    /** The one notification in the app with a real action button — see MainActivity's own
+    /** The one notification in the app with a real action button — see SignedInShell's own
      * handling of [EXTRA_NOTIFICATION_ACTION] for what tapping it actually does (restore the
      * streak if Gold, redirect to the Gold screen otherwise; that branch lives there, not here,
      * since it needs a live ViewModel/subscription check this background service has no access

@@ -40,9 +40,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import com.emigo.app.AppLinks
 import com.emigo.app.R
-import com.emigo.app.openUrl
+import com.emigo.app.core.AppLinks
+import com.emigo.app.core.openUrl
 import com.emigo.app.ui.components.LocalNavDockHeight
 import com.emigo.app.ui.components.TabScreenScaffold
 import com.emigo.app.ui.theme.EmberFixedColors

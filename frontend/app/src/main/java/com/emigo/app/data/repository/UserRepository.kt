@@ -1,6 +1,8 @@
-package com.emigo.app.data
+package com.emigo.app.data.repository
 
+import com.emigo.app.data.firebaseErrorMessage
 import com.emigo.app.data.remote.EmberApi
+import com.emigo.app.data.safeCall
 import com.emigo.app.data.remote.dto.ErrorResponse
 import com.emigo.app.data.remote.dto.UpdateProfileRequestDto
 import com.emigo.app.data.remote.dto.UsernameAvailabilityDto

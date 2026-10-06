@@ -145,7 +145,7 @@ fun CameraScreen(
                     //
                     // No close button: Camera is a page of the main pager (swipe to Home like any
                     // tab), and discarding an abandoned capture on the way out is automatic (see
-                    // MainActivity's settledPage effect).
+                    // SignedInShell's settledPage effect).
                     Row(
                         modifier = Modifier
                             .align(Alignment.Center)

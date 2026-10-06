@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.SubscriptionRepository
+import com.emigo.app.data.repository.SubscriptionRepository
 import com.emigo.app.data.local.ThemePreferenceStore
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -43,10 +43,10 @@ class ThemeViewModel(
     }
 
     /** Re-runs the same persisted-theme + Gold-status resolution [init] does — this ViewModel is
-     * constructed once, at the very top of the whole Compose tree (see MainActivity), and outlives
+     * constructed once, at the very top of the whole Compose tree (see EmberRoot), and outlives
      * any single signed-in account for the entire app session, so signing into a *different*
      * account never naturally re-triggers this on its own the way a fresh ViewModel would. Called
-     * again from MainActivity's own onAuthenticated, right after a successful login, so the newly
+     * again from EmberRoot's own onAuthenticated, right after a successful login, so the newly
      * signed-in account's own saved theme (and real Gold status) actually gets applied instead of
      * silently keeping whatever [reset] (or the previous account) last left this showing. */
     fun reload() {
@@ -66,7 +66,7 @@ class ThemeViewModel(
         }
     }
 
-    /** Called from MainActivity's onSignOut, alongside its own themePreferenceStore.clear() —
+    /** Called from EmberRoot's onSignOut, alongside its own themePreferenceStore.clear() —
      * that clears the *persisted* theme so a different account signing in later doesn't inherit
      * it, but has no effect on this ViewModel's own already-resolved, in-memory [selectedTheme]/
      * [isGoldMember], since (see [reload]'s own doc comment) this instance is never recreated on

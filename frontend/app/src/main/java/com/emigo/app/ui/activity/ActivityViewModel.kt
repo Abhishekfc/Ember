@@ -1,14 +1,14 @@
 package com.emigo.app.ui.activity
 
 import com.emigo.app.R
-import com.emigo.app.StringProvider
+import com.emigo.app.core.StringProvider
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.ActivityRepository
+import com.emigo.app.data.repository.ActivityRepository
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.remote.dto.ActivityEventDto
 import com.emigo.app.data.remote.dto.ActivityLastSeenDto
@@ -102,8 +102,8 @@ class ActivityViewModel(
         newActivityCount = if (seenAt == null) events.size else events.count { it.createdAt > seenAt }
     }
 
-    /** Called once the Activity tab actually becomes the visible page — see MainActivity's own
-     * pager-settle effect. Persists "now" as the new "seen" marker server-side, so the dot
+    /** Called once Activity is actually the screen showing — see SignedInShell's
+     * nestedScreen effect. Persists "now" as the new "seen" marker server-side, so the dot
      * doesn't come back for events already on screen by the time this fires, and stays cleared
      * even across a reinstall.
      *

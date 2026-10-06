@@ -43,7 +43,7 @@ class TokenStore(private val context: Context) {
     private val pendingVerificationEmailKey = stringPreferencesKey("pending_verification_email")
     private val pendingVerificationDeadlineKey = longPreferencesKey("pending_verification_deadline")
 
-    /** A local echo of the last [com.emigo.app.data.SignInOutcome.NeedsVerification] this device
+    /** A local echo of the last [com.emigo.app.data.repository.SignInOutcome.NeedsVerification] this device
      * actually saw for a given [PendingVerification.firebaseUid] — written from
      * AuthRepository.checkExistingProfile and AuthRepository.rememberPendingVerification, cleared
      * from AuthRepository.checkExistingProfile and AuthRepository.forgetPendingVerification.
@@ -74,7 +74,7 @@ class TokenStore(private val context: Context) {
         }
     }
 
-    /** Called the moment a check comes back [com.emigo.app.data.SignInOutcome.SignedIn] — mirrors
+    /** Called the moment a check comes back [com.emigo.app.data.repository.SignInOutcome.SignedIn] — mirrors
      * FirebaseAuthenticationFilter clearing the same-purpose flag server-side once it sees a
      * verified token, so this local echo can't keep claiming a since-verified account is still
      * pending on some later cold start. Also fine to call on sign-out (see [clear]'s own callers):

@@ -1,15 +1,15 @@
 package com.emigo.app.ui.settings
 
 import com.emigo.app.R
-import com.emigo.app.StringProvider
+import com.emigo.app.core.StringProvider
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.FriendRepository
-import com.emigo.app.data.SubscriptionRepository
+import com.emigo.app.data.repository.FriendRepository
+import com.emigo.app.data.repository.SubscriptionRepository
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.widget.WidgetPreferenceStore
 import kotlinx.coroutines.flow.collect

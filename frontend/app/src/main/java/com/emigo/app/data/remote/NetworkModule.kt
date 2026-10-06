@@ -28,7 +28,7 @@ class NetworkModule(context: Context) {
 
     /** Emits when an authenticated request comes back 401 — the Firebase identity making the
      * request has no matching Emigo profile (or Firebase itself rejected it, e.g. the account was
-     * deleted server-side). MainActivity collects this to sign the user out back to the login
+     * deleted server-side). EmberRoot collects this to sign the user out back to the login
      * screen instead of leaving the app stuck on a permanently failing feed/friends load. */
     val sessionExpired: SharedFlow<Unit> = _sessionExpired.asSharedFlow()
 
@@ -57,7 +57,7 @@ class NetworkModule(context: Context) {
     // Two endpoints are excluded, both because a 401 from them is expected and already handled by
     // their own caller, rather than evidence the session is dead:
     //
-    // - devices/unregister is the *first* thing sign-out does (see MainActivity.onSignOut), so
+    // - devices/unregister is the *first* thing sign-out does (see onSignOut in EmberRoot), so
     //   when sign-out was itself triggered by a 401 the token it carries is already dead and this
     //   call 401s too. Left unexcluded, that second 401 emits sessionExpired again, which runs
     //   onSignOut again, which calls this again — an endless sign-out loop firing a request every

@@ -1,7 +1,7 @@
 package com.emigo.app.ui.home
 
 import com.emigo.app.R
-import com.emigo.app.StringProvider
+import com.emigo.app.core.StringProvider
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -9,10 +9,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.ALL_FRIENDS_LIMIT
-import com.emigo.app.data.FriendRepository
-import com.emigo.app.data.PhotoRepository
-import com.emigo.app.data.UserRepository
+import com.emigo.app.data.repository.ALL_FRIENDS_LIMIT
+import com.emigo.app.data.repository.FriendRepository
+import com.emigo.app.data.repository.PhotoRepository
+import com.emigo.app.data.repository.UserRepository
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.local.TokenStore
 import com.emigo.app.data.remote.dto.FeedItem
@@ -109,7 +109,7 @@ class HomeViewModel(
 
     // Which Home view (carousel or Moments grid) is showing. Held here, not as HomeScreen's local
     // state, so it survives swiping to another tab and back: this ViewModel is hoisted in
-    // MainActivity and outlives the composable, which is rebuilt on every return and used to reset
+    // SignedInShell and outlives the composable, which is rebuilt on every return and used to reset
     // the selection to HOME.
     internal var homeViewMode by mutableStateOf(HomeViewMode.HOME)
         private set
@@ -280,7 +280,7 @@ class HomeViewModel(
         }
     }
 
-    /** Called whenever Home becomes the active, settled page again (see MainActivity and HomeScreen's
+    /** Called whenever Home becomes the active, settled page again (see MainPager and HomeScreen's
      * isActive). Returning to Home is one of two moments background-synced content may become
      * visible; the other is an explicit pull-to-refresh (handled in loadFeed). A no-op if nothing
      * diverged. */
@@ -393,7 +393,7 @@ class HomeViewModel(
 
     private var isLoadingMemoriesRefresh = false
 
-    /** Called at init and again right after a successful send (see MainActivity's `onSent`) so a
+    /** Called at init and again right after a successful send (see MainPager's `onSent`) so a
      * just-sent photo shows in the grid at once instead of the next time Memories is reopened.
      * Always re-fetches the account's whole history in one range: Memories is one continuous grid
      * (grouped by recency, see MemoriesScreen.kt), not paged by calendar month, so there's no

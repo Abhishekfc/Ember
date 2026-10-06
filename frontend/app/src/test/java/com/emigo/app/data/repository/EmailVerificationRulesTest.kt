@@ -1,4 +1,4 @@
-package com.emigo.app.data
+package com.emigo.app.data.repository
 
 import com.emigo.app.data.remote.dto.UserProfileDto
 import java.time.Instant

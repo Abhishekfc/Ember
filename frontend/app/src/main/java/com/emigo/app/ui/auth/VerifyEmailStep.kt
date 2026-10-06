@@ -27,7 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emigo.app.R
-import com.emigo.app.data.EMAIL_VERIFICATION_GRACE_PERIOD_MILLIS
+import com.emigo.app.data.repository.EMAIL_VERIFICATION_GRACE_PERIOD_MILLIS
 import com.emigo.app.ui.theme.PublicSansFontFamily
 import kotlinx.coroutines.delay
 

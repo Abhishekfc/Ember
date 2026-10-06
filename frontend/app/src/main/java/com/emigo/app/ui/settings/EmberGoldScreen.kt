@@ -57,11 +57,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.emigo.app.AppLinks
+import com.emigo.app.core.AppLinks
 import com.emigo.app.R
-import com.emigo.app.data.GoldPeriod
-import com.emigo.app.data.GoldPlan
-import com.emigo.app.openUrl
+import com.emigo.app.data.billing.GoldPeriod
+import com.emigo.app.data.billing.GoldPlan
+import com.emigo.app.core.openUrl
 import com.emigo.app.ui.auth.AuthPalette
 import com.emigo.app.ui.components.NestedScreenHeader
 import com.emigo.app.ui.theme.EmberRadii
@@ -275,7 +275,7 @@ fun EmberGoldScreen(
     // A separate sheet rather than the inline picker this used to be — deliberately not the same
     // shape as the full-screen page above it (which slides up from Settings the same way this
     // slides up from here): partial height, its own scrim, dismissible by itself. Always composed
-    // (like the GOLD screen itself is in MainActivity) so AnimatedVisibility's exit transition has
+    // (like the GOLD screen itself is in SignedInShell) so AnimatedVisibility's exit transition has
     // something to animate rather than being torn out mid-slide-down.
     AnimatedVisibility(
         visible = showPlanSheet,

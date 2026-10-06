@@ -596,7 +596,7 @@
         errorLine1="    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }"
         errorLine2="                                                                   ~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/emigo/app/AppLinks.kt"
+            file="src/main/java/com/emigo/app/core/AppLinks.kt"
             line="22"
             column="68"/>
     </issue>
@@ -662,8 +662,8 @@
         errorLine1="        syncPrefs.edit().putBoolean(syncIsGoldMemberKey, isActive).apply()"
         errorLine2="        ~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/emigo/app/data/SubscriptionRepository.kt"
-            line="48"
+            file="src/main/java/com/emigo/app/data/repository/SubscriptionRepository.kt"
+            line="51"
             column="9"/>
     </issue>
 
@@ -673,8 +673,8 @@
         errorLine1="        syncPrefs.edit().remove(syncIsGoldMemberKey).apply()"
         errorLine2="        ~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/com/emigo/app/data/SubscriptionRepository.kt"
-            line="139"
+            file="src/main/java/com/emigo/app/data/repository/SubscriptionRepository.kt"
+            line="142"
             column="9"/>
     </issue>
 

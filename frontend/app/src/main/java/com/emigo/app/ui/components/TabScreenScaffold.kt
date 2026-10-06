@@ -58,7 +58,7 @@ internal const val PULL_REFRESH_CONTENT_OFFSET_DP = 56
  * [listState] defaults to a plain [rememberLazyListState] scoped to this composition — fine for
  * a screen that's never disposed while the user is elsewhere. A screen that can be navigated away
  * from and back to via a nested screen (Friends, whenever a friend's profile is open) needs its
- * caller to hoist that state instead and pass it in here, the same way MainActivity already
+ * caller to hoist that state instead and pass it in here, the same way SignedInShell already
  * hoists Home's own scroll position — otherwise this scaffold's default `remember` is recreated
  * from scratch on every return, silently resetting scroll to the top even though nothing the
  * user did asked for that.

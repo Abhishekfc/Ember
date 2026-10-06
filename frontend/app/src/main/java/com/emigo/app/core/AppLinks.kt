@@ -1,4 +1,4 @@
-package com.emigo.app
+package com.emigo.app.core
 
 import android.content.Context
 import android.content.Intent

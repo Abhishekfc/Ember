@@ -1,4 +1,4 @@
-package com.emigo.app.ui.home
+package com.emigo.app.ui.memories
 
 import android.Manifest
 import android.content.Context
@@ -97,6 +97,13 @@ import com.emigo.app.R
 import com.emigo.app.data.remote.dto.MemoryPhotoDto
 import com.emigo.app.ui.components.LocalNavDockHeight
 import com.emigo.app.ui.components.TabScreenHeader
+import com.emigo.app.ui.home.AmbientPhotoBackdrop
+import com.emigo.app.ui.home.FEATURED_CARD_ASPECT_RATIO
+import com.emigo.app.ui.home.FEATURED_CARD_CORNER_RADIUS
+import com.emigo.app.ui.home.HomeViewModel
+import com.emigo.app.ui.home.featuredCardSidePadding
+import com.emigo.app.ui.home.rememberFocusBlur
+import com.emigo.app.ui.home.rememberFocusFade
 import com.emigo.app.ui.profile.EditDialogShell
 import com.emigo.app.ui.theme.EmberFixedColors
 import com.emigo.app.ui.theme.EmberRadii

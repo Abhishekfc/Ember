@@ -46,9 +46,9 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.emigo.app.AppLinks
 import com.emigo.app.R
-import com.emigo.app.openUrl
+import com.emigo.app.core.AppLinks
+import com.emigo.app.core.openUrl
 import com.emigo.app.ui.profile.UsernameCheckState
 import com.emigo.app.ui.theme.PublicSansFontFamily
 

@@ -1,7 +1,7 @@
 package com.emigo.app.ui.camera
 
 import com.emigo.app.R
-import com.emigo.app.StringProvider
+import com.emigo.app.core.StringProvider
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -19,9 +19,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.data.FriendRepository
-import com.emigo.app.data.PhotoRepository
-import com.emigo.app.data.SubscriptionRepository
+import com.emigo.app.data.repository.FriendRepository
+import com.emigo.app.data.repository.PhotoRepository
+import com.emigo.app.data.repository.SubscriptionRepository
 import com.emigo.app.data.local.CameraHintPreferenceStore
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.remote.dto.FriendSummaryDto
@@ -53,7 +53,7 @@ private const val SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING = false
 
 /** Drives the outbox button's send animation (see CameraScreen's OutboxButton): SENDING from when
  * [CameraViewModel.sendCaptured] queues the upload, COMPLETE once [CameraViewModel.markSendComplete]
- * reports the real upload landed (MainActivity collects EmberApplication.photoSendCompletedEvents),
+ * reports the real upload landed (SignedInShell collects EmberApplication.photoSendCompletedEvents),
  * then back to IDLE shortly after. Not tied to [isQueuingSend], which covers only the brief local
  * queuing step; the real upload can take much longer, especially offline, and this reflects the
  * whole span. */
@@ -74,7 +74,7 @@ class CameraViewModel(
     var showSwipeHint by mutableStateOf(SWIPE_HINT_ALWAYS_SHOW_FOR_TESTING || !cameraHintPreferenceStore.isDismissed())
         private set
 
-    /** Called the first time the user navigates away from Camera (MainActivity's settledPage
+    /** Called the first time the user navigates away from Camera (SignedInShell's settledPage
      * effect); hides the hint permanently on this device. A no-op after the first call: a cheap
      * early-out that also avoids rewriting the same true -> false transition to disk on every page
      * change. */
@@ -227,7 +227,7 @@ class CameraViewModel(
         // Deliberately NOT loadFriends() here: this ViewModel lives for the whole session (Camera is a
         // pager page, not created on demand), so anything fired from init runs on every cold start
         // whether or not Camera is opened. loadFriends() is a limit=500 fetch for the recipient
-        // picker; MainActivity calls it once, lazily, the first time the user reaches Camera.
+        // picker; SignedInShell calls it once, lazily, the first time the user reaches Camera.
         //
         // The local cache read below does belong here: it's disk I/O, not a network call, and without
         // it the recipient badge had no data until the lazy fetch landed, so opening Camera after a
@@ -268,7 +268,7 @@ class CameraViewModel(
         get() = friends.any { it.friendId in selectedRecipientIds && it.pinnedByMe }
 
     /** Reuses a friend list the Friends tab already fetched, when it's known complete (see
-     * MainActivity: only when FriendsViewModel has loaded everything, `hasMore == false`), instead
+     * SignedInShell: only when FriendsViewModel has loaded everything, `hasMore == false`), instead
      * of a separate, mostly redundant network call for the same data. [loadFriends] is the fallback
      * when that isn't the case (Friends not loaded yet, or more than a page of friends). */
     fun provideFriends(list: List<FriendSummaryDto>) {

@@ -1,7 +1,10 @@
-package com.emigo.app.data
+package com.emigo.app.data.repository
 
 import android.content.Context
+import com.emigo.app.data.SingleFlight
+import com.emigo.app.data.TtlCache
 import com.emigo.app.data.remote.EmberApi
+import com.emigo.app.data.safeCall
 import com.emigo.app.data.remote.dto.ErrorResponse
 import com.emigo.app.data.remote.dto.SubscriptionStatusDto
 import com.emigo.app.data.remote.dto.SubscriptionVerifyRequestDto
@@ -64,7 +67,7 @@ class SubscriptionRepository(
      * within the cache window could otherwise be served the previous account's status. Doesn't
      * touch the synced last-known flag above — that's persisted to disk, not this in-memory
      * cache, and gets its own explicit clear from the same sign-out path (see
-     * [clearLastKnownStatus] and MainActivity's own onSignOut). */
+     * [clearLastKnownStatus] and EmberRoot's own onSignOut). */
     fun clearCache() {
         statusCache.invalidateAll()
     }

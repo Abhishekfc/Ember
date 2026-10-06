@@ -64,7 +64,7 @@ fun FindPeopleScreen(
     val isActiveSearch = viewModel.query.isNotEmpty()
 
     // viewModel survives across visits to this screen (it's keyed the same every time in
-    // MainActivity, not recreated), so its last results linger in memory too — stale the moment
+    // NestedScreenHost, not recreated), so its last results linger in memory too — stale the moment
     // a relationship changes elsewhere (removing a friend, accepting/declining/sending a request
     // from that person's own profile page) since none of those write paths touch this screen's
     // state. Re-running whatever search was already typed on every fresh visit is what actually
