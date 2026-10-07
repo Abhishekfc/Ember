@@ -32,7 +32,10 @@ object PhotoCompressionService {
 
     /** Long enough that no realistic phone screen ever needs more — this is about eliminating
      * pointless bloat (a several-thousand-pixel-wide source photo displayed on a ~1080px screen),
-     * not about visibly reducing quality for anyone actually looking at the photo. */
+     * not about visibly reducing quality for anyone actually looking at the photo. The iPhone app
+     * sends photos at exactly this size, so they pass through untouched (see [compress]); keep the
+     * two in step. 1440px at quality 0.8 was tried (about 40% of the bytes) and looked visibly
+     * softer to the user, so it was put back. */
     private const val MAX_DIMENSION = 2000
     private const val JPEG_QUALITY = 0.9f
 

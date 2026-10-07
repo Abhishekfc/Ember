@@ -63,6 +63,28 @@ class PhotoCompressionServiceTest {
     }
 
     @Test
+    fun `a photo just over the limit is scaled down so the longest side is exactly the limit`() {
+        val result = PhotoCompressionService.compress(jpegOf(2500, 2000), "image/jpeg")
+        val decoded = ImageIO.read(result.bytes.inputStream())
+        assertEquals(2000, decoded.width)
+        assertEquals(1600, decoded.height)
+    }
+
+    @Test
+    fun `a photo exactly at the limit, like the iPhone app sends, passes through untouched`() {
+        val original = jpegOf(1600, 2000)
+        val result = PhotoCompressionService.compress(original, "image/jpeg")
+        assertTrue(original.contentEquals(result.bytes), "a photo already at the limit was re-encoded")
+    }
+
+    @Test
+    fun `scaling down a big photo makes it much smaller`() {
+        val original = jpegOf(4000, 3000)
+        val result = PhotoCompressionService.compress(original, "image/jpeg")
+        assertTrue(result.bytes.size < original.size, "${result.bytes.size} bytes is not smaller than ${original.size}")
+    }
+
+    @Test
     fun `an already-small jpeg passes through byte-for-byte without a second lossy generation`() {
         val original = jpegOf(800, 600)
         val result = PhotoCompressionService.compress(original, "image/jpeg")
