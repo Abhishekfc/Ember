@@ -1,0 +1,9 @@
+// Debug builds talk to the live server by default. To change settings on one machine, create
+// Config/Local.xcconfig (never committed). For example:
+//   API_BASE_URL = http:/$()/localhost:8080/     (a local backend; "$()" stops "//" being a comment)
+//   DEVELOPMENT_TEAM = <your Apple team id>      (to run on a real iPhone)
+//   APP_BUNDLE_ID = com.emigo.app.dev            (a free Apple account can't use the real id)
+API_BASE_URL = https:/$()/api.emigo.live/
+APP_BUNDLE_ID = com.emigo.app
+
+#include? "Local.xcconfig"

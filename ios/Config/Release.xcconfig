@@ -1,0 +1,4 @@
+// The real production backend, reached through Cloudflare. This must stay a domain we control
+// (never a *.up.railway.app address) so the host can change later without stranding installs.
+API_BASE_URL = https:/$()/api.emigo.live/
+APP_BUNDLE_ID = com.emigo.app

@@ -1,0 +1,1250 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "activity.emptyDetail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Send or receive a photo and it'll show up here" } } }
+    },
+    "activity.emptyTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Nothing here yet" } } }
+    },
+    "activity.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Activity" } } }
+    },
+    "activity.today" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Today" } } }
+    },
+    "activity.yesterday" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Yesterday" } } }
+    },
+    "blocked.empty" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Nobody's blocked right now." } } }
+    },
+    "blocked.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "They can't find your profile, send you requests, or send you photos" } } }
+    },
+    "blocked.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Blocked accounts" } } }
+    },
+    "blocked.unblock" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unblock" } } }
+    },
+    "common.save" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Save" } } }
+    },
+    "failure.acceptRequest" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't accept request" } } }
+    },
+    "failure.changePassword" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't change your password" } } }
+    },
+    "failure.declineRequest" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't decline request" } } }
+    },
+    "failure.saveName" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't save your name" } } }
+    },
+    "failure.saveUsername" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't save your username" } } }
+    },
+    "failure.search" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Search failed" } } }
+    },
+    "failure.sendRequest" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't send request" } } }
+    },
+    "failure.unblock" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't unblock" } } }
+    },
+    "failure.updatePhoto" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't update your profile photo" } } }
+    },
+    "findPeople.add" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add" } } }
+    },
+    "findPeople.intro" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Search for friends by name or username." } } }
+    },
+    "findPeople.inviteMessage" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Come add me on Emigo — it puts my photos right on your home screen." } } }
+    },
+    "findPeople.inviteMessageWithUsername" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Come add me on Emigo — I'm @%@. It puts my photos right on your home screen." } } }
+    },
+    "findPeople.invitePrompt" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Not on Emigo yet? Invite them." } } }
+    },
+    "findPeople.more" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "More" } } }
+    },
+    "findPeople.requested" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Requested" } } }
+    },
+    "findPeople.searchHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Search by name or username" } } }
+    },
+    "friends.accept" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Accept" } } }
+    },
+    "friends.decline" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Decline" } } }
+    },
+    "friends.sectionRequests" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Added you · %lld" } } }
+    },
+    "profile.currentPasswordHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Current password" } } }
+    },
+    "profile.confirmPasswordHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Confirm new password" } } }
+    },
+    "profile.errorCurrentPassword" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter your current password" } } }
+    },
+    "profile.errorNameEmpty" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Name can't be empty" } } }
+    },
+    "profile.errorNewPasswordShort" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "New password must be at least 8 characters" } } }
+    },
+    "profile.errorPasswordMismatch" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "New passwords don't match" } } }
+    },
+    "profile.nameSubtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "This is the name your friends will see." } } }
+    },
+    "profile.nameTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Your name" } } }
+    },
+    "profile.newPasswordHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "New password" } } }
+    },
+    "profile.passwordChanged" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Password changed" } } }
+    },
+    "profile.passwordSubtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Use at least 8 characters. You'll stay signed in on this device." } } }
+    },
+    "profile.rowName" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Name" } } }
+    },
+    "profile.rowPassword" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Change password" } } }
+    },
+    "profile.rowPicture" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Profile picture" } } }
+    },
+    "profile.rowUsername" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Username" } } }
+    },
+    "profile.sectionAccount" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Account" } } }
+    },
+    "profile.usernameAvailable" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Available" } } }
+    },
+    "profile.usernameSubtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Used to find and tag you around the app." } } }
+    },
+    "profile.usernameTaken" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Already taken" } } }
+    },
+    "profile.usernameTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Your username" } } }
+    },
+    "common.back" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Back" } } }
+    },
+    "common.done" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Done" } } }
+    },
+    "failure.block" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't block this person" } } }
+    },
+    "failure.cancelRequest" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't cancel request" } } }
+    },
+    "failure.pin" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't update pin" } } }
+    },
+    "failure.removeFriend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't remove friend" } } }
+    },
+    "failure.report" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't submit report" } } }
+    },
+    "friendProfile.block" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Block" } } }
+    },
+    "friendProfile.blockTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Block %@?" } } }
+    },
+    "friendProfile.blockWarning" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "They won't be able to find your profile, send you friend requests, or send you photos. This won't notify them." } } }
+    },
+    "friendProfile.cancelRequest" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel request" } } }
+    },
+    "friendProfile.pinAsPartner" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Pin as partner" } } }
+    },
+    "friendProfile.pinnedAsPartner" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Pinned as partner" } } }
+    },
+    "friendProfile.report" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Report" } } }
+    },
+    "friendProfile.sendPhoto" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Send a photo" } } }
+    },
+    "friendProfile.unfriend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unfriend" } } }
+    },
+    "friendProfile.unfriendTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unfriend %@?" } } }
+    },
+    "friendProfile.unfriendWarning" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "You'll stop seeing each other's photos. You can add each other again later." } } }
+    },
+    "report.question" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "What's wrong with this account?" } } }
+    },
+    "report.reasonFakeAccount" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Fake account" } } }
+    },
+    "report.reasonHarassment" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Harassment or bullying" } } }
+    },
+    "report.reasonInappropriate" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Inappropriate content" } } }
+    },
+    "report.reasonOther" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Other" } } }
+    },
+    "report.reasonSpam" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Spam" } } }
+    },
+    "report.submit" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Submit report" } } }
+    },
+    "report.submittedTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Report submitted" } } }
+    },
+    "report.thanks" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Thanks, we'll look into it." } } }
+    },
+    "report.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Report this account" } } }
+    },
+    "camera.addText" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add text" } } }
+    },
+    "camera.captureFailed" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't capture photo" } } }
+    },
+    "camera.chooseRecipients" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose who to send to" } } }
+    },
+    "camera.errorQueue" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't queue your photo — please try again" } } }
+    },
+    "camera.errorSave" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't save your photo — please try again" } } }
+    },
+    "camera.errorSelectFriend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Select at least one friend first" } } }
+    },
+    "camera.flashOff" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Turn flash off" } } }
+    },
+    "camera.flashOn" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Turn flash on" } } }
+    },
+    "camera.flip" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Flip camera" } } }
+    },
+    "camera.goldNotOnIPhone" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Emigo Gold can't be bought on iPhone yet." } } }
+    },
+    "camera.goldPerk" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sending photos from your gallery is an Emigo Gold perk" } } }
+    },
+    "camera.goldTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Emigo Gold" } } }
+    },
+    "camera.maybeLater" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Maybe later" } } }
+    },
+    "camera.noCamera" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The camera isn't available on this device." } } }
+    },
+    "camera.openSettings" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Settings" } } }
+    },
+    "camera.permissionNeeded" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Emigo needs camera access to take photos." } } }
+    },
+    "camera.pickFromGallery" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick from gallery" } } }
+    },
+    "camera.retake" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Retake" } } }
+    },
+    "camera.saveToMemories" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Save to Memories" } } }
+    },
+    "camera.savedToMemories" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Saved to Memories" } } }
+    },
+    "camera.send" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Send" } } }
+    },
+    "camera.sentPhotos" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sent photos" } } }
+    },
+    "camera.takePhoto" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Take photo" } } }
+    },
+    "common.delete" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete" } } }
+    },
+    "common.moreOptions" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "More options" } } }
+    },
+    "failure.deleteList" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't delete that list" } } }
+    },
+    "failure.loadFriends" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't load your friends" } } }
+    },
+    "failure.loadSent" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't load your sent photos" } } }
+    },
+    "failure.saveList" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't save that list" } } }
+    },
+    "failure.unsend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't unsend that photo" } } }
+    },
+    "recipients.addFriendsFirst" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add friends first to send them photos." } } }
+    },
+    "recipients.badgeEveryone" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Everyone" } } }
+    },
+    "recipients.badgeRecent" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Recent" } } }
+    },
+    "recipients.createList" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Create a list" } } }
+    },
+    "recipients.deleteListTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete “%@”?" } } }
+    },
+    "recipients.emptyList" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No one in this list" } } }
+    },
+    "recipients.findFriends" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Find friends" } } }
+    },
+    "recipients.nameListHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Name this list" } } }
+    },
+    "recipients.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Send to" } } }
+    },
+    "sent.empty" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Nothing sent in the last 24 hours." } } }
+    },
+    "sent.intro" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Photos you've sent in the last 24 hours. Tap one to unsend it." } } }
+    },
+    "sent.remainingToUnsend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ to unsend" } } }
+    },
+    "sent.timeDescription" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sent %@" } } }
+    },
+    "sent.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sent" } } }
+    },
+    "sent.unsend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unsend" } } }
+    },
+    "sent.unsendTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unsend this photo?" } } }
+    },
+    "sent.unsendWarning" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "This can't be undone. It'll be removed from their feed too." } } }
+    },
+    "common.cancel" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } } }
+    },
+    "common.close" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Close" } } }
+    },
+    "common.continue" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Continue" } } }
+    },
+    "failure.checkEmail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't check that email" } } }
+    },
+    "failure.checkUsername" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't check that username" } } }
+    },
+    "failure.createAccount" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't finish creating your account" } } }
+    },
+    "failure.noConnection" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't connect — check your connection" } } }
+    },
+    "failure.notConfigured" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sign-in isn't available in this build yet." } } }
+    },
+    "failure.sessionExpired" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Your session expired. Please sign in again." } } }
+    },
+    "failure.somethingWentWrong" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Something went wrong" } } }
+    },
+    "friends.findPeople" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Find people" } } }
+    },
+    "friends.noMatch" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No one matches “%@”" } } }
+    },
+    "friends.pinnedPartner" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Pinned partner" } } }
+    },
+    "friends.searchHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Search friends" } } }
+    },
+    "friends.sectionYourEmigo" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Your Emigo" } } }
+    },
+    "friends.empty" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No friends yet" } } }
+    },
+    "friends.noPhotosYet" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No photos yet" } } }
+    },
+    "friends.sectionMyFriends" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "My friends" } } }
+    },
+    "friends.sentToYou" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sent to you %@" } } }
+    },
+    "friends.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Friends" } } }
+    },
+    "friends.youSent" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "You sent %@" } } }
+    },
+    "home.activity" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Activity" } } }
+    },
+    "home.addShort" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add" } } }
+    },
+    "home.addFriend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add friend" } } }
+    },
+    "home.addFriendsPrompt" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add friends to start\nsharing moments" } } }
+    },
+    "home.connectError" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't connect · Tap to retry" } } }
+    },
+    "home.cardForEveryFriend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "A card for every friend" } } }
+    },
+    "home.emptyNoFriends" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Once you're connected, their photos show up right here." } } }
+    },
+    "home.emptyWithFriends" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Nothing shared yet. Their photos land here the moment they post, or you can send the first one." } } }
+    },
+    "home.modeHome" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Home" } } }
+    },
+    "home.modeMoments" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Moments" } } }
+    },
+    "home.profile" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Your profile" } } }
+    },
+    "home.streakDays" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Streak: %lld" } } }
+    },
+    "identity.badCredentials" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Incorrect email or password" } } }
+    },
+    "identity.emailInUse" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "An account with this email already exists" } } }
+    },
+    "identity.noAccount" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No account found with that email" } } }
+    },
+    "identity.recentLoginRequired" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Please sign in again to continue" } } }
+    },
+    "identity.tooManyRequests" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Too many attempts — please try again later" } } }
+    },
+    "identity.weakPassword" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose a stronger password" } } }
+    },
+    "login.button" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Log in" } } }
+    },
+    "login.errorBadCredentials" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Incorrect email or password" } } }
+    },
+    "login.errorCheckDetails" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Please check your details" } } }
+    },
+    "login.errorEmailTaken" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "That email already has an Emigo account." } } }
+    },
+    "login.errorFillAll" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Please fill in every field" } } }
+    },
+    "login.errorFirstName" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Please enter your first name" } } }
+    },
+    "login.errorInvalidEmail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter a valid email address" } } }
+    },
+    "login.forgotPassword" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Forgot password?" } } }
+    },
+    "login.identifierHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Email or username" } } }
+    },
+    "login.passwordHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Password" } } }
+    },
+    "invite.copied" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Copied" } } }
+    },
+    "invite.copySubtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Share your invite anywhere" } } }
+    },
+    "invite.copyTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy link" } } }
+    },
+    "invite.instagramDMSubtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Copies your invite, opens your inbox" } } }
+    },
+    "invite.instagramDMTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Instagram DM" } } }
+    },
+    "invite.instagramStorySubtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Copies your invite, opens the camera" } } }
+    },
+    "invite.instagramStoryTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Instagram Story" } } }
+    },
+    "invite.messagesSubtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Invite via SMS" } } }
+    },
+    "invite.messagesTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Messages" } } }
+    },
+    "invite.more" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "More" } } }
+    },
+    "invite.sectionFrom" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "INVITE FROM" } } }
+    },
+    "invite.sectionLink" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "SHARE YOUR EMIGO LINK" } } }
+    },
+    "invite.skip" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "I'll do this later" } } }
+    },
+    "invite.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Invite someone to get started" } } }
+    },
+    "invite.tagline" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Real moments. Real people." } } }
+    },
+    "invite.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add your first friend" } } }
+    },
+    "invite.whatsappSubtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Invite via WhatsApp" } } }
+    },
+    "login.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Welcome back" } } }
+    },
+    "memories.empty" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No memories yet" } } }
+    },
+    "memories.emptyDetail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Save a photo from the camera to see it here." } } }
+    },
+    "memories.photoDescription" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Your photo" } } }
+    },
+    "memories.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Memories" } } }
+    },
+    "password.hide" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Hide password" } } }
+    },
+    "password.show" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Show password" } } }
+    },
+    "register.createAccountButton" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Create account" } } }
+    },
+    "register.emailHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "you@email.com" } } }
+    },
+    "register.emailTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "What's your email?" } } }
+    },
+    "register.firstNameHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "First name" } } }
+    },
+    "register.lastNameHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Last name (optional)" } } }
+    },
+    "register.legalAnd" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "and" } } }
+    },
+    "register.legalPrefix" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "By tapping Continue, you're agreeing to our" } } }
+    },
+    "register.legalPrivacy" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Privacy Policy" } } }
+    },
+    "register.legalTerms" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Terms of Service" } } }
+    },
+    "register.nameTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "What's your name?" } } }
+    },
+    "register.passwordRule" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "At least 8 characters" } } }
+    },
+    "register.passwordTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Create a password" } } }
+    },
+    "register.usernameAvailable" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Username available" } } }
+    },
+    "register.usernameChecking" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Checking availability…" } } }
+    },
+    "register.usernameHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Username" } } }
+    },
+    "register.usernamePickAvailable" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick an available username first" } } }
+    },
+    "register.usernameTaken" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Username already taken" } } }
+    },
+    "register.usernameTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick a username" } } }
+    },
+    "register.usernameTooShort" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Username must be at least 3 characters" } } }
+    },
+    "reset.description" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter your email and we'll send you a link to set a new password." } } }
+    },
+    "reset.emailHint" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Email" } } }
+    },
+    "reset.sendButton" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Send reset link" } } }
+    },
+    "reset.sent" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "If that email has an account, we've sent a link to reset your password." } } }
+    },
+    "reset.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset your password" } } }
+    },
+    "deleteAccount.confirmPrompt" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Type \"delete\" to confirm" } } }
+    },
+    "deleteAccount.failed" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't delete your account" } } }
+    },
+    "deleteAccount.row" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete account" } } }
+    },
+    "deleteAccount.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete account?" } } }
+    },
+    "deleteAccount.warning" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "This can't be undone. Your photos and friends will be deleted too." } } }
+    },
+    "gold.alreadyMember" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Subscribed on Android? Sign in with the same account and Gold unlocks here." } } }
+    },
+    "gold.captionCancelAnytime" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel anytime in Google Play" } } }
+    },
+    "gold.manage" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manage subscription" } } }
+    },
+    "gold.memberLabel" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Member" } } }
+    },
+    "gold.memberStatus" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "You're on Emigo Gold" } } }
+    },
+    "gold.perkGalleryDetail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Share any photo, not just what you capture live" } } }
+    },
+    "gold.perkGalleryTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Send from your gallery" } } }
+    },
+    "gold.perkRestoreStreakDetail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Bring back a streak that slipped past midnight" } } }
+    },
+    "gold.perkRestoreStreakTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Restore your streak" } } }
+    },
+    "gold.perkThemesDetail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unlock Aurora, Cyber, Botanica, and Frost looks" } } }
+    },
+    "gold.perkThemesTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Exclusive themes" } } }
+    },
+    "gold.perkWidgetDetail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick exactly whose photos always show on your home screen" } } }
+    },
+    "gold.perkWidgetTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose who's on your widget" } } }
+    },
+    "gold.subtitleMember" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Thank you for being an Emigo Gold member" } } }
+    },
+    "gold.subtitleVisitor" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "A little extra glow for your favorite people" } } }
+    },
+    "gold.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Emigo Gold" } } }
+    },
+    "gold.unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Not available yet" } } }
+    },
+    "settings.appearance" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Appearance" } } }
+    },
+    "settings.badgeFree" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Free" } } }
+    },
+    "settings.badgeGold" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Gold" } } }
+    },
+    "settings.gold" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Emigo Gold" } } }
+    },
+    "settings.notifications" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Notifications" } } }
+    },
+    "settings.notificationsDeniedMessage" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Turn them on in your iPhone's Settings to get them." } } }
+    },
+    "settings.notificationsDeniedTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Notifications are off for Emigo" } } }
+    },
+    "settings.openSystemSettings" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Settings" } } }
+    },
+    "settings.other" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Other" } } }
+    },
+    "settings.sectionPreferences" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Preferences" } } }
+    },
+    "settings.defaultAccountName" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Your account" } } }
+    },
+    "settings.helpSupport" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Help & support" } } }
+    },
+    "settings.logOut" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Log out" } } }
+    },
+    "settings.logOutConfirmTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Log out of Emigo?" } } }
+    },
+    "settings.privacyPolicy" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Privacy policy" } } }
+    },
+    "settings.aboutEmigo" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "About Emigo" } } }
+    },
+    "settings.blockedAccounts" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Blocked accounts" } } }
+    },
+    "settings.feedbackEmailSubject" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Emigo feedback" } } }
+    },
+    "settings.sectionPrivacy" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Privacy" } } }
+    },
+    "settings.sectionSupport" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Support" } } }
+    },
+    "settings.sendFeedback" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Send feedback" } } }
+    },
+    "settings.supportEmailSubject" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Emigo support" } } }
+    },
+    "settings.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } } }
+    },
+    "tab.camera" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Camera" } } }
+    },
+    "tab.friends" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Friends" } } }
+    },
+    "tab.home" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Home" } } }
+    },
+    "tab.memories" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Memories" } } }
+    },
+    "tab.settings" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } } }
+    },
+    "theme.apply" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Apply theme" } } }
+    },
+    "theme.applied" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Applied" } } }
+    },
+    "theme.badgeDefault" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Default" } } }
+    },
+    "theme.getGold" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Get Emigo Gold" } } }
+    },
+    "theme.nameAurora" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Aurora" } } }
+    },
+    "theme.nameBlaze" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Blaze" } } }
+    },
+    "theme.nameBotanica" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Botanica" } } }
+    },
+    "theme.nameCream" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cream" } } }
+    },
+    "theme.nameCyber" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cyber" } } }
+    },
+    "theme.nameDusk" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Dusk" } } }
+    },
+    "theme.nameEmber" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Ember" } } }
+    },
+    "theme.nameFrost" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Frost" } } }
+    },
+    "theme.nameNoir" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Noir" } } }
+    },
+    "theme.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Applies across the app" } } }
+    },
+    "theme.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Theme" } } }
+    },
+    "time.daysAgo" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%lldd ago" } } }
+    },
+    "time.expiring" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "expiring" } } }
+    },
+    "time.hoursLeft" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%lldh left" } } }
+    },
+    "time.minutesLeft" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%lldm left" } } }
+    },
+    "time.hoursAgo" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%lldh ago" } } }
+    },
+    "time.justNow" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "just now" } } }
+    },
+    "time.minutesAgo" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%lldm ago" } } }
+    },
+    "time.yesterday" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "yesterday" } } }
+    },
+    "verify.doneButton" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "I've verified" } } }
+    },
+    "verify.expiredDetail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "That link wasn't confirmed in time. Start again to get a new one." } } }
+    },
+    "verify.expiredTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Link expired" } } }
+    },
+    "verify.expiresIn" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Expires in %lld:%02lld" } } }
+    },
+    "verify.failedTitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Verification failed" } } }
+    },
+    "verify.resend" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Resend email" } } }
+    },
+    "verify.resendFailed" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't send that. Please try again." } } }
+    },
+    "verify.resendIn" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Resend in %lld:%02lld" } } }
+    },
+    "verify.resent" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Verification email sent." } } }
+    },
+    "verify.sentDetail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "We sent a verification link to" } } }
+    },
+    "verify.startOver" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Start over" } } }
+    },
+    "verify.stillUnverified" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Still not verified. Check your inbox and spam folder." } } }
+    },
+    "verify.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Check your inbox" } } }
+    },
+    "welcome.createAccount" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Create an account" } } }
+    },
+    "welcome.signIn" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sign in" } } }
+    },
+    "welcome.tagline" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Your people. Always close." } } }
+    }
+  },
+  "version" : "1.0"
+}

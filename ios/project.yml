@@ -1,0 +1,96 @@
+name: Emigo
+
+options:
+  bundleIdPrefix: com.emigo
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: "12.0.0"
+
+targets:
+  Emigo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Emigo
+        type: syncedFolder
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: Emigo
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Dark
+        ITSAppUsesNonExemptEncryption: false
+        EmigoAPIBaseURL: $(API_BASE_URL)
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        LSApplicationQueriesSchemes:
+          - whatsapp
+          - instagram
+          - snapchat
+        NSCameraUsageDescription: Emigo uses the camera so you can take photos to send to your friends.
+        NSPhotoLibraryUsageDescription: Emigo needs access to your photos so you can pick one to send or use as your profile picture.
+        NSPhotoLibraryAddUsageDescription: Emigo saves photos to your library when you choose to download them.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
+        PRODUCT_NAME: Emigo
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SUPPORTS_MACCATALYST: NO
+    dependencies:
+      - package: Firebase
+        product: FirebaseAuth
+
+  EmigoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: EmigoTests
+        type: syncedFolder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.emigo.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Emigo
+
+schemes:
+  Emigo:
+    build:
+      targets:
+        Emigo: all
+        EmigoTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - EmigoTests
+    profile:
+      config: Release
+    archive:
+      config: Release
