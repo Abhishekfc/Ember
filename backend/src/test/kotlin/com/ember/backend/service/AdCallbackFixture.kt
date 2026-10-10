@@ -40,6 +40,23 @@ class AdCallbackFixture(val adUnit: String = "5224354917", val keyId: String = "
         return "$content&signature=${sign(content, signWith)}&key_id=$keyId"
     }
 
+    /** What AdMob's own "Verify URL" test really sends (taken from the live server's log): signed with
+     * Google's normal key, for a made-up ad unit (1234567890), and with a user id and custom data
+     * only if they were typed in on the AdMob page ([userId] and [customData] null means blank). */
+    fun verifyTestQuery(
+        timestampMillis: Long,
+        adUnit: String = "1234567890",
+        userId: UUID? = null,
+        customData: UUID? = null,
+        signWith: PrivateKey = keyPair.private,
+    ): String {
+        val content = "ad_network=5450213213286189855&ad_unit=$adUnit" +
+            (customData?.let { "&custom_data=$it" } ?: "") +
+            "&reward_amount=1&reward_item=Reward&timestamp=$timestampMillis&transaction_id=123456789" +
+            (userId?.let { "&user_id=$it" } ?: "")
+        return "$content&signature=${sign(content, signWith)}&key_id=$keyId"
+    }
+
     fun sign(content: String, key: PrivateKey = keyPair.private): String {
         val bytes = Signature.getInstance("SHA256withECDSA").run {
             initSign(key)

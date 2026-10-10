@@ -30,8 +30,8 @@ enum class RecordOutcome {
     /** Google already told us about this ad; nothing to do. */
     DUPLICATE,
 
-    /** Genuine, but about a friendship that isn't the user's: nothing is saved, and Google needn't
-     * try again. */
+    /** Genuine, but about a friendship that isn't the user's, or about no restore at all (AdMob's
+     * own Verify test): nothing is saved, and Google needn't try again. */
     IGNORED,
 
     /** Not from Google, or not for one of our ads. */
@@ -51,7 +51,13 @@ class AdRewardService(
 
     @Transactional
     fun record(rawQuery: String?, now: Instant = Instant.now()): RecordOutcome {
-        val reward = verifier.verify(rawQuery, now) ?: return RecordOutcome.INVALID
+        val reward = when (val verdict = verifier.inspect(rawQuery, now)) {
+            is CallbackVerdict.Reward -> verdict.reward
+            // Genuinely Google's (AdMob's own Verify test, say) but about no restore: 200, nothing
+            // saved, so Google doesn't keep retrying it.
+            CallbackVerdict.GenuineButNotARestore -> return RecordOutcome.IGNORED
+            CallbackVerdict.NotTrusted -> return RecordOutcome.INVALID
+        }
 
         val friendship = friendshipRepository.findById(reward.friendshipId).orElse(null)
         val isTheirs = friendship != null &&

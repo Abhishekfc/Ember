@@ -210,6 +210,39 @@ class AdRewardServiceTest {
     }
 
     @Test
+    fun `AdMob's verify test is answered fine and saves nothing`() {
+        val verifyTest = fixture.verifyTestQuery(now.toEpochMilli())
+
+        assertEquals(RecordOutcome.IGNORED, service().record(verifyTest, now))
+        assertTrue(rewards.rows.isEmpty())
+    }
+
+    @Test
+    fun `the verify test with ids typed in saves nothing even for a real user and friendship`() {
+        // Someone types a real user and friendship into AdMob's test page: it must not pay out.
+        val typedIn = fixture.verifyTestQuery(now.toEpochMilli(), userId = me.id, customData = friendship.id)
+
+        assertEquals(RecordOutcome.IGNORED, service().record(typedIn, now))
+        assertTrue(rewards.rows.isEmpty())
+    }
+
+    @Test
+    fun `a stranger's ad unit naming a real user and friendship saves nothing`() {
+        val aimedAtUs = fixture.query(me.id, friendship.id, now.toEpochMilli(), adUnit = "9999999999")
+
+        assertEquals(RecordOutcome.IGNORED, service().record(aimedAtUs, now))
+        assertTrue(rewards.rows.isEmpty())
+        assertFalse(service().trySpend(), "so it pays for no restore")
+    }
+
+    @Test
+    fun `a forged verify test is still refused`() {
+        val forged = fixture.verifyTestQuery(now.toEpochMilli(), signWith = AdCallbackFixture.newKeyPair().private)
+
+        assertEquals(RecordOutcome.INVALID, service().record(forged, now))
+    }
+
+    @Test
     fun `a forged callback records nothing`() {
         val forged = fixture.query(
             me.id, friendship.id, now.toEpochMilli(),

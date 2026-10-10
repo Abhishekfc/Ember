@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.security.PublicKey
 import java.security.Signature
 import java.time.Duration
 import java.time.Instant
@@ -49,8 +50,19 @@ class AdRewardVerifier(
         .filter { it.isNotEmpty() }
         .toSet()
 
-    /** The reward the callback describes, or null if it can't be trusted for any reason. */
-    fun verify(rawQuery: String?, now: Instant = Instant.now()): VerifiedAdReward? {
+    /** The reward the callback describes, or null if it isn't a trustworthy streak-restore reward
+     * for any reason (see [inspect] for telling "not from Google" apart from "from Google, but not
+     * a restore"). */
+    fun verify(rawQuery: String?, now: Instant = Instant.now()): VerifiedAdReward? =
+        (inspect(rawQuery, now) as? CallbackVerdict.Reward)?.reward
+
+    /** Sorts a request to the callback into: a genuine restore reward, genuinely from Google but
+     * about nothing we can use, or not to be trusted at all. The middle case is what AdMob's own
+     * "Verify URL" test sends: correctly signed by Google, but for a made-up ad unit and, unless
+     * typed in, with no user or friendship id. Google needs a 200 for it, and nothing is saved.
+     * Only a request that isn't signed by Google (or is stale) is refused. A reward needs all of:
+     * Google's signature, one of OUR ad units, a fresh timestamp, and a user and friendship. */
+    fun inspect(rawQuery: String?, now: Instant = Instant.now()): CallbackVerdict {
         if (rawQuery.isNullOrBlank() || rawQuery.length > MAX_QUERY_LENGTH) return reject("missing or oversized query")
         if (allowedAdUnits.isEmpty()) return reject("no reward ad units configured")
 
@@ -61,21 +73,35 @@ class AdRewardVerifier(
         val (signatureText, keyId) = tail.destructured
         val signedContent = rawQuery.substring(0, markerAt)
 
-        if (!isSignedByGoogle(signedContent, signatureText, keyId)) return reject("bad signature")
+        val key = keyProvider.publicKey(keyId) ?: return reject("unknown key id $keyId")
+        if (!isSignedBy(key, signedContent, signatureText)) return reject("bad signature")
 
         val params = parseParams(signedContent) ?: return reject("malformed parameters")
-        if (adUnitNumber(params["ad_unit"].orEmpty()) !in allowedAdUnits) return reject("ad unit is not ours")
         if (!isFresh(params["timestamp"], now)) return reject("stale or missing timestamp")
 
+        // Genuinely Google's word from here on. Anyone with an AdMob account can have Google sign a
+        // callback for THEIR OWN ad unit and aim it at this address, naming anyone they like. Such a
+        // callback must never become a reward, but it is not a forgery either, and AdMob's own
+        // "Verify URL" test is exactly that (it uses a made-up ad unit, 1234567890): Google needs
+        // a 200 for it. So a unit that isn't ours is answered "fine" and nothing is saved.
+        if (adUnitNumber(params["ad_unit"].orEmpty()) !in allowedAdUnits) {
+            logger.info("Ad reward callback is genuine but for an ad unit that isn't ours (a Verify test or a stranger's): nothing saved")
+            return CallbackVerdict.GenuineButNotARestore
+        }
+
+        // One of our ad units. Whether it names a user and a friendship we can use is a separate
+        // question, and "no" is not a reason to refuse.
         val transactionId = params["transaction_id"]?.takeIf { it.isNotBlank() && it.length <= MAX_TRANSACTION_ID_LENGTH }
-            ?: return reject("bad transaction id")
-        val userId = params["user_id"]?.toUuidOrNull() ?: return reject("bad user id")
-        val friendshipId = params["custom_data"]?.toUuidOrNull() ?: return reject("bad friendship id")
-        return VerifiedAdReward(transactionId, userId, friendshipId)
+        val userId = params["user_id"]?.toUuidOrNull()
+        val friendshipId = params["custom_data"]?.toUuidOrNull()
+        if (transactionId == null || userId == null || friendshipId == null) {
+            logger.info("Ad reward callback is genuine but names no usable user or friendship (a Verify test): nothing saved")
+            return CallbackVerdict.GenuineButNotARestore
+        }
+        return CallbackVerdict.Reward(VerifiedAdReward(transactionId, userId, friendshipId))
     }
 
-    private fun isSignedByGoogle(signedContent: String, signatureText: String, keyId: String): Boolean {
-        val key = keyProvider.publicKey(keyId) ?: return false
+    private fun isSignedBy(key: PublicKey, signedContent: String, signatureText: String): Boolean {
         return runCatching {
             Signature.getInstance("SHA256withECDSA").run {
                 initVerify(key)
@@ -102,10 +128,23 @@ class AdRewardVerifier(
         return sentAt.isAfter(now.minus(MAX_CALLBACK_AGE)) && sentAt.isBefore(now.plus(MAX_CLOCK_SKEW))
     }
 
-    private fun reject(reason: String): VerifiedAdReward? {
+    private fun reject(reason: String): CallbackVerdict {
         logger.warn("Ad reward callback refused: {}", reason)
-        return null
+        return CallbackVerdict.NotTrusted
     }
+}
+
+/** What [AdRewardVerifier.inspect] decides about a request to the reward callback. */
+sealed interface CallbackVerdict {
+    /** Genuine, and it names the user and friendship a streak restore was earned for. */
+    data class Reward(val reward: VerifiedAdReward) : CallbackVerdict
+
+    /** Genuinely Google's word about one of our ad units, but with no usable user or friendship
+     * (such as AdMob's own Verify test). Answered 200, saves nothing. */
+    data object GenuineButNotARestore : CallbackVerdict
+
+    /** Not from Google, not one of our ads, stale, or otherwise not to be trusted. Answered 403. */
+    data object NotTrusted : CallbackVerdict
 }
 
 /** `ca-app-pub-123/456` and `456` both mean ad unit 456, which is what Google puts in a callback. */

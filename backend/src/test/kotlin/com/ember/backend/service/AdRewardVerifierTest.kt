@@ -72,7 +72,7 @@ class AdRewardVerifierTest {
     }
 
     @Test
-    fun `an ad unit that isn't ours is refused even with a genuine signature`() {
+    fun `an ad unit that isn't ours earns no reward even with a genuine signature`() {
         // Anyone with an AdMob account can have Google sign callbacks for their own ads.
         val query = fixture.query(userId, friendshipId, now.toEpochMilli(), adUnit = "9999999999")
 
@@ -122,6 +122,72 @@ class AdRewardVerifierTest {
         }
 
         assertNull(verifier.verify(query, now))
+    }
+
+    // AdMob's "Verify URL" button (seen in the live server's log) sends a callback signed with
+    // Google's normal key for a MADE-UP ad unit (1234567890), with the user id and custom data only
+    // if typed in. It must be told "fine" (200) or the callback can never be set up, yet nothing
+    // may be saved, and above all it must never become a reward.
+
+    @Test
+    fun `AdMob's own verify test is genuine but is not a restore`() {
+        val test = fixture.verifyTestQuery(now.toEpochMilli())
+
+        assertEquals(CallbackVerdict.GenuineButNotARestore, verifier.inspect(test, now))
+        assertNull(verifier.verify(test, now), "and it is never a reward")
+    }
+
+    @Test
+    fun `the verify test with made-up ids typed in is still not a reward`() {
+        // As in the live log: user_id and custom_data typed into the AdMob page.
+        val test = fixture.verifyTestQuery(now.toEpochMilli(), userId = userId, customData = friendshipId)
+
+        assertEquals(CallbackVerdict.GenuineButNotARestore, verifier.inspect(test, now))
+        assertNull(verifier.verify(test, now))
+    }
+
+    @Test
+    fun `someone else's ad unit can never make a reward even with real ids`() {
+        // The attack the ad unit check exists for: a stranger has Google sign a callback for their
+        // own ad unit that names a victim and a friendship. It is answered 200, and never a reward.
+        val aimedAtAVictim = fixture.query(userId, friendshipId, now.toEpochMilli(), adUnit = "9999999999")
+
+        assertEquals(CallbackVerdict.GenuineButNotARestore, verifier.inspect(aimedAtAVictim, now))
+        assertNull(verifier.verify(aimedAtAVictim, now))
+    }
+
+    @Test
+    fun `a good callback is a reward`() {
+        assertEquals(CallbackVerdict.Reward(VerifiedAdReward("tx-1", userId, friendshipId)), verifier.inspect(goodQuery(), now))
+    }
+
+    @Test
+    fun `a verify test not signed by Google is still refused`() {
+        val forged = fixture.verifyTestQuery(now.toEpochMilli(), signWith = AdCallbackFixture.newKeyPair().private)
+
+        assertEquals(CallbackVerdict.NotTrusted, verifier.inspect(forged, now))
+    }
+
+    @Test
+    fun `a stale verify test is refused`() {
+        val stale = fixture.verifyTestQuery(now.minus(Duration.ofHours(25)).toEpochMilli())
+
+        assertEquals(CallbackVerdict.NotTrusted, verifier.inspect(stale, now))
+    }
+
+    @Test
+    fun `a verify test is refused until an ad unit is set`() {
+        assertEquals(CallbackVerdict.NotTrusted, fixture.verifier(rewardAdUnitIds = "").inspect(fixture.verifyTestQuery(now.toEpochMilli()), now))
+    }
+
+    @Test
+    fun `a genuine callback with a damaged id is not a reward but is not a forgery either`() {
+        val query = fixture.query(userId, friendshipId, now.toEpochMilli()).let {
+            val content = it.substringBefore("&signature=").replace(friendshipId.toString(), "not-a-uuid")
+            "$content&signature=${fixture.sign(content)}&key_id=${fixture.keyId}"
+        }
+
+        assertEquals(CallbackVerdict.GenuineButNotARestore, verifier.inspect(query, now))
     }
 
     @Test
