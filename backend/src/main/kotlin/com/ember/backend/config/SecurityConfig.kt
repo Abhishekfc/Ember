@@ -32,7 +32,9 @@ class SecurityConfig(
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/auth/**", "/actuator/health").permitAll()
+                    // The reward callback is called by Google's servers, which can't log in; it
+                    // proves itself with a signature instead (see AdRewardVerifier).
+                    .requestMatchers("/auth/**", "/actuator/health", "/ads/reward-callback").permitAll()
                     .anyRequest().authenticated()
             }
             .exceptionHandling { it.authenticationEntryPoint(HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)) }

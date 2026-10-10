@@ -5,7 +5,6 @@ import com.ember.backend.dto.FriendSearchResult
 import com.ember.backend.dto.FriendSummary
 import com.ember.backend.dto.Page
 import com.ember.backend.dto.PendingFriendRequest
-import com.ember.backend.exception.GoldSubscriptionRequiredException
 import com.ember.backend.exception.InvalidFriendRequestException
 import com.ember.backend.exception.ResourceNotFoundException
 import com.ember.backend.exception.StreakRestoreNotAvailableException
@@ -57,6 +56,7 @@ class FriendService(
     private val pushNotificationService: PushNotificationService,
     private val friendshipStreakStateRepository: FriendshipStreakStateRepository,
     private val subscriptionService: SubscriptionService,
+    private val adRewardService: AdRewardService,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -333,8 +333,10 @@ class FriendService(
     /** Restores exactly the one day [StreakBreakDetectionService] flagged as missed when this
      * friendship's streak broke — never touches real exchange history (see
      * [StreakCalculator.compute]'s own doc comment on why), just tells the calculator to treat
-     * that one day as covered from now on. Gold-gated server-side, not just hidden client-side —
-     * a paywalled action must never trust the caller's own claim about their subscription status. */
+     * that one day as covered from now on. Gold members restore freely; everyone else needs one
+     * watched ad on record (see [AdRewardService]). Checked server-side, not just hidden
+     * client-side — a paywalled action must never trust the caller's own claim about their
+     * subscription status or about having watched an ad. */
     @Transactional
     fun restoreStreak(userId: UUID, friendshipId: UUID): FriendSummary {
         val friendship = friendshipRepository.findById(friendshipId)
@@ -348,9 +350,7 @@ class FriendService(
         if (friendship.status != FriendshipStatus.ACCEPTED) {
             throw InvalidFriendRequestException("You can only restore a streak with an accepted friend")
         }
-        if (!subscriptionService.isActiveGoldMember(userId)) {
-            throw GoldSubscriptionRequiredException()
-        }
+        val isGold = subscriptionService.isActiveGoldMember(userId)
 
         val state = friendshipStreakStateRepository.findById(friendshipId)
             .orElseThrow { StreakRestoreNotAvailableException() }
@@ -358,6 +358,11 @@ class FriendService(
         if (deadline == null || deadline.isBefore(Instant.now()) || state.restoredThroughDate != null) {
             throw StreakRestoreNotAvailableException()
         }
+        // Only now that a restore is really on offer are the watched ads spent, so they are never
+        // used up by a restore that was going to be refused anyway. This runs in the same
+        // transaction as the restore itself, so if anything below fails the ads are given back.
+        // Throws AdRewardRequiredException, with how many ads it takes and how many are watched.
+        if (!isGold) adRewardService.spendRestoreRewards(userId, friendshipId)
 
         // Bridged through *yesterday*, not through the single day that originally lapsed: the
         // restore window is two days wide (StreakBreakDetectionService.STREAK_RESTORE_WINDOW_DAYS),

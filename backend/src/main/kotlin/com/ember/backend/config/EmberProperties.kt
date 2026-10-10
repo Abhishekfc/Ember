@@ -40,6 +40,19 @@ data class PlayBillingProperties(
     val enabled: Boolean,
 )
 
+/** [rewardAdUnitIds] is a comma-separated list of the AdMob ad units whose watched ads count as a
+ * reward here (the numbers after the slash in `ca-app-pub-…/1234567890` work, and so do the full
+ * ids). It is the check that stops anyone else's AdMob app from pointing Google's signed callbacks
+ * at this server, so blank means every callback is refused, never that every callback is allowed. */
+@ConfigurationProperties(prefix = "ember.ads")
+data class AdProperties(
+    val rewardAdUnitIds: String = "",
+    val verifierKeysUrl: String = "https://www.gstatic.com/admob/reward/verifier-keys.json",
+    /** How many watched ads one streak restore costs. The app learns this number from the server,
+     * so changing it here needs no app update. */
+    val restoreAdsRequired: Int = 3,
+)
+
 /** [alertEmail] blank means moderation alerts are simply off — [ReportService] checks this
  * itself before ever touching [com.ember.backend.service.EmailService], so an unconfigured
  * sender (the common state before this is set up) never has to fail loudly; reports keep saving

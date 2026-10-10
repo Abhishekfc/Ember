@@ -89,7 +89,12 @@ class FriendsController(
     fun restoreStreak(
         @AuthenticationPrincipal me: AuthenticatedUser,
         @PathVariable friendshipId: UUID,
-    ): FriendSummary = friendService.restoreStreak(me.id, friendshipId)
+    ): FriendSummary {
+        // Sized for the app asking again for a few seconds after a rewarded ad, while Google's
+        // confirmation is still on its way, and for nothing more than that.
+        rateLimiterService.checkLimit("streak-restore:${me.id}", maxAttempts = 60, window = Duration.ofMinutes(10))
+        return friendService.restoreStreak(me.id, friendshipId)
+    }
 
     @DeleteMapping("/{friendshipId}")
     fun removeFriend(

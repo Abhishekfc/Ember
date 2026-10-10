@@ -1,5 +1,6 @@
 package com.ember.backend.exception
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import org.hibernate.StaleStateException
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
@@ -23,12 +24,28 @@ data class ErrorResponse(
     val status: Int,
     val error: String,
     val message: String?,
+    /** Only on the "watch ads to restore a streak" refusal (402): how many ads it takes and how
+     * many are already on record. Left out of every other error. */
+    @field:JsonInclude(JsonInclude.Include.NON_NULL) val adsRequired: Int? = null,
+    @field:JsonInclude(JsonInclude.Include.NON_NULL) val adsWatched: Int? = null,
 )
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
     private val logger = LoggerFactory.getLogger(javaClass)
+
+    @ExceptionHandler(AdRewardRequiredException::class)
+    fun handleAdRewardRequired(ex: AdRewardRequiredException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(ex.status).body(
+            ErrorResponse(
+                status = ex.status.value(),
+                error = ex.status.reasonPhrase,
+                message = ex.message,
+                adsRequired = ex.adsRequired,
+                adsWatched = ex.adsWatched,
+            )
+        )
 
     @ExceptionHandler(ApiException::class)
     fun handleApiException(ex: ApiException): ResponseEntity<ErrorResponse> =

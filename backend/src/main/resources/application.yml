@@ -87,6 +87,15 @@ ember:
     service-account-credentials-json: ${PLAY_SERVICE_ACCOUNT_CREDENTIALS_JSON:}
     enabled: ${PLAY_BILLING_ENABLED:true}
 
+  ads:
+    # Comma-separated AdMob ad unit ids (the number after the slash is enough) whose rewarded ads
+    # count as a streak restore. Blank refuses every reward callback, which is the safe state
+    # until the real AdMob ad unit exists. See AdRewardVerifier for why this check matters.
+    reward-ad-unit-ids: ${ADMOB_REWARD_AD_UNIT_IDS:}
+    # How many watched ads one streak restore needs. The app asks the server, so this can change
+    # without an app update.
+    restore-ads-required: ${ADMOB_RESTORE_ADS_REQUIRED:3}
+
   moderation:
     # Blank disables the alert email entirely (ReportService checks this itself) — set to the
     # inbox that should hear about reported users.

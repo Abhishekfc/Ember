@@ -35,5 +35,12 @@ class UnsendWindowExpiredException :
 class GoldSubscriptionRequiredException :
     ApiException(HttpStatus.FORBIDDEN, "This is an Emigo Gold feature")
 
+/** 402 on purpose, so the app can tell "no Gold and not enough watched ads on record yet" apart
+ * from every other refusal: right after an ad ends, Google's confirmation can still be a moment
+ * away, and the app asks again for a few seconds while it sees this. [adsRequired] and
+ * [adsWatched] go back in the error body, so the app knows how many more ads to show. */
+class AdRewardRequiredException(val adsRequired: Int, val adsWatched: Int) :
+    ApiException(HttpStatus.PAYMENT_REQUIRED, "Watch $adsRequired ads or get Emigo Gold to restore this streak")
+
 class StreakRestoreNotAvailableException :
     ApiException(HttpStatus.GONE, "This streak can't be restored anymore")
