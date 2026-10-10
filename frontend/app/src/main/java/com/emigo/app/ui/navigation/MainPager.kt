@@ -22,6 +22,9 @@ import com.emigo.app.R
 import com.emigo.app.ui.activity.ActivityViewModel
 import com.emigo.app.ui.camera.CameraScreen
 import com.emigo.app.ui.camera.CameraViewModel
+import androidx.compose.ui.platform.LocalContext
+import com.emigo.app.ui.auth.inviteMessageFor
+import com.emigo.app.ui.auth.shareInvite
 import com.emigo.app.ui.components.BottomNavDock
 import com.emigo.app.ui.components.LocalNavDockHeight
 import com.emigo.app.ui.components.NavDestination
@@ -61,6 +64,7 @@ internal fun MainPager(
     onNavigate: (NavDestination) -> Unit,
     onCameraClick: () -> Unit,
 ) {
+    val context = LocalContext.current
     Box(modifier = Modifier.fillMaxSize()) {
         // navDockHeight is hoisted into ShellState (see its comment there). Screens read it via
         // LocalNavDockHeight instead of a fixed dp, which once left Settings' Log out button
@@ -88,8 +92,10 @@ internal fun MainPager(
                 // painted the page before. Logging confirmed the page index was
                 // always already correct, which is why adjusting it never helped. Not
                 // rebuilding the screen removes the wrong frame instead of correcting
-                // it after it's drawn.
-                beyondViewportPageCount = 1,
+                // it after it's drawn. Grows with the distance from Home (see
+                // beyondViewportPagesFor) so the same holds when coming back from Friends or
+                // Settings, which are further away than one page.
+                beyondViewportPageCount = beyondViewportPagesFor(pagerState.currentPage),
                 // A photo mid-review or caption is easy to lose to an accidental
                 // swipe; once captured, swiping is blocked until it's sent or
                 // discarded.
@@ -150,6 +156,10 @@ internal fun MainPager(
                             onOpenRecipientPicker = { shell.showRecipientPicker = true },
                             onUpgradeToGold = { nav.nestedScreen = NestedScreen.GOLD },
                             onOpenSentPhotos = { nav.nestedScreen = NestedScreen.SENT_PHOTOS },
+                            // From the "no friends yet" sheet. The photo stays on the review screen
+                            // (the camera's state outlives these screens), so coming back resumes it.
+                            onAddFriend = { nav.nestedScreen = NestedScreen.FIND_PEOPLE },
+                            onInviteFriends = { shareInvite(context, inviteMessageFor(context, homeViewModel.username), null) },
                             onSent = {
                                 // Fires when the photo is queued, not once uploaded:
                                 // PendingSendWorker sends it in the background

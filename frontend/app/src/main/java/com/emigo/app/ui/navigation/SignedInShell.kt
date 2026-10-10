@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,7 +28,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.emigo.app.BuildConfig
 import com.emigo.app.EmberApplication
+import com.emigo.app.ads.RestoreStreakWithAd
+import com.emigo.app.ads.WatchAdForGallery
 import com.emigo.app.ui.activity.ActivityViewModel
 import com.emigo.app.ui.camera.CameraViewModel
 import com.emigo.app.ui.components.FALLBACK_NAV_DOCK_HEIGHT_DP
@@ -35,6 +39,8 @@ import com.emigo.app.ui.components.NavDestination
 import com.emigo.app.ui.friends.FriendsViewModel
 import com.emigo.app.ui.friends.ProfileSubject
 import com.emigo.app.ui.home.HomeViewModel
+import com.emigo.app.ui.invite.InvitePromptSheet
+import com.emigo.app.ui.invite.InviteViewModel
 import com.emigo.app.ui.settings.EmberGoldScreen
 import com.emigo.app.ui.settings.EmberGoldViewModel
 import com.emigo.app.ui.theme.ThemeKey
@@ -147,6 +153,13 @@ internal fun SignedInShell(
                     app.friendRepository,
                     app.localListCache,
                     app.subscriptionRepository,
+                    RestoreStreakWithAd(
+                        ads = app.rewardedAds,
+                        adUnitId = BuildConfig.ADMOB_RESTORE_STREAK_UNIT_ID,
+                        // The server gets this back from Google with the watched ad.
+                        myUserId = { app.userRepository.getMyProfile().map { it.userId } },
+                        restore = app.friendRepository::restoreStreak,
+                    ),
                     onFriendsChanged = { app.notifyFriendsChanged() },
                 )
             }
@@ -219,6 +232,8 @@ internal fun SignedInShell(
                     app.subscriptionRepository,
                     app.localListCache,
                     app.cameraHintPreferenceStore,
+                    app.galleryUnlock,
+                    WatchAdForGallery(app.rewardedAds, BuildConfig.ADMOB_GALLERY_UNIT_ID, app.galleryUnlock),
                 )
             }
         },
@@ -240,6 +255,27 @@ internal fun SignedInShell(
     // yet at the earlier one.
     LaunchedEffect(Unit) {
         app.photoSendCompletedEvents.collect { cameraViewModel.markSendComplete() }
+    }
+
+    // "Add @ann?" for someone who just installed Emigo from ann's invite link. Almost always
+    // nothing to show; looked for once per launch, quietly (see InviteReferral).
+    val inviteViewModel: InviteViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer {
+                InviteViewModel(
+                    app.stringProvider,
+                    app.inviteReferral,
+                    onRequestSent = { app.notifyFriendsChanged() },
+                )
+            }
+        },
+    )
+    LaunchedEffect(Unit) { inviteViewModel.check() }
+    LaunchedEffect(inviteViewModel.notice) {
+        inviteViewModel.notice?.let {
+            Toast.makeText(appContext, it, Toast.LENGTH_SHORT).show()
+            inviteViewModel.clearNotice()
+        }
     }
 
     // Memories, Home, Camera, Friends and Settings are pages of one full-screen pager,
@@ -383,7 +419,10 @@ internal fun SignedInShell(
                     friendsViewModel.restoreStreak(friendshipId)
                     onNavigate(NavDestination.FRIENDS)
                 } else {
-                    nav.nestedScreen = NestedScreen.GOLD
+                    // Without Gold the choice is a watched ad or Gold, in the same sheet the
+                    // Friends tab's own restore pill opens.
+                    friendsViewModel.offerRestoreChoice(friendshipId)
+                    onNavigate(NavDestination.FRIENDS)
                 }
             }
         }
@@ -454,6 +493,15 @@ internal fun SignedInShell(
                 viewModel = goldViewModel,
                 onBack = { nav.nestedScreen = null },
                 onGoldActivated = onGoldActivated,
+            )
+        }
+
+        inviteViewModel.inviter?.let { inviter ->
+            InvitePromptSheet(
+                inviter = inviter,
+                isSending = inviteViewModel.isSending,
+                onAdd = inviteViewModel::accept,
+                onDismiss = inviteViewModel::dismiss,
             )
         }
     }

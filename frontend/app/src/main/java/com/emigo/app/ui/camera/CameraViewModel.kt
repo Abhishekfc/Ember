@@ -3,6 +3,7 @@ package com.emigo.app.ui.camera
 import com.emigo.app.R
 import com.emigo.app.core.StringProvider
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -19,6 +20,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.emigo.app.ads.ADS_PER_GALLERY_PHOTO
+import com.emigo.app.ads.GalleryAdResult
+import com.emigo.app.ads.GalleryUnlock
+import com.emigo.app.ads.WatchAdForGallery
 import com.emigo.app.data.repository.FriendRepository
 import com.emigo.app.data.repository.PhotoRepository
 import com.emigo.app.data.repository.SubscriptionRepository
@@ -66,6 +71,9 @@ class CameraViewModel(
     private val subscriptionRepository: SubscriptionRepository,
     private val localCache: LocalListCache,
     private val cameraHintPreferenceStore: CameraHintPreferenceStore,
+    // Without Gold, two watched ads open the gallery for one photo (see GalleryUnlock).
+    private val galleryUnlock: GalleryUnlock,
+    private val watchAdForGallery: WatchAdForGallery,
 ) : ViewModel() {
 
     // Seeded synchronously (see CameraHintPreferenceStore) so a returning user who dismissed it never
@@ -103,6 +111,11 @@ class CameraViewModel(
     var friends by mutableStateOf(initialFriendsAndSelection.first)
         private set
     var selectedRecipientIds by mutableStateOf(initialFriendsAndSelection.second)
+        private set
+
+    /** True while Send, tapped with nobody chosen, asks the server once whether there are friends
+     * after all. A double-tap guard for that short moment. */
+    var isCheckingFriends by mutableStateOf(false)
         private set
 
     /** True only for the brief local step (baking the caption in, moving the file into durable
@@ -182,6 +195,20 @@ class CameraViewModel(
         private set
     var showGoldUpsell by mutableStateOf(false)
         private set
+
+    /** An ad-earned gallery photo is waiting to be used. */
+    var hasGalleryPass by mutableStateOf(galleryUnlock.hasPass)
+        private set
+
+    /** Ads watched so far toward the next gallery photo (0 or 1 of [ADS_PER_GALLERY_PHOTO]). */
+    var galleryAdsWatched by mutableStateOf(galleryUnlock.adsWatched)
+        private set
+    var isWatchingGalleryAd by mutableStateOf(false)
+        private set
+
+    /** True while the photo on the review stage came from the gallery picker, so sending it is
+     * what uses up a gallery pass. */
+    private var capturedFromGallery = false
 
     /** A captured (or gallery-picked) photo waiting on the preview stage; nothing is sent until the
      * user reviews it and taps Send. */
@@ -316,14 +343,92 @@ class CameraViewModel(
         selectedRecipientIds = resolvedSelection
     }
 
-    fun setSelectedRecipients(ids: Set<String>) {
-        selectedRecipientIds = ids
+    /** The Send button's tap; the button is always live. With someone chosen it sends. With nobody
+     * chosen it first asks the server once for the friend list, since the camera's copy can be a
+     * friend behind (someone added or accepted while the app was in the background): a person who
+     * really has no friends gets [onNoFriends] (the sheet explaining how to add or invite someone),
+     * anyone else gets [onPickRecipients] (the friend picker). A default picked by that refresh
+     * (a pinned or last-used friend) is shown in the picker, never sent to unseen. The photo is
+     * untouched throughout. */
+    fun onSendTapped(
+        context: android.content.Context,
+        onSent: () -> Unit,
+        onNoFriends: () -> Unit,
+        onPickRecipients: () -> Unit,
+    ) {
+        if (selectedFriends.isNotEmpty()) {
+            sendCaptured(context, onSent)
+            return
+        }
+        if (isCheckingFriends) return
+        viewModelScope.launch {
+            isCheckingFriends = true
+            friendRepository.getFriends(limit = RECIPIENT_PICKER_FRIENDS_LIMIT).onSuccess { applyFriends(it.items) }
+            isCheckingFriends = false
+            when (outcomeWhenNobodyChosen(friends)) {
+                NoRecipientOutcome.SHOW_INVITE_SHEET -> onNoFriends()
+                NoRecipientOutcome.OPEN_PICKER -> onPickRecipients()
+            }
+        }
     }
 
-    /** Entry point for the gallery button: opens the picker for Gold members, otherwise shows the
-     * upsell. The caller never launches the picker directly. */
+    /** Picks who the photo goes to. [knownFriends] is a friend list the caller has just loaded (the
+     * recipient picker's), used when this ViewModel's own list is missing someone chosen: a friend
+     * added after it loaded its list was chosen but unknown here, so Send read it as nobody picked
+     * and stayed disabled until the app restarted. If the choice is still unknown after that (the
+     * profile route has no list to hand over), the list is reloaded once. */
+    fun setSelectedRecipients(ids: Set<String>, knownFriends: List<FriendSummaryDto> = emptyList()) {
+        friends = friendsAfterRecipientChoice(friends, knownFriends, ids)
+        selectedRecipientIds = ids
+        if (hasUnknownRecipient(friends, ids)) loadFriends()
+    }
+
+    /** Entry point for the gallery button: opens the picker for Gold members and for anyone holding
+     * an ad-earned pass, otherwise shows the upsell. The caller never launches the picker
+     * directly. */
     fun onGalleryClick(launchPicker: () -> Unit) {
-        if (isGoldMember) launchPicker() else showGoldUpsell = true
+        if (isGoldMember || hasGalleryPass) {
+            launchPicker()
+        } else {
+            // Decided when the sheet opens, so it can say so up front instead of letting someone
+            // tap a button that can't work.
+            isGalleryLimitReached = galleryUnlock.unlocksLeftToday == 0
+            showGoldUpsell = true
+        }
+    }
+
+    /** Today's free gallery photos are all used, so the sheet offers only Gold. */
+    var isGalleryLimitReached by mutableStateOf(false)
+        private set
+
+    /** Shows one ad toward a gallery photo. The second one opens the picker, through
+     * [launchPicker], exactly as a tap would for a Gold member. */
+    fun watchGalleryAd(activity: Activity, launchPicker: () -> Unit) {
+        if (isWatchingGalleryAd) return
+        viewModelScope.launch {
+            isWatchingGalleryAd = true
+            when (val result = watchAdForGallery.watchOne(activity)) {
+                GalleryAdResult.Unlocked -> {
+                    hasGalleryPass = true
+                    galleryAdsWatched = 0
+                    showGoldUpsell = false
+                    launchPicker()
+                }
+                is GalleryAdResult.Progress -> galleryAdsWatched = result.watched
+                GalleryAdResult.AdUnavailable -> adNotice = strings.get(R.string.ads_unavailable)
+                GalleryAdResult.AdClosedEarly -> adNotice = strings.get(R.string.ads_closed_early)
+                GalleryAdResult.DailyLimitReached -> adNotice = strings.get(R.string.ads_gallery_daily_limit)
+            }
+            isWatchingGalleryAd = false
+        }
+    }
+
+    /** A short message for the screen to show once (a toast) about an ad. */
+    var adNotice by mutableStateOf<String?>(null)
+        private set
+
+    fun clearAdNotice() {
+        adNotice = null
     }
 
     fun dismissGoldUpsell() {
@@ -357,7 +462,8 @@ class CameraViewModel(
      * ImageCapture's EXIF-only isReversedHorizontal). The flip runs off the main thread; until it
      * lands, the instant snapshot keeps showing (isRealCaptureReady stays false), the same handoff
      * a back-camera capture goes through, just a beat longer. */
-    fun onPhotoCaptured(file: File, isFrontCamera: Boolean = false) {
+    fun onPhotoCaptured(file: File, isFrontCamera: Boolean = false, fromGallery: Boolean = false) {
+        capturedFromGallery = fromGallery
         if (!isFrontCamera) {
             applyCapturedFile(file)
             return
@@ -398,6 +504,8 @@ class CameraViewModel(
         isSaved = false
         hasQueuedUpload = false
         uploadWorkName = null
+        // The pass is kept: backing out of a photo doesn't use it up.
+        capturedFromGallery = false
     }
 
     /** Queues the captured photo for background sending and returns at once; it doesn't wait on (or
@@ -455,6 +563,12 @@ class CameraViewModel(
             // Persisted only once a send goes out, not on every picker tap, so a selection made and
             // backed out of never overwrites "who I last sent to".
             localCache.write(LocalListCache.KEY_LAST_RECIPIENT_IDS, recipientIds)
+            // A gallery photo going out is what a pass is for. Gold members never held one.
+            if (capturedFromGallery && hasGalleryPass) {
+                galleryUnlock.usePass()
+                hasGalleryPass = false
+            }
+            capturedFromGallery = false
             capturedFile = null
             captionText = ""
             isQueuingSend = false

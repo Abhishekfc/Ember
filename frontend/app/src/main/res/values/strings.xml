@@ -317,9 +317,23 @@
     <string name="widget_setup_step_4">Drag it into place</string>
 
     <!-- Invite friends -->
-    <string name="invite_message">Come add me on Emigo — it puts my photos right on your home screen.</string>
-    <string name="invite_message_with_username">Come add me on Emigo — I\'m @%1$s. It puts my photos right on your home screen.</string>
+    <!-- %1$s is the link. -->
+    <string name="invite_message">Come add me on Emigo — it puts my photos right on your home screen.\n%1$s</string>
+    <!-- %1$s is the username, %2$s the link. -->
+    <string name="invite_message_with_username">Come add me on Emigo — I\'m @%1$s. It puts my photos right on your home screen.\n%2$s</string>
     <string name="invite_chooser_title">Invite a friend</string>
+    <!-- Camera: tapping Send with no friends yet -->
+    <string name="no_friends_sheet_title">Send it to a friend</string>
+    <string name="no_friends_sheet_message">You don\'t have any friends on Emigo yet. Add one, or invite someone, and this moment is ready to send.</string>
+    <string name="no_friends_sheet_find">Find friends</string>
+    <string name="no_friends_sheet_invite">Invite friends</string>
+    <string name="no_friends_sheet_photo">Your moment</string>
+    <!-- After installing from an invite link -->
+    <string name="invite_prompt_title">Add @%1$s?</string>
+    <string name="invite_prompt_message">%1$s invited you to Emigo. Add them to start sharing moments.</string>
+    <string name="invite_prompt_add">Send friend request</string>
+    <string name="invite_prompt_sent">Request sent to %1$s</string>
+    <string name="invite_prompt_failed">Couldn\'t send the request. You can add them from Find friends.</string>
     <string name="invite_target_instagram" translatable="false">Instagram</string>
     <string name="invite_target_snapchat" translatable="false">Snapchat</string>
     <string name="invite_target_whatsapp" translatable="false">WhatsApp</string>
@@ -367,6 +381,7 @@
 
     <!-- Settings > Other (delete account) -->
     <string name="other_settings_title">Other</string>
+    <string name="privacy_settings_row">Privacy settings</string>
     <string name="delete_account_row">Delete account</string>
     <string name="delete_account_dialog_title">Delete account?</string>
     <string name="delete_account_dialog_warning">This can\'t be undone. Your photos and friends will be deleted too.</string>
@@ -377,12 +392,14 @@
     <string name="gold_title">Emigo Gold</string>
     <string name="gold_subtitle_member">Thank you for being an Emigo Gold member</string>
     <string name="gold_subtitle_visitor">A little extra glow for your favorite people</string>
+    <string name="gold_perk_no_ads_title">No ads, ever</string>
+    <string name="gold_perk_no_ads_detail">Without Gold you watch short ads to restore a streak or send from your gallery. With Gold, never</string>
     <string name="gold_perk_restore_streak_title">Restore your streak</string>
-    <string name="gold_perk_restore_streak_detail">Bring back a streak that slipped past midnight</string>
+    <string name="gold_perk_restore_streak_detail">Bring back a streak that slipped past midnight, in one tap</string>
     <string name="gold_perk_themes_title">Exclusive themes</string>
     <string name="gold_perk_themes_detail">Unlock Aurora, Cyber, Botanica, and Frost looks</string>
     <string name="gold_perk_gallery_title">Send from your gallery</string>
-    <string name="gold_perk_gallery_detail">Share any photo, not just what you capture live</string>
+    <string name="gold_perk_gallery_detail">Share any photo, as many as you like, not just what you capture live</string>
     <string name="gold_perk_widget_title">Choose who\'s on your widget</string>
     <string name="gold_perk_widget_detail">Pick exactly whose photos always show on your home screen</string>
     <string name="gold_choose_plan">Choose your plan</string>
@@ -444,4 +461,25 @@
     <string name="memories_delete_failed">Couldn\'t delete that photo</string>
     <string name="memories_saved_to_gallery">Saved to your gallery</string>
     <string name="memories_save_failed">Couldn\'t save that photo</string>
+
+    <!-- Rewarded ads -->
+    <string name="ads_unavailable">No ad is available right now. Please try again in a moment.</string>
+    <string name="ads_closed_early">Watch the whole ad to get your reward.</string>
+    <string name="ads_not_confirmed">Still confirming your ads. Tap the button again in a moment.</string>
+    <string name="ads_gallery_daily_limit">You\'ve used today\'s free gallery moments. Come back tomorrow, or get Emigo Gold.</string>
+    <string name="restore_sheet_title">Restore your streak</string>
+    <string name="restore_sheet_message_named">Bring back your streak with %1$s. Watch a few short ads and it\'s back.</string>
+    <string name="restore_sheet_message">Watch a few short ads and your streak is back.</string>
+    <string name="restore_sheet_watch_ad">Watch ads</string>
+    <string name="restore_sheet_progress">Ad %1$d of %2$d</string>
+    <string name="gallery_sheet_title">Moments from your gallery</string>
+    <string name="gallery_sheet_message">Watch 2 short ads to send 1 moment. With Emigo Gold, send as many as you like, with no ads.</string>
+    <string name="gallery_sheet_watch_ads">Watch 2 ads, send 1 moment</string>
+    <string name="gallery_sheet_watch_next">Watch next ad</string>
+    <string name="gallery_sheet_progress">%1$d of %2$d ads watched</string>
+    <plurals name="gallery_limit_title">
+        <item quantity="one">You\'ve used today\'s free moment</item>
+        <item quantity="other">You\'ve used today\'s %1$d free moments</item>
+    </plurals>
+    <string name="gallery_limit_message">Come back tomorrow, or get Emigo Gold to send as many as you like.</string>
 </resources>

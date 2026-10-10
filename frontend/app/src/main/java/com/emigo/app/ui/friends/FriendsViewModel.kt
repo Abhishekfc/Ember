@@ -3,11 +3,15 @@ package com.emigo.app.ui.friends
 import com.emigo.app.R
 import com.emigo.app.core.StringProvider
 
+import android.app.Activity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.emigo.app.ads.AdProgress
+import com.emigo.app.ads.AdRestoreResult
+import com.emigo.app.ads.RestoreStreakWithAd
 import com.emigo.app.data.repository.FriendRepository
 import com.emigo.app.data.repository.SubscriptionRepository
 import com.emigo.app.data.local.LocalListCache
@@ -25,6 +29,8 @@ class FriendsViewModel(
     private val repository: FriendRepository,
     private val localCache: LocalListCache,
     private val subscriptionRepository: SubscriptionRepository,
+    // Restores a streak for someone without Gold after they watch an ad (see RestoreStreakWithAd).
+    private val restoreStreakWithAd: RestoreStreakWithAd,
     // Lets other long-lived ViewModels with their own separate copy of the friend list (Camera's
     // recipient picker, mainly) find out a request was just accepted here, without this ViewModel
     // needing any reference back to them — see EmberApplication.friendsChangedEvents.
@@ -284,5 +290,55 @@ class FriendsViewModel(
             )
             restoringStreakFriendshipIds = restoringStreakFriendshipIds - friendshipId
         }
+    }
+
+    /** Which ad of how many is playing while a streak is being restored with ads, or null when
+     * none is (before the first, between the last and the server's answer, and when idle). */
+    var restoreAdProgress by mutableStateOf<AdProgress?>(null)
+        private set
+
+    /** The no-Gold way to restore a streak: shows rewarded ads one after another (as many as the
+     * server asks for), then asks the server, which restores it only once Google has confirmed
+     * they were watched. Gold members use [restoreStreak] instead and never see an ad. */
+    fun restoreStreakByWatchingAd(friendshipId: String, activity: Activity) {
+        if (friendshipId in restoringStreakFriendshipIds) return
+        viewModelScope.launch {
+            restoringStreakFriendshipIds = restoringStreakFriendshipIds + friendshipId
+            val result = restoreStreakWithAd.run(activity, friendshipId, onProgress = { restoreAdProgress = it })
+            restoreAdProgress = null
+            when (result) {
+                is AdRestoreResult.Restored -> {
+                    applyUpdatedFriend(result.friend)
+                    restoreChoiceFriendshipId = null
+                }
+                AdRestoreResult.AdUnavailable -> adNotice = strings.get(R.string.ads_unavailable)
+                AdRestoreResult.AdClosedEarly -> adNotice = strings.get(R.string.ads_closed_early)
+                AdRestoreResult.NotConfirmed -> adNotice = strings.get(R.string.ads_not_confirmed)
+                is AdRestoreResult.Failed -> adNotice = result.message ?: strings.get(R.string.error_restore_streak)
+            }
+            restoringStreakFriendshipIds = restoringStreakFriendshipIds - friendshipId
+        }
+    }
+
+    /** The friendship whose "watch an ad or get Gold" sheet is open, if any. Lives here, not in the
+     * screen, so the streak-broken notification can open it too. */
+    var restoreChoiceFriendshipId by mutableStateOf<String?>(null)
+        private set
+
+    fun offerRestoreChoice(friendshipId: String) {
+        restoreChoiceFriendshipId = friendshipId
+    }
+
+    fun dismissRestoreChoice() {
+        restoreChoiceFriendshipId = null
+    }
+
+    /** A short message for the screen to show once (a toast): the ad wasn't available, was closed
+     * early, or the restore was refused. Not [errorMessage], which only shows on an empty list. */
+    var adNotice by mutableStateOf<String?>(null)
+        private set
+
+    fun clearAdNotice() {
+        adNotice = null
     }
 }

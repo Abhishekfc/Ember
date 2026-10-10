@@ -1,5 +1,6 @@
 package com.emigo.app.ui.friends
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.emigo.app.R
+import com.emigo.app.core.findActivity
 import com.emigo.app.data.remote.dto.FriendSummaryDto
 import com.emigo.app.data.remote.dto.PendingFriendRequestDto
 import com.emigo.app.ui.components.TabScreenScaffold
@@ -263,11 +266,12 @@ fun FriendsScreen(
                         onRestoreStreakClick = {
                             // A client-side fast path only (same check as WidgetSettingsScreen's
                             // upgrade button). The server re-checks Gold itself (see
-                            // FriendService.restoreStreak).
+                            // FriendService.restoreStreak). Without Gold the choice is a watched
+                            // ad or Gold, offered in a sheet.
                             if (viewModel.isGoldMember) {
                                 viewModel.restoreStreak(friend.friendshipId)
                             } else {
-                                onUpgradeToGold()
+                                viewModel.offerRestoreChoice(friend.friendshipId)
                             }
                         },
                     )
@@ -289,6 +293,28 @@ fun FriendsScreen(
                     }
                 }
             }
+        }
+    }
+
+    val context = LocalContext.current
+    viewModel.restoreChoiceFriendshipId?.let { friendshipId ->
+        RestoreStreakSheet(
+            friendName = viewModel.friends.firstOrNull { it.friendshipId == friendshipId }?.displayName,
+            isWorking = friendshipId in viewModel.restoringStreakFriendshipIds,
+            progress = viewModel.restoreAdProgress,
+            onWatchAd = { context.findActivity()?.let { viewModel.restoreStreakByWatchingAd(friendshipId, it) } },
+            onGetGold = {
+                viewModel.dismissRestoreChoice()
+                onUpgradeToGold()
+            },
+            onDismiss = viewModel::dismissRestoreChoice,
+        )
+    }
+    // The ad's own outcomes (not available, closed early...) are short, one-off messages.
+    LaunchedEffect(viewModel.adNotice) {
+        viewModel.adNotice?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearAdNotice()
         }
     }
 }

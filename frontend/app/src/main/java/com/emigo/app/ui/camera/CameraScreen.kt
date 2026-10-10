@@ -1,5 +1,6 @@
 package com.emigo.app.ui.camera
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -10,7 +11,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,15 +25,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.PushPin
-import androidx.compose.material.icons.rounded.WorkspacePremium
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,19 +49,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emigo.app.R
+import com.emigo.app.core.findActivity
 import com.emigo.app.ui.components.LocalNavDockHeight
-import com.emigo.app.ui.components.emberButtonBrush
 import com.emigo.app.ui.home.AVATAR_ROW_TOP_GAP
 import com.emigo.app.ui.home.FEATURED_CARD_ASPECT_RATIO
 import com.emigo.app.ui.home.HomeHeaderHeightTwin
 import com.emigo.app.ui.home.HomeViewModeToggleHeightTwin
 import com.emigo.app.ui.home.featuredCardSidePadding
 import com.emigo.app.ui.home.homeFoldMetricsFor
-import com.emigo.app.ui.theme.EmberRadii
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.PublicSansFontFamily
 import java.io.File
@@ -74,11 +71,15 @@ fun CameraScreen(
     onOpenRecipientPicker: () -> Unit,
     onUpgradeToGold: () -> Unit,
     onOpenSentPhotos: () -> Unit,
+    onAddFriend: () -> Unit,
+    onInviteFriends: () -> Unit,
     onSent: () -> Unit,
 ) {
     val colors = EmberTheme.colors
     val context = LocalContext.current
     val density = LocalDensity.current
+    // The "add a friend or invite someone" sheet for a person with no friends who tapped Send.
+    var showNoFriendsSheet by remember { mutableStateOf(false) }
     var screenSize by remember { mutableStateOf(Size.Zero) }
     // Measured header height, as Home measures its own, so the fold below is bounded by the real
     // remaining space instead of a guess.
@@ -100,7 +101,7 @@ fun CameraScreen(
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(file).use { output -> input.copyTo(output) }
             }
-            viewModel.onPhotoCaptured(file)
+            viewModel.onPhotoCaptured(file, fromGallery = true)
         }
     }
 
@@ -273,7 +274,12 @@ fun CameraScreen(
                     ) {
                         Crossfade(targetState = captured != null, animationSpec = tween(220), label = "cameraControlsStage") { isReviewing ->
                             if (isReviewing) {
-                                PreviewControls(viewModel = viewModel, onSent = onSent)
+                                PreviewControls(
+                                    viewModel = viewModel,
+                                    onSent = onSent,
+                                    onNoFriends = { showNoFriendsSheet = true },
+                                    onPickRecipients = onOpenRecipientPicker,
+                                )
                             } else {
                                 CaptureControls(
                                     viewModel = viewModel,
@@ -305,90 +311,46 @@ fun CameraScreen(
             }
         }
 
+        // Only while a photo is being reviewed: the sheet is about that photo, and it closes by
+        // itself if the photo goes away (sent, retaken or swiped off).
+        if (showNoFriendsSheet && captured != null) {
+            NoFriendsSheet(
+                previewBitmap = viewModel.previewBitmap,
+                photoFile = captured,
+                onFindFriends = onAddFriend,
+                onInviteFriends = onInviteFriends,
+                onDismiss = { showNoFriendsSheet = false },
+            )
+        }
+
         if (viewModel.showGoldUpsell) {
-            GoldUpsellOverlay(
-                onDismiss = viewModel::dismissGoldUpsell,
-                onUpgrade = {
+            GalleryAdSheet(
+                adsWatched = viewModel.galleryAdsWatched,
+                isWatching = viewModel.isWatchingGalleryAd,
+                isLimitReached = viewModel.isGalleryLimitReached,
+                onWatchAd = {
+                    context.findActivity()?.let { activity ->
+                        viewModel.watchGalleryAd(activity) {
+                            galleryPickerInFlight = true
+                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
+                    }
+                },
+                onGetGold = {
                     viewModel.dismissGoldUpsell()
                     onUpgradeToGold()
                 },
+                onDismiss = viewModel::dismissGoldUpsell,
             )
+        }
+    }
+
+    // The ad's own outcomes (not available, closed early...) are short, one-off messages.
+    LaunchedEffect(viewModel.adNotice) {
+        viewModel.adNotice?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearAdNotice()
         }
     }
 }
 
-/** Compact paywall shown when a free account taps the gallery button. */
-@Composable
-private fun GoldUpsellOverlay(onDismiss: () -> Unit, onUpgrade: () -> Unit) {
-    val colors = EmberTheme.colors
-    val typography = EmberTheme.typography
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .padding(horizontal = 36.dp)
-                .clickable(enabled = false) {} // absorb taps so they don't fall through to dismiss
-                .background(colors.overlayPanel, EmberRadii.dialogShape)
-                .padding(horizontal = 26.dp, vertical = 28.dp),
-        ) {
-            val badgeSizePx = Size(56f, 56f)
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(emberButtonBrush(EmberTheme.key, colors, badgeSizePx), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Rounded.WorkspacePremium, contentDescription = null, tint = colors.accentText, modifier = Modifier.size(26.dp))
-            }
-            Text(
-                text = stringResource(R.string.gold_title),
-                fontFamily = typography.display,
-                fontSize = 19.sp,
-                color = colors.cream,
-                modifier = Modifier.padding(top = 16.dp),
-            )
-            Text(
-                text = stringResource(R.string.camera_gold_perk),
-                fontFamily = PublicSansFontFamily,
-                fontSize = 12.5.sp,
-                color = colors.muted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 6.dp, bottom = 22.dp),
-            )
-
-            val buttonSizePx = Size(240f, 48f)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(emberButtonBrush(EmberTheme.key, colors, buttonSizePx), RoundedCornerShape(14.dp))
-                    .clickable(onClick = onUpgrade)
-                    .padding(vertical = 13.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.camera_get_gold),
-                    fontFamily = PublicSansFontFamily,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.accentText,
-                )
-            }
-            Text(
-                text = stringResource(R.string.camera_maybe_later),
-                fontFamily = PublicSansFontFamily,
-                fontSize = 12.5.sp,
-                color = colors.mutedDim,
-                modifier = Modifier
-                    .padding(top = 14.dp)
-                    .clickable(onClick = onDismiss),
-            )
-        }
-    }
-}

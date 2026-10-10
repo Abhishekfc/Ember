@@ -8,6 +8,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.drawable.toBitmap
 import com.emigo.app.R
+import com.emigo.app.invite.PLAY_STORE_URL
+import com.emigo.app.invite.inviteLinkFor
 
 /** One app the invite can be sent through. [packageName] is what makes the row open that app
  * directly instead of the system chooser, and also what its real launcher icon is read from;
@@ -38,6 +40,18 @@ internal fun rememberAppIcon(packageName: String?): ImageBitmap? {
                 .onFailure { android.util.Log.w("EmberIconDebug", "Failed to fetch real icon for $packageName", it) }
                 .getOrNull()
         }
+    }
+}
+
+/** The invite text for [username] (or the plain store link when there is none), for places that
+ * share without a Compose scope to read strings from. Same wording as the sign-up invite step. */
+internal fun inviteMessageFor(context: android.content.Context, username: String?): String {
+    val name = username?.trim().orEmpty()
+    val link = inviteLinkFor(name)
+    return if (name.isEmpty() || link == PLAY_STORE_URL) {
+        context.getString(R.string.invite_message, link)
+    } else {
+        context.getString(R.string.invite_message_with_username, name, link)
     }
 }
 

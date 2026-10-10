@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.emigo.app.ui.components.NavDestination
 import com.emigo.app.ui.friends.ProfileSubject
+import kotlin.math.abs
 
 /** Screens reached from within a tab (Settings -> Theme, Friends -> Find People / Friend Profile)
  * rather than from the bottom nav. Kept apart from the current page so back pops just the nested
@@ -36,6 +37,18 @@ internal fun pageForDestination(destination: NavDestination): Int = when (destin
     NavDestination.FRIENDS -> PAGE_FRIENDS
     NavDestination.SETTINGS -> PAGE_SETTINGS
 }
+
+/** How many pages on each side of [currentPage] the pager keeps composed. Always at least 1 (the
+ * neighbours), and enough to reach Home from wherever you are.
+ *
+ * A page that isn't kept composed is thrown away and built from scratch the next time it's shown.
+ * Home is one page from Memories and Camera, so it survived a visit to either, but from Friends or
+ * Settings it was torn down and rebuilt at the moment a nav-dock tap jumped back to it, which
+ * showed as Home reloading. Keeping it composed from those pages too means the jump lands on the
+ * Home you left.
+ *
+ * Camera, the opening page, still gets 1, so launch composes exactly what it always did. */
+internal fun beyondViewportPagesFor(currentPage: Int): Int = maxOf(1, abs(currentPage - PAGE_HOME))
 
 /** The nav-dock tab that reads as active for a page. Camera has no tab (its icon fades out near
  * that page, see the dock's alpha graphicsLayer in MainPager), so it falls back to Home. */

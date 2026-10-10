@@ -20,10 +20,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,13 +55,23 @@ import com.emigo.app.ui.theme.PublicSansFontFamily
 import kotlinx.coroutines.launch
 
 /** A catch-all landing spot for settings rare/serious enough that they shouldn't sit directly on
- * the main Settings list — right now just Delete account, kept one tap further away rather than
- * visible (and tappable) among the routine rows every time Settings opens. */
+ * the main Settings list — Delete account, kept one tap further away rather than visible (and
+ * tappable) among the routine rows every time Settings opens, and Privacy settings (the ad
+ * choice), which only people in the EU, UK and Switzerland get. */
 @Composable
-fun OtherSettingsScreen(onClose: () -> Unit, onDeleteAccount: suspend () -> Result<Unit>, onAccountDeleted: () -> Unit) {
+fun OtherSettingsScreen(
+    onClose: () -> Unit,
+    onDeleteAccount: suspend () -> Result<Unit>,
+    onAccountDeleted: () -> Unit,
+    isPrivacyOptionsRequired: suspend () -> Boolean,
+    onOpenPrivacyOptions: () -> Unit,
+) {
     val colors = EmberTheme.colors
     var screenSize by remember { mutableStateOf(Size.Zero) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var showPrivacySettings by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { showPrivacySettings = isPrivacyOptionsRequired() }
 
     Column(
         modifier = Modifier
@@ -71,6 +83,28 @@ fun OtherSettingsScreen(onClose: () -> Unit, onDeleteAccount: suspend () -> Resu
             .padding(start = 20.dp, end = 20.dp, bottom = 26.dp),
     ) {
         NestedScreenHeader(onBack = onClose, title = stringResource(R.string.other_settings_title))
+
+        if (showPrivacySettings) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .padding(top = 8.dp)
+                    .clickable(onClick = onOpenPrivacyOptions)
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.PrivacyTip, contentDescription = null, tint = colors.muted, modifier = Modifier.size(20.dp))
+                Text(
+                    text = stringResource(R.string.privacy_settings_row),
+                    fontFamily = PublicSansFontFamily,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.cream,
+                    modifier = Modifier.padding(start = 14.dp),
+                )
+            }
+        }
 
         Row(
             modifier = Modifier

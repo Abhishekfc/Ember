@@ -110,6 +110,18 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/ember_widget_info" />
         </receiver>
+
+        <!-- AdMob's app id: the app crashes at launch without it. Filled from build.gradle.kts
+             (Google's sample id in debug, the real one from ~/ember-secrets in release). -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
+        <!-- Keeps the ads SDK from starting measurement when the app opens. It starts only when
+             the first ad is requested (see AdMobRewardedAds), and never for Emigo Gold members,
+             who never see an ad. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT"
+            android:value="true" />
     </application>
 
 </manifest>

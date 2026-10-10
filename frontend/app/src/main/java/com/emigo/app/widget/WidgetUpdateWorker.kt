@@ -37,7 +37,13 @@ class WidgetUpdateWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as EmberApplication
         val tokenStore = app.networkModule.tokenStore
-        if (FirebaseAuth.getInstance().currentUser == null) return Result.success()
+        if (FirebaseAuth.getInstance().currentUser == null) {
+            // Nobody is signed in, so the widget has no business showing anyone's photos. Clears
+            // it and stops this job (the app starts it again when someone signs in), instead of
+            // just skipping this run and leaving the last photo on the home screen.
+            WidgetSession.clear(applicationContext)
+            return Result.success()
+        }
 
         // Goes through the shared PhotoRepository now (same one HomeViewModel uses), rather than
         // calling networkModule.api directly — this benefits from its short in-memory cache/
@@ -56,6 +62,9 @@ class WidgetUpdateWorker(
                 // longer valid on this backend, and every future run would keep retrying with the
                 // same dead identity forever.
                 FirebaseAuth.getInstance().signOut()
+                // The session is dead, so the widget stops with it: before this it kept the last
+                // friend photo on the home screen forever.
+                WidgetSession.clear(applicationContext)
                 return Result.success()
             }
             Log.w(TAG, "Feed fetch failed, will retry", error)
@@ -74,6 +83,12 @@ class WidgetUpdateWorker(
          * 30-minute primary sync mechanism to a 6-hour safety net — KEEP would have silently left
          * anyone who already had this app installed stuck on the old 30-minute schedule forever,
          * since it explicitly leaves an already-scheduled job untouched. */
+        /** Stops the background refresh, for when the account behind the widget has gone (see
+         * [WidgetSession]). [schedule] starts it again at the next app launch or sign-in. */
+        fun cancel(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_NAME)
+        }
+
         fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<WidgetUpdateWorker>(6, TimeUnit.HOURS)
                 .setConstraints(

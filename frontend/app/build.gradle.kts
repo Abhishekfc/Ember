@@ -22,6 +22,32 @@ val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
+// AdMob ids, kept OUTSIDE this repository like the signing credentials (~/ember-secrets/). The file
+// holds three lines: appId, restoreStreakUnitId and galleryUnitId, copied from the AdMob console.
+// Debug builds ignore it and always use Google's sample ids below, which is also the rule AdMob
+// asks for: never load real ads while developing, and never tap your own real ads, or the account
+// can be banned.
+val adsPropsFile = file("${System.getProperty("user.home")}/ember-secrets/emigo-ads.properties")
+val adsProps = Properties().apply {
+    if (adsPropsFile.exists()) adsPropsFile.inputStream().use { load(it) }
+}
+// Google's published sample ids; they always fill with a clearly labelled test ad.
+val testAdmobAppId = "ca-app-pub-3940256099942544~3347511713"
+val testRewardedUnitId = "ca-app-pub-3940256099942544/5224354917"
+
+// A release build without the real ids would put "Test Ad" in front of every user and earn nothing,
+// so it fails here, loudly, instead of shipping. (Exact task names: Android's internal
+// bundle…Release tasks also run for unit tests and must not trip this.)
+gradle.taskGraph.whenReady {
+    val buildsReleaseArtifact = allTasks.any { it.name == "assembleRelease" || it.name == "bundleRelease" }
+    if (buildsReleaseArtifact && adsProps.isEmpty) {
+        throw GradleException(
+            "Release builds need the real AdMob ids. Create ${adsPropsFile.path} with appId, " +
+                "restoreStreakUnitId and galleryUnitId (see the AdMob console).",
+        )
+    }
+}
+
 android {
     namespace = "com.emigo.app"
     compileSdk = 36
@@ -30,8 +56,8 @@ android {
         applicationId = "com.emigo.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.4.3"
+        versionCode = 12
+        versionName = "0.4.4"
     }
 
     buildFeatures {
@@ -80,6 +106,9 @@ android {
             val debugBaseUrl = (project.findProperty("EMBER_DEBUG_BASE_URL") as? String)
                 ?: "http://localhost:8080/"
             buildConfigField("String", "BASE_URL", "\"$debugBaseUrl\"")
+            manifestPlaceholders["admobAppId"] = testAdmobAppId
+            buildConfigField("String", "ADMOB_RESTORE_STREAK_UNIT_ID", "\"$testRewardedUnitId\"")
+            buildConfigField("String", "ADMOB_GALLERY_UNIT_ID", "\"$testRewardedUnitId\"")
         }
         release {
             isMinifyEnabled = true
@@ -100,6 +129,18 @@ android {
             val releaseBaseUrl = (project.findProperty("EMBER_RELEASE_BASE_URL") as? String)
                 ?: "https://api.emigo.live/"
             buildConfigField("String", "BASE_URL", "\"$releaseBaseUrl\"")
+            // The sample ids are only a fallback so the project still configures without the ads
+            // file (a debug-only machine); the taskGraph check above stops a release artifact
+            // from being built with them.
+            manifestPlaceholders["admobAppId"] = adsProps.getProperty("appId") ?: testAdmobAppId
+            buildConfigField(
+                "String", "ADMOB_RESTORE_STREAK_UNIT_ID",
+                "\"${adsProps.getProperty("restoreStreakUnitId") ?: testRewardedUnitId}\"",
+            )
+            buildConfigField(
+                "String", "ADMOB_GALLERY_UNIT_ID",
+                "\"${adsProps.getProperty("galleryUnitId") ?: testRewardedUnitId}\"",
+            )
             signingConfig = signingConfigs.findByName("release")
         }
     }
@@ -153,6 +194,13 @@ dependencies {
     // merger; it's also declared explicitly in AndroidManifest.xml so Play reliably detects that
     // this build sells in-app products and unlocks subscription creation in the Console.
     implementation("com.android.billingclient:billing:8.0.0")
+
+    // Rewarded ads for people without Emigo Gold (see ads/), and Google's consent form (UMP),
+    // which the EU and UK require before any ad is requested.
+    implementation("com.google.android.gms:play-services-ads:25.5.0")
+    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
+    // Reads which invite link a new install came from (see ui/invite/InviteReferral.kt).
+    implementation("com.android.installreferrer:installreferrer:2.2")
 
     implementation("androidx.camera:camera-core:1.4.1")
     implementation("androidx.camera:camera-camera2:1.4.1")

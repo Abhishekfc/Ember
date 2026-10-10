@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emigo.app.R
+import com.emigo.app.invite.inviteLinkFor
 import com.emigo.app.ui.theme.PublicSansFontFamily
 
 /** Last sign-up step: invite a first friend, since an account with no friends has nothing to see.
@@ -55,10 +56,12 @@ internal fun RegisterSharingStep(viewModel: LoginViewModel, onAuthenticated: () 
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val username = viewModel.usernameDraft.trim()
-    val inviteMessage = stringResource(
-        if (username.isEmpty()) R.string.invite_message else R.string.invite_message_with_username,
-        username,
-    )
+    val inviteLink = inviteLinkFor(username)
+    val inviteMessage = if (username.isEmpty()) {
+        stringResource(R.string.invite_message, inviteLink)
+    } else {
+        stringResource(R.string.invite_message_with_username, username, inviteLink)
+    }
 
     val instagramLabel = stringResource(R.string.invite_target_instagram)
     val snapchatLabel = stringResource(R.string.invite_target_snapchat)

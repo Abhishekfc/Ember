@@ -36,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -161,10 +160,11 @@ internal fun CapturedPreview(viewModel: CameraViewModel, file: File) {
 internal fun PreviewControls(
     viewModel: CameraViewModel,
     onSent: () -> Unit,
+    onNoFriends: () -> Unit,
+    onPickRecipients: () -> Unit,
 ) {
     val colors = EmberTheme.colors
     val context = LocalContext.current
-    val hasRecipients = viewModel.selectedFriends.isNotEmpty()
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -182,28 +182,27 @@ internal fun PreviewControls(
                 .border(4.dp, colors.cream, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            // Color and icon reflect only whether there's someone to send to, not whether the real
-            // file has landed (viewModel.isRealCaptureReady). That guard still blocks the tap (here
-            // and again inside sendCaptured()); it just isn't something the button flashes through.
-            // Gating the color on it briefly painted the muted "disabled" look after every capture,
-            // then snapped to the theme gradient once the real file saved: a jarring flash.
-            val canSend = hasRecipients
+            // Always the live look, never the muted grey one: a grey Send gave no hint what to do
+            // (it went grey again right after adding a first friend). Tapping it always does
+            // something: with someone picked it sends, with nobody picked it opens the friend picker
+            // (or, for a person with no friends, the sheet on how to add or invite one); see
+            // CameraViewModel.onSendTapped. Not tied to whether the real file has landed
+            // (viewModel.isRealCaptureReady) either: that guard still blocks the send inside
+            // sendCaptured(), and tying the color to it painted a disabled look after every capture.
             Box(
                 modifier = Modifier
                     .size(70.dp)
                     .clip(CircleShape)
-                    .background(
-                        if (canSend) emberButtonBrush(EmberTheme.key, colors) else Brush.linearGradient(listOf(colors.border, colors.border)),
-                    )
-                    .clickable(enabled = !viewModel.isQueuingSend && canSend) {
-                        viewModel.sendCaptured(context.applicationContext, onSent)
+                    .background(emberButtonBrush(EmberTheme.key, colors))
+                    .clickable(enabled = !viewModel.isQueuingSend && !viewModel.isCheckingFriends) {
+                        viewModel.onSendTapped(context.applicationContext, onSent, onNoFriends, onPickRecipients)
                     },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
                     contentDescription = stringResource(R.string.camera_send),
-                    tint = if (canSend) colors.accentText else colors.mutedDim,
+                    tint = colors.accentText,
                     modifier = Modifier.size(26.dp),
                 )
             }

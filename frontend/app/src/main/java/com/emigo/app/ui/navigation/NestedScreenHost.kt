@@ -1,15 +1,31 @@
 package com.emigo.app.ui.navigation
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.emigo.app.EmberApplication
+import com.emigo.app.core.findActivity
 import com.emigo.app.ui.activity.ActivityScreen
 import com.emigo.app.ui.activity.ActivityViewModel
 import com.emigo.app.ui.camera.CameraViewModel
@@ -65,8 +81,29 @@ internal fun NestedScreenHost(
     resolveActorSubject: (String) -> ProfileSubject?,
     mainTabs: @Composable () -> Unit,
 ) {
+    // Pages slide in from the right and back out to the right, like the iPhone, instead of
+    // appearing at once. The page being shown is described by a value (HostScreen), not read live
+    // from `nav` inside each branch, so a page that is leaving keeps drawing what it showed
+    // (a profile's person is cleared from `nav` the moment the profile closes).
+    val target = hostScreenFor(nav.nestedScreen, nav.selectedProfileSubject, nav.friendProfileReturnTo, shell.showRecipientPicker)
+    // The Gold page is drawn over this host (see SignedInShell) with its own slide-up. Opening it
+    // from another page (Theme, Widget settings) swaps that page away; that swap stays instant, so
+    // the old page doesn't slide off behind Gold's own animation.
+    val goldIsOpening = nav.nestedScreen == NestedScreen.GOLD
+    AnimatedContent(
+        targetState = target,
+        modifier = Modifier.fillMaxSize(),
+        transitionSpec = {
+            if (goldIsOpening) ContentTransform(EnterTransition.None, ExitTransition.None, sizeTransform = null)
+            else pageTransition(initialState, targetState)
+        },
+        // Same page, no transition: e.g. a profile updating in place after a request is accepted.
+        contentKey = { it.key },
+        label = "page",
+    ) { screen ->
+    val shown = (screen as? HostScreen.Nested)?.screen
     when {
-        nav.nestedScreen == NestedScreen.PROFILE -> {
+        shown == NestedScreen.PROFILE -> {
             val myProfileViewModel: MyProfileViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer {
@@ -86,7 +123,7 @@ internal fun NestedScreenHost(
             MyProfileScreen(viewModel = myProfileViewModel, onClose = { nav.nestedScreen = null })
         }
 
-        nav.nestedScreen == NestedScreen.THEME -> ThemeScreen(
+        shown == NestedScreen.THEME -> ThemeScreen(
             viewModel = themeViewModel,
             onBack = { nav.nestedScreen = null },
             onPreview = onPreviewTheme,
@@ -100,7 +137,7 @@ internal fun NestedScreenHost(
         // onNavigateToFriends must close this nested screen and move the pager (the
         // pattern FriendProfileScreen's onSendPhotoClick uses): closing alone would
         // leave the pager on its current page underneath.
-        nav.nestedScreen == NestedScreen.ACTIVITY -> ActivityScreen(
+        shown == NestedScreen.ACTIVITY -> ActivityScreen(
             viewModel = activityViewModel,
             onCameraClick = {
                 nav.nestedScreen = null
@@ -123,7 +160,7 @@ internal fun NestedScreenHost(
             hazeState = hazeState,
         )
 
-        nav.nestedScreen == NestedScreen.WIDGET_SETTINGS -> {
+        shown == NestedScreen.WIDGET_SETTINGS -> {
             val widgetSettingsViewModel: WidgetSettingsViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer {
@@ -138,7 +175,7 @@ internal fun NestedScreenHost(
             )
         }
 
-        nav.nestedScreen == NestedScreen.BLOCKED_USERS -> {
+        shown == NestedScreen.BLOCKED_USERS -> {
             val blockedUsersViewModel: BlockedUsersViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer { BlockedUsersViewModel(app.stringProvider, app.safetyRepository) }
@@ -150,7 +187,7 @@ internal fun NestedScreenHost(
             )
         }
 
-        nav.nestedScreen == NestedScreen.SENT_PHOTOS -> {
+        shown == NestedScreen.SENT_PHOTOS -> {
             val sentPhotosViewModel: SentPhotosViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer { SentPhotosViewModel(app.stringProvider, app.photoRepository) }
@@ -162,17 +199,26 @@ internal fun NestedScreenHost(
             )
         }
 
-        nav.nestedScreen == NestedScreen.OTHER_SETTINGS -> {
+        shown == NestedScreen.OTHER_SETTINGS -> {
+            val activity = LocalContext.current.findActivity()
             OtherSettingsScreen(
                 onClose = { nav.nestedScreen = null },
                 onDeleteAccount = { app.userRepository.deleteAccount() },
                 // Same local cleanup and return to login as a manual sign-out; no
                 // account is left for the cached state to belong to.
                 onAccountDeleted = onSignOut,
+                // Gold members never see ads, so they are never asked and never have a choice to
+                // change; the ad services aren't even contacted for them.
+                isPrivacyOptionsRequired = {
+                    activity != null &&
+                        !app.subscriptionRepository.isGoldMemberOrLastKnown() &&
+                        app.adConsent.isPrivacyOptionsRequired(activity)
+                },
+                onOpenPrivacyOptions = { activity?.let(app.adConsent::showPrivacyOptions) },
             )
         }
 
-        nav.nestedScreen == NestedScreen.FIND_PEOPLE -> {
+        shown == NestedScreen.FIND_PEOPLE -> {
             val findPeopleViewModel: FindPeopleViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer { FindPeopleViewModel(app.stringProvider, app.friendRepository) }
@@ -189,8 +235,10 @@ internal fun NestedScreenHost(
             )
         }
 
-        nav.nestedScreen == NestedScreen.FRIEND_PROFILE && nav.selectedProfileSubject != null -> {
-            val subject = nav.selectedProfileSubject!!
+        screen is HostScreen.FriendProfile -> {
+            // From the screen value, not `nav`: while this page slides away the person has
+            // already been cleared from `nav`.
+            val subject = screen.subject
             // A ViewModel cached under a hand-built string key (userId alone, then subject
             // kind + userId) eventually collides, because the same person is revisited
             // many times as the relationship changes (stranger, requested, friend,
@@ -266,7 +314,7 @@ internal fun NestedScreenHost(
             )
         }
 
-        shell.showRecipientPicker -> {
+        screen is HostScreen.Picker -> {
             val recipientPickerViewModel: RecipientPickerViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer {
@@ -303,7 +351,9 @@ internal fun NestedScreenHost(
                 viewModel = recipientPickerViewModel,
                 onClose = { shell.showRecipientPicker = false },
                 onConfirm = { ids ->
-                    cameraViewModel.setSelectedRecipients(ids)
+                    // The picker's list is the fresh one: the camera's can be missing a friend
+                    // added after it loaded, which left Send disabled for the chosen friend.
+                    cameraViewModel.setSelectedRecipients(ids, recipientPickerViewModel.friends)
                     shell.showRecipientPicker = false
                 },
                 onAddFriend = {
@@ -315,4 +365,35 @@ internal fun NestedScreenHost(
 
         else -> mainTabs()
     }
+    }
 }
+
+/** The iPhone-style push and pop. A push slides the new page in from the right over the old one,
+ * which drifts a little to the left and dims; a pop slides the top page out to the right and
+ * brings the one underneath back. The page being revealed or covered sits underneath, so the
+ * moving page is always the one on top. No transition runs at app start. */
+private fun AnimatedContentTransitionScope<HostScreen>.pageTransition(from: HostScreen, to: HostScreen): ContentTransform {
+    val push = isPush(from, to)
+    val slide = tween<IntOffset>(durationMillis = PAGE_TRANSITION_MILLIS, easing = PageEasing)
+    val fade = tween<Float>(durationMillis = PAGE_TRANSITION_MILLIS, easing = PageEasing)
+    return if (push) {
+        ContentTransform(
+            targetContentEnter = slideInHorizontally(slide) { width -> width },
+            initialContentExit = slideOutHorizontally(slide) { width -> -width / 4 } + fadeOut(fade, targetAlpha = 0.6f),
+            targetContentZIndex = 1f,
+            sizeTransform = null,
+        )
+    } else {
+        ContentTransform(
+            targetContentEnter = slideInHorizontally(slide) { width -> -width / 4 } + fadeIn(fade, initialAlpha = 0.6f),
+            initialContentExit = slideOutHorizontally(slide) { width -> width },
+            targetContentZIndex = 0f,
+            sizeTransform = null,
+        )
+    }
+}
+
+private const val PAGE_TRANSITION_MILLIS = 340
+
+/** Fast start, long gentle stop: close to the curve the iPhone uses for a push. */
+private val PageEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)

@@ -2,6 +2,7 @@ package com.emigo.app.data.repository
 
 import com.emigo.app.data.SingleFlight
 import com.emigo.app.data.TtlCache
+import com.emigo.app.data.adRewardRequired
 import com.emigo.app.data.remote.EmberApi
 import com.emigo.app.data.safeCall
 import com.emigo.app.data.remote.dto.CreateRecipientListBody
@@ -21,6 +22,8 @@ import retrofit2.Response
  * once (Camera's recipient picker, Home's own friend-avatar photo lookup) rather than each one
  * hand-picking its own number. */
 const val ALL_FRIENDS_LIMIT = 500
+
+private const val HTTP_PAYMENT_REQUIRED = 402
 
 class FriendRepository(private val api: EmberApi) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -76,7 +79,16 @@ class FriendRepository(private val api: EmberApi) {
     }.onSuccess { friendsCache.invalidateAll() }
 
     suspend fun restoreStreak(friendshipId: String): Result<FriendSummaryDto> = safeCall {
-        handle(api.restoreStreak(friendshipId)) { "Couldn't restore that streak (${it})" }
+        val response = api.restoreStreak(friendshipId)
+        // 402 is the server saying "no Gold and not enough watched ads on record", with how many it
+        // takes and how many it has. The rewarded-ad flow treats it as "show more, or ask again
+        // shortly" rather than as an error to show.
+        if (response.code() == HTTP_PAYMENT_REQUIRED) {
+            val body = response.errorBody()?.string()?.let { runCatching { json.decodeFromString<ErrorResponse>(it) }.getOrNull() }
+            Result.failure(adRewardRequired(body))
+        } else {
+            handle(response) { "Couldn't restore that streak (${it})" }
+        }
     }.onSuccess { friendsCache.invalidateAll() }
 
     suspend fun removeFriend(friendshipId: String): Result<Unit> = safeCall {

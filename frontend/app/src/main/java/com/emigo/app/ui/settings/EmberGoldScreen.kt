@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.rounded.AppShortcut
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PhotoLibrary
@@ -135,6 +136,9 @@ fun EmberGoldScreen(
     }
 
     val perks = listOf(
+        // First, because it is what everyone without Gold meets most often: the ad before a
+        // streak restore or a gallery photo.
+        GoldPerk(Icons.Rounded.Block, stringResource(R.string.gold_perk_no_ads_title), stringResource(R.string.gold_perk_no_ads_detail)),
         GoldPerk(Icons.Rounded.Restore, stringResource(R.string.gold_perk_restore_streak_title), stringResource(R.string.gold_perk_restore_streak_detail)),
         GoldPerk(Icons.Rounded.Palette, stringResource(R.string.gold_perk_themes_title), stringResource(R.string.gold_perk_themes_detail)),
         GoldPerk(Icons.Rounded.PhotoLibrary, stringResource(R.string.gold_perk_gallery_title), stringResource(R.string.gold_perk_gallery_detail)),

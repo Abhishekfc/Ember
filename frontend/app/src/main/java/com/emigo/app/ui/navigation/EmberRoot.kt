@@ -15,7 +15,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -33,9 +32,9 @@ import com.emigo.app.ui.theme.EmberAppTheme
 import com.emigo.app.ui.theme.EmberTheme
 import com.emigo.app.ui.theme.ThemeKey
 import com.emigo.app.ui.theme.ThemeViewModel
-import com.emigo.app.widget.EmberWidget
-import com.emigo.app.widget.WidgetPhotoStore
 import com.emigo.app.widget.WidgetPreferenceStore
+import com.emigo.app.widget.WidgetSession
+import com.emigo.app.widget.WidgetUpdateWorker
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.Dispatchers
@@ -184,15 +183,15 @@ internal fun EmberRoot(
                 AppIconSwitcher.apply(app, AppIconKey.DEFAULT)
             }
             coroutineScope.launch { app.notificationPreferenceStore.clear() }
+            // An invite link not yet dealt with belonged to the account that just left.
+            coroutineScope.launch { app.invitePreferenceStore.clearPending() }
             // The widget reads its cached photo (and for Gold, its featured-friend choice and
             // cached Gold status) regardless of sign-in state; without this a friend's private
             // photo and name, or the old account's customization, keeps applying after
             // sign-out.
-            coroutineScope.launch {
-                WidgetPhotoStore(app).clear()
-                widgetPreferenceStore.clear()
-                EmberWidget().updateAll(app)
-            }
+            // The same routine every other sign-out path uses (see WidgetSession), which also
+            // stops the widget's background refresh.
+            coroutineScope.launch { WidgetSession.clear(app) }
             // Coil keeps every photo this account viewed (friends' photos, profile pictures)
             // in an on-disk cache that survived sign-out. Clearing the widget's one cached
             // photo while leaving that history was inconsistent. Costs only a re-download of
@@ -276,6 +275,10 @@ internal fun EmberRoot(
         // orderings with one path.
         LaunchedEffect(authenticated) {
             if (authenticated) {
+                // The widget's background refresh is stopped when an account ends (see
+                // WidgetSession); this starts it again on sign-in, without waiting for the next
+                // app launch. Safe to call repeatedly.
+                WidgetUpdateWorker.schedule(app)
                 val token = runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull()
                 if (token != null) app.authRepository.registerDeviceToken(token)
             }

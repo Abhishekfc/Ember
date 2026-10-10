@@ -11,6 +11,19 @@ import coil3.disk.DiskCache
 import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.request.crossfade
+import com.emigo.app.ads.AdConsent
+import com.emigo.app.ads.AdMobRewardedAds
+import com.emigo.app.ads.GalleryUnlock
+import com.emigo.app.ads.RewardedAds
+import com.emigo.app.ads.SharedPrefsGalleryUnlockStorage
+import com.emigo.app.invite.InstallReferrerReader
+import com.emigo.app.invite.InviteReferral
+import com.emigo.app.widget.WidgetSession
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import com.emigo.app.core.StringProvider
 import com.emigo.app.data.billing.BillingManager
 import com.emigo.app.data.repository.ActivityRepository
@@ -21,6 +34,7 @@ import com.emigo.app.data.repository.SafetyRepository
 import com.emigo.app.data.repository.SubscriptionRepository
 import com.emigo.app.data.repository.UserRepository
 import com.emigo.app.data.local.CameraHintPreferenceStore
+import com.emigo.app.data.local.InvitePreferenceStore
 import com.emigo.app.data.local.LocalListCache
 import com.emigo.app.data.local.NotificationPreferenceStore
 import com.emigo.app.data.local.AppIconPreferenceStore
@@ -86,6 +100,23 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
     val localListCache by lazy { LocalListCache(this) }
     val cameraHintPreferenceStore by lazy { CameraHintPreferenceStore(this) }
 
+    // "Add @ann?" after installing from ann's invite link (see invite/).
+    val invitePreferenceStore by lazy { InvitePreferenceStore(this) }
+    val inviteReferral by lazy {
+        InviteReferral(
+            store = invitePreferenceStore,
+            readInstallReferrer = { InstallReferrerReader(this).read() },
+            search = friendRepository::searchUsers,
+            sendRequest = { userId -> friendRepository.sendFriendRequest(userId).map { } },
+        )
+    }
+
+    // Rewarded ads (see ads/). All lazy, and the ads SDK itself only starts when an ad is first
+    // asked for, so someone with Emigo Gold, who never sees one, never loads it.
+    val adConsent by lazy { AdConsent(this) }
+    val rewardedAds: RewardedAds by lazy { AdMobRewardedAds(this, adConsent) }
+    val galleryUnlock by lazy { GalleryUnlock(SharedPrefsGalleryUnlockStorage(this)) }
+
     // Bridges EmberFirebaseMessagingService (a separate Android component with no direct
     // reference to whatever ViewModels/Activity happen to be alive) to a live HomeViewModel —
     // same pattern as NetworkModule.sessionExpired. A silent background NEW_PHOTO push always
@@ -127,6 +158,7 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        stopWidgetWhenSignedOut()
         // Notification channels are a one-time, idempotent registration — safe (and normal) to
         // call on every process start rather than checking whether it already exists.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -141,6 +173,23 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply { description = getString(R.string.channel_streaks_description) }
             getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(channel, streakChannel))
+        }
+    }
+
+    /** Whenever the account signs out, whichever way it happens (the user, a background job finding
+     * the session dead, or Firebase ending a session by itself after the password was changed on
+     * another phone), the widget stops with it. Registered at every process start, because that
+     * last case can happen while the app has no screen open. Only reacts to going from signed in
+     * to signed out, so a phone that was never signed in does nothing. See [WidgetSession]. */
+    private fun stopWidgetWhenSignedOut() {
+        val auth = FirebaseAuth.getInstance()
+        var hadUser = auth.currentUser != null
+        auth.addAuthStateListener { current ->
+            val hasUser = current.currentUser != null
+            if (hadUser && !hasUser) {
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { WidgetSession.clear(this@EmberApplication) }
+            }
+            hadUser = hasUser
         }
     }
 

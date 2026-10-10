@@ -14,10 +14,12 @@ import com.emigo.app.MainActivity
 import com.emigo.app.NEW_PHOTO_NOTIFICATION_CHANNEL_ID
 import com.emigo.app.R
 import com.emigo.app.STREAK_NOTIFICATION_CHANNEL_ID
+import com.emigo.app.data.SessionGuard
 import com.emigo.app.ui.navigation.EXTRA_NOTIFICATION_ACTION
 import com.emigo.app.ui.navigation.EXTRA_STREAK_FRIENDSHIP_ID
 import com.emigo.app.ui.navigation.NOTIFICATION_ACTION_RESTORE_STREAK
 import com.emigo.app.widget.WidgetPhotoSync
+import com.emigo.app.widget.WidgetSession
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -58,10 +60,23 @@ class EmberFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        when (message.data["type"]) {
-            "NEW_PHOTO" -> handleNewPhoto(message)
-            "PHOTO_DELETED" -> handlePhotoDeleted(message)
-            "STREAK_BROKEN" -> handleStreakBroken(message)
+        val type = message.data["type"]
+        when (type) {
+            "NEW_PHOTO", "PHOTO_DELETED", "STREAK_BROKEN" -> scope.launch {
+                // The server keeps sending to a phone until it is told otherwise, including one
+                // whose account was logged out elsewhere (a password change). Those pushes must
+                // not put a friend's photo on the widget or show a notification, so the account is
+                // checked first and, if it is gone, the widget is cleared instead.
+                if (!SessionGuard.isSessionValid()) {
+                    WidgetSession.clear(application)
+                    return@launch
+                }
+                when (type) {
+                    "NEW_PHOTO" -> handleNewPhoto(message)
+                    "PHOTO_DELETED" -> handlePhotoDeleted(message)
+                    "STREAK_BROKEN" -> handleStreakBroken(message)
+                }
+            }
             "FRIEND_REQUEST_ACCEPTED", "FRIEND_REQUEST_RECEIVED" -> handleFriendsChanged()
         }
     }

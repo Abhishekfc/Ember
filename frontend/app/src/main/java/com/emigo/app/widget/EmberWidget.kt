@@ -30,6 +30,7 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.emigo.app.MainActivity
 import com.emigo.app.R
+import com.google.firebase.auth.FirebaseAuth
 import java.io.File
 
 /** The home-screen widget: shows the single most recent photo any friend has sent, matching the
@@ -38,7 +39,10 @@ import java.io.File
 class EmberWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val state = WidgetPhotoStore(context).current()
+        // Nobody signed in means no photo, whatever is still saved: a second safety on top of
+        // WidgetSession clearing the saved copy, so a friend's private photo can never be drawn
+        // for an account that is gone, even if some path forgot to clear it.
+        val state = if (FirebaseAuth.getInstance().currentUser == null) null else WidgetPhotoStore(context).current()
         val bitmap = state
             ?.let { File(it.localFilePath).takeIf { file -> file.exists() } }
             ?.let { BitmapFactory.decodeFile(it.absolutePath) }
