@@ -4,20 +4,14 @@ import android.app.Activity
 import android.content.Context
 import java.time.LocalDate
 
-/** Ads to watch for one gallery photo. */
-const val ADS_PER_GALLERY_PHOTO = 2
-
-/** Gallery photos a free account can unlock in one day. Without a ceiling, someone could watch ads
- * all day instead of getting Emigo Gold.
- *
- * Five a day: ten ads buys five moments, which is plenty to be useful and still a reason to
- * consider Gold. */
-const val MAX_GALLERY_UNLOCKS_PER_DAY = 5
-
-/** What survives closing the app: whether an unlock is waiting to be used, and how many were
- * earned today. */
+/** What survives closing the app: whether an unlock is waiting to be used, how many ads are
+ * already watched toward the next one, and how many unlocks were earned today. */
 interface GalleryUnlockStorage {
     var hasPass: Boolean
+
+    /** Ads watched toward the next unlock. Saved so that an ad that fails to load part way (or the
+     * app being closed) never costs the ones already watched. */
+    var adsWatched: Int
 
     /** The day [unlocksOnThatDay] was counted for, as `2026-10-08`; empty before the first one. */
     var day: String
@@ -33,6 +27,10 @@ class SharedPrefsGalleryUnlockStorage(context: Context) : GalleryUnlockStorage {
         get() = prefs.getBoolean("has_pass", false)
         set(value) = prefs.edit().putBoolean("has_pass", value).apply()
 
+    override var adsWatched: Int
+        get() = prefs.getInt("ads_watched", 0)
+        set(value) = prefs.edit().putInt("ads_watched", value).apply()
+
     override var day: String
         get() = prefs.getString("day", "").orEmpty()
         set(value) = prefs.edit().putString("day", value).apply()
@@ -44,7 +42,7 @@ class SharedPrefsGalleryUnlockStorage(context: Context) : GalleryUnlockStorage {
 
 /**
  * Sending a photo from the gallery is an Emigo Gold perk. Without Gold, watching
- * [ADS_PER_GALLERY_PHOTO] ads earns one photo: a "pass" that is kept until a gallery photo is
+ * [adsPerPhoto] ads earns one photo: a "pass" that is kept until a gallery photo is
  * actually sent, so picking a photo and then changing your mind costs nothing.
  *
  * This is checked in the app only. The server can't tell a gallery photo from a camera photo, so
@@ -52,26 +50,41 @@ class SharedPrefsGalleryUnlockStorage(context: Context) : GalleryUnlockStorage {
  */
 class GalleryUnlock(
     private val storage: GalleryUnlockStorage,
+    /** The current rules (see [AdSettings]); read on every use, so a change made in the Firebase
+     * console applies as soon as the phone has fetched it. */
+    private val settings: AdSettingsProvider = AdSettingsProvider { AdSettings() },
     private val today: () -> LocalDate = { LocalDate.now() },
 ) {
-    /** Ads watched toward the next pass. Kept while the app runs, not across restarts. */
-    var adsWatched: Int = 0
-        private set
+    /** Are ads on at all? False is the safety switch: nothing shows an ad, and the screens offer
+     * Emigo Gold only. */
+    val adsEnabled: Boolean get() = settings.current().adsEnabled
+
+    /** Ads to watch for one gallery photo. Progress toward it is saved (see
+     * [GalleryUnlockStorage.adsWatched]), so a later ad that cannot be loaded never loses the ones
+     * already watched. */
+    val adsPerPhoto: Int get() = settings.current().galleryAdsPerPhoto
+
+    /** Gallery photos a free account can unlock in one day. Without a ceiling, someone could watch
+     * ads all day instead of getting Emigo Gold. */
+    val unlocksPerDay: Int get() = settings.current().galleryUnlocksPerDay
+
+    /** Ads watched toward the next pass. Saved, so it survives closing the app. */
+    val adsWatched: Int get() = storage.adsWatched
 
     val hasPass: Boolean get() = storage.hasPass
 
     val unlocksLeftToday: Int
         get() {
             val usedToday = if (storage.day == today().toString()) storage.unlocksOnThatDay else 0
-            return (MAX_GALLERY_UNLOCKS_PER_DAY - usedToday).coerceAtLeast(0)
+            return (unlocksPerDay - usedToday).coerceAtLeast(0)
         }
 
     /** Counts one finished ad. True when it was the last one needed and a pass was granted. */
     fun onAdWatched(): Boolean {
         if (unlocksLeftToday == 0) return false
-        adsWatched++
-        if (adsWatched < ADS_PER_GALLERY_PHOTO) return false
-        adsWatched = 0
+        storage.adsWatched++
+        if (storage.adsWatched < adsPerPhoto) return false
+        storage.adsWatched = 0
         storage.hasPass = true
         val day = today().toString()
         storage.unlocksOnThatDay = (if (storage.day == day) storage.unlocksOnThatDay else 0) + 1
@@ -87,7 +100,7 @@ class GalleryUnlock(
 
 /** How one gallery ad ended. */
 sealed interface GalleryAdResult {
-    /** Watched. [watched] of [ADS_PER_GALLERY_PHOTO] are done; the pass is not earned yet. */
+    /** Watched. [watched] of the ads one photo needs are done; the pass is not earned yet. */
     data class Progress(val watched: Int) : GalleryAdResult
 
     /** That was the last ad: the gallery is open for one photo. */
@@ -107,6 +120,8 @@ class WatchAdForGallery(
     private val unlock: GalleryUnlock,
 ) {
     suspend fun watchOne(activity: Activity): GalleryAdResult {
+        // The remote safety switch: with ads off no ad is shown from here either.
+        if (!unlock.adsEnabled) return GalleryAdResult.AdUnavailable
         if (unlock.unlocksLeftToday == 0) return GalleryAdResult.DailyLimitReached
         val ad = ads.load(activity, adUnitId) ?: return GalleryAdResult.AdUnavailable
         // No user id or custom data: nothing on the server depends on this ad.

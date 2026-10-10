@@ -30,6 +30,7 @@ import com.emigo.app.ui.theme.EmberTheme
 @Composable
 fun RestoreStreakSheet(
     friendName: String?,
+    adsEnabled: Boolean,
     isWorking: Boolean,
     progress: AdProgress?,
     onWatchAd: () -> Unit,
@@ -48,32 +49,41 @@ fun RestoreStreakSheet(
             )
             SheetTitle(text = stringResource(R.string.restore_sheet_title), modifier = Modifier.padding(top = 14.dp))
             SheetMessage(
-                text = if (friendName != null) {
-                    stringResource(R.string.restore_sheet_message_named, friendName)
-                } else {
-                    stringResource(R.string.restore_sheet_message)
+                text = when {
+                    // The remote safety switch has turned ads off: Gold is the only way.
+                    !adsEnabled -> stringResource(R.string.restore_gold_only_message)
+                    friendName != null -> stringResource(R.string.restore_sheet_message_named, friendName)
+                    else -> stringResource(R.string.restore_sheet_message)
                 },
                 modifier = Modifier.padding(top = 8.dp),
             )
         },
         actions = { dismiss ->
-            SheetPrimaryButton(
-                text = if (isWorking && progress != null) {
-                    stringResource(R.string.restore_sheet_progress, progress.current, progress.total)
-                } else {
-                    stringResource(R.string.restore_sheet_watch_ad)
-                },
-                icon = Icons.Rounded.PlayArrow,
-                isLoading = isWorking,
-                onClick = onWatchAd,
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            SheetSecondaryButton(
-                text = stringResource(R.string.camera_get_gold),
-                icon = Icons.Rounded.WorkspacePremium,
-                enabled = !isWorking,
-                onClick = onGetGold,
-            )
+            if (adsEnabled) {
+                SheetPrimaryButton(
+                    text = if (isWorking && progress != null) {
+                        stringResource(R.string.restore_sheet_progress, progress.current, progress.total)
+                    } else {
+                        stringResource(R.string.restore_sheet_watch_ad)
+                    },
+                    icon = Icons.Rounded.PlayArrow,
+                    isLoading = isWorking,
+                    onClick = onWatchAd,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SheetSecondaryButton(
+                    text = stringResource(R.string.camera_get_gold),
+                    icon = Icons.Rounded.WorkspacePremium,
+                    enabled = !isWorking,
+                    onClick = onGetGold,
+                )
+            } else {
+                SheetPrimaryButton(
+                    text = stringResource(R.string.camera_get_gold),
+                    icon = Icons.Rounded.WorkspacePremium,
+                    onClick = onGetGold,
+                )
+            }
             SheetTextButton(text = stringResource(R.string.camera_maybe_later), enabled = !isWorking, onClick = dismiss)
         },
     )

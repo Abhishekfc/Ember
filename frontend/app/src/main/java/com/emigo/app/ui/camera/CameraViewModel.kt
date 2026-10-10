@@ -20,7 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.emigo.app.ads.ADS_PER_GALLERY_PHOTO
 import com.emigo.app.ads.GalleryAdResult
 import com.emigo.app.ads.GalleryUnlock
 import com.emigo.app.ads.WatchAdForGallery
@@ -200,7 +199,7 @@ class CameraViewModel(
     var hasGalleryPass by mutableStateOf(galleryUnlock.hasPass)
         private set
 
-    /** Ads watched so far toward the next gallery photo (0 or 1 of [ADS_PER_GALLERY_PHOTO]). */
+    /** Ads watched so far toward the next gallery photo (fewer than [galleryAdsNeeded]). */
     var galleryAdsWatched by mutableStateOf(galleryUnlock.adsWatched)
         private set
     var isWatchingGalleryAd by mutableStateOf(false)
@@ -391,7 +390,11 @@ class CameraViewModel(
             launchPicker()
         } else {
             // Decided when the sheet opens, so it can say so up front instead of letting someone
-            // tap a button that can't work.
+            // tap a button that can't work. The rules are read now too (they can change from the
+            // Firebase console), so the sheet shows the same numbers the unlock will use.
+            galleryAdsEnabled = galleryUnlock.adsEnabled
+            galleryAdsNeeded = galleryUnlock.adsPerPhoto
+            galleryUnlocksPerDay = galleryUnlock.unlocksPerDay
             isGalleryLimitReached = galleryUnlock.unlocksLeftToday == 0
             showGoldUpsell = true
         }
@@ -401,7 +404,17 @@ class CameraViewModel(
     var isGalleryLimitReached by mutableStateOf(false)
         private set
 
-    /** Shows one ad toward a gallery photo. The second one opens the picker, through
+    /** What the gallery sheet is showing, read from the current ad rules when it opens: whether ads
+     * are on at all (the safety switch; off means Gold only), how many ads one photo costs, and how
+     * many photos can be unlocked a day. */
+    var galleryAdsEnabled by mutableStateOf(galleryUnlock.adsEnabled)
+        private set
+    var galleryAdsNeeded by mutableStateOf(galleryUnlock.adsPerPhoto)
+        private set
+    var galleryUnlocksPerDay by mutableStateOf(galleryUnlock.unlocksPerDay)
+        private set
+
+    /** Shows one ad toward a gallery photo. The last one needed opens the picker, through
      * [launchPicker], exactly as a tap would for a Gold member. */
     fun watchGalleryAd(activity: Activity, launchPicker: () -> Unit) {
         if (isWatchingGalleryAd) return

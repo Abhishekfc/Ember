@@ -31,6 +31,9 @@ class FriendsViewModel(
     private val subscriptionRepository: SubscriptionRepository,
     // Restores a streak for someone without Gold after they watch an ad (see RestoreStreakWithAd).
     private val restoreStreakWithAd: RestoreStreakWithAd,
+    // The remote safety switch for ads (see AdSettings): when it says no, the restore sheet offers
+    // Gold only and nothing here ever starts an ad.
+    private val adsEnabled: () -> Boolean = { true },
     // Lets other long-lived ViewModels with their own separate copy of the friend list (Camera's
     // recipient picker, mainly) find out a request was just accepted here, without this ViewModel
     // needing any reference back to them — see EmberApplication.friendsChangedEvents.
@@ -292,6 +295,9 @@ class FriendsViewModel(
         }
     }
 
+    /** Whether ads are on at all (the remote safety switch). Read when the restore sheet is drawn. */
+    val areAdsEnabled: Boolean get() = adsEnabled()
+
     /** Which ad of how many is playing while a streak is being restored with ads, or null when
      * none is (before the first, between the last and the server's answer, and when idle). */
     var restoreAdProgress by mutableStateOf<AdProgress?>(null)
@@ -301,6 +307,7 @@ class FriendsViewModel(
      * server asks for), then asks the server, which restores it only once Google has confirmed
      * they were watched. Gold members use [restoreStreak] instead and never see an ad. */
     fun restoreStreakByWatchingAd(friendshipId: String, activity: Activity) {
+        if (!adsEnabled()) return
         if (friendshipId in restoringStreakFriendshipIds) return
         viewModelScope.launch {
             restoringStreakFriendshipIds = restoringStreakFriendshipIds + friendshipId

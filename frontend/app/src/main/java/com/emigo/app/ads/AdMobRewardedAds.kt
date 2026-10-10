@@ -21,11 +21,15 @@ import kotlin.coroutines.resume
 class AdMobRewardedAds(
     private val context: Context,
     private val consent: AdConsent,
+    private val settings: AdSettingsProvider = AdSettingsProvider { AdSettings() },
 ) : RewardedAds {
 
     private val isStarted = AtomicBoolean(false)
 
     override suspend fun load(activity: Activity, adUnitId: String): LoadedRewardedAd? {
+        // The safety switch (Firebase Remote Config `ads_enabled`): when it is off no ad is ever
+        // requested, whichever screen asked, and the consent form isn't shown either.
+        if (!settings.current().adsEnabled) return null
         if (!consent.canRequestAds(activity)) return null
         if (isStarted.compareAndSet(false, true)) {
             // Google asks for this off the main thread.

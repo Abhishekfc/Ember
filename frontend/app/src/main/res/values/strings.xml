@@ -473,8 +473,19 @@
     <string name="restore_sheet_watch_ad">Watch ads</string>
     <string name="restore_sheet_progress">Ad %1$d of %2$d</string>
     <string name="gallery_sheet_title">Moments from your gallery</string>
-    <string name="gallery_sheet_message">Watch 2 short ads to send 1 moment. With Emigo Gold, send as many as you like, with no ads.</string>
-    <string name="gallery_sheet_watch_ads">Watch 2 ads, send 1 moment</string>
+    <!-- The number of ads comes from the ad rules (Firebase Remote Config), not from this text. -->
+    <plurals name="gallery_sheet_message">
+        <item quantity="one">Watch %1$d short ad to send 1 moment. With Emigo Gold, send as many as you like, with no ads.</item>
+        <item quantity="other">Watch %1$d short ads to send 1 moment. With Emigo Gold, send as many as you like, with no ads.</item>
+    </plurals>
+    <plurals name="gallery_sheet_watch_ads">
+        <item quantity="one">Watch %1$d ad, send 1 moment</item>
+        <item quantity="other">Watch %1$d ads, send 1 moment</item>
+    </plurals>
+    <!-- Shown instead when the remote safety switch has turned ads off. -->
+    <string name="gallery_gold_only_title">Moments from your gallery</string>
+    <string name="gallery_gold_only_message">Sending photos from your gallery is an Emigo Gold perk. Get Gold to send as many as you like.</string>
+    <string name="restore_gold_only_message">Restoring a streak is an Emigo Gold perk. Get Gold to bring it back.</string>
     <string name="gallery_sheet_watch_next">Watch next ad</string>
     <string name="gallery_sheet_progress">%1$d of %2$d ads watched</string>
     <plurals name="gallery_limit_title">

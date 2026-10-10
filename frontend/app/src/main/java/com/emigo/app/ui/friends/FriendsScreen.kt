@@ -300,6 +300,7 @@ fun FriendsScreen(
     viewModel.restoreChoiceFriendshipId?.let { friendshipId ->
         RestoreStreakSheet(
             friendName = viewModel.friends.firstOrNull { it.friendshipId == friendshipId }?.displayName,
+            adsEnabled = viewModel.areAdsEnabled,
             isWorking = friendshipId in viewModel.restoringStreakFriendshipIds,
             progress = viewModel.restoreAdProgress,
             onWatchAd = { context.findActivity()?.let { viewModel.restoreStreakByWatchingAd(friendshipId, it) } },

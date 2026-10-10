@@ -160,6 +160,7 @@ internal fun SignedInShell(
                         myUserId = { app.userRepository.getMyProfile().map { it.userId } },
                         restore = app.friendRepository::restoreStreak,
                     ),
+                    adsEnabled = { app.adSettings.current().adsEnabled },
                     onFriendsChanged = { app.notifyFriendsChanged() },
                 )
             }

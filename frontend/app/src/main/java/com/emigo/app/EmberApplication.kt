@@ -14,6 +14,7 @@ import coil3.request.crossfade
 import com.emigo.app.ads.AdConsent
 import com.emigo.app.ads.AdMobRewardedAds
 import com.emigo.app.ads.GalleryUnlock
+import com.emigo.app.ads.RemoteAdSettings
 import com.emigo.app.ads.RewardedAds
 import com.emigo.app.ads.SharedPrefsGalleryUnlockStorage
 import com.emigo.app.invite.InstallReferrerReader
@@ -114,8 +115,11 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
     // Rewarded ads (see ads/). All lazy, and the ads SDK itself only starts when an ad is first
     // asked for, so someone with Emigo Gold, who never sees one, never loads it.
     val adConsent by lazy { AdConsent(this) }
-    val rewardedAds: RewardedAds by lazy { AdMobRewardedAds(this, adConsent) }
-    val galleryUnlock by lazy { GalleryUnlock(SharedPrefsGalleryUnlockStorage(this)) }
+    // The ad rules that can change without an app update (gallery ads per photo and per day, and
+    // the ads on/off safety switch); see ads/RemoteAdSettings.kt.
+    val adSettings by lazy { RemoteAdSettings() }
+    val rewardedAds: RewardedAds by lazy { AdMobRewardedAds(this, adConsent, adSettings) }
+    val galleryUnlock by lazy { GalleryUnlock(SharedPrefsGalleryUnlockStorage(this), adSettings) }
 
     // Bridges EmberFirebaseMessagingService (a separate Android component with no direct
     // reference to whatever ViewModels/Activity happen to be alive) to a live HomeViewModel —
@@ -159,6 +163,9 @@ class EmberApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         stopWidgetWhenSignedOut()
+        // Fetches the latest ad rules in the background, at most once per fetch interval (an hour),
+        // so nothing waits on it and a failure just keeps the values already held.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { adSettings.refresh() }
         // Notification channels are a one-time, idempotent registration — safe (and normal) to
         // call on every process start rather than checking whether it already exists.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

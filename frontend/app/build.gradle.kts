@@ -56,7 +56,7 @@ android {
         applicationId = "com.emigo.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
+        versionCode = 14
         versionName = "0.4.4"
     }
 
@@ -181,6 +181,9 @@ dependencies {
     // The -ktx artifact was merged into the base module and is no longer published separately
     // as of recent Firebase BoM releases.
     implementation("com.google.firebase:firebase-messaging")
+    // Ad rules (number of gallery ads, ads on/off) changeable from the Firebase console without an
+    // app update; see ads/RemoteAdSettings.kt.
+    implementation("com.google.firebase:firebase-config")
     // Sign-in itself — see AuthRepository, which now creates/signs in the Firebase identity
     // directly rather than calling this app's own backend for a password check.
     implementation("com.google.firebase:firebase-auth")

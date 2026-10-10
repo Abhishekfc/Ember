@@ -325,6 +325,9 @@ fun CameraScreen(
 
         if (viewModel.showGoldUpsell) {
             GalleryAdSheet(
+                adsEnabled = viewModel.galleryAdsEnabled,
+                adsNeeded = viewModel.galleryAdsNeeded,
+                unlocksPerDay = viewModel.galleryUnlocksPerDay,
                 adsWatched = viewModel.galleryAdsWatched,
                 isWatching = viewModel.isWatchingGalleryAd,
                 isLimitReached = viewModel.isGalleryLimitReached,
