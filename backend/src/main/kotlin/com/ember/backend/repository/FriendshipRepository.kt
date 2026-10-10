@@ -19,6 +19,10 @@ interface FriendshipRepository : JpaRepository<Friendship, UUID> {
     @Query("select f from Friendship f join fetch f.requester join fetch f.addressee where f.status = :status")
     fun findAllByStatus(@Param("status") status: FriendshipStatus): List<Friendship>
 
+    /** How many friendships have a given status: one cheap count, for the streak job's start-up
+     * check to tell whether anything new needs a look without loading every friendship. */
+    fun countByStatus(status: FriendshipStatus): Long
+
     @Query(
         """
         select f from Friendship f

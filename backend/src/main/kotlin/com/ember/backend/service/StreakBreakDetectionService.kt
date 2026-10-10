@@ -57,8 +57,27 @@ class StreakBreakDetectionService(
     // check once on every startup means a break still gets caught (and notified) the next time
     // the backend happens to be running, rather than silently waiting for a cron tick that may
     // not land for days.
+    //
+    // Only when something was actually missed (see catchUpIsNeeded): re-checking every friendship
+    // on every restart was a lot of database work for nothing once the nightly run had already
+    // done it, and a deploy is a restart. When in doubt (the counts can't be read) it checks,
+    // which is the safe direction.
     @EventListener(ApplicationReadyEvent::class)
     fun runCatchUpOnStartup() {
+        val needed = runCatching {
+            catchUpIsNeeded(
+                acceptedFriendships = friendshipRepository.countByStatus(FriendshipStatus.ACCEPTED),
+                checkedFriendships = friendshipStreakStateRepository.count(),
+                notCheckedSince = friendshipStreakStateRepository.countByUpdatedAtBefore(mostRecentNightlyRun(Instant.now())),
+            )
+        }.getOrElse {
+            logger.warn("Streak-break detection: couldn't tell whether the start-up check is needed, running it", it)
+            true
+        }
+        if (!needed) {
+            logger.info("Streak-break detection: the nightly check already covered everything, skipping the start-up check")
+            return
+        }
         logger.info("Streak-break detection: running catch-up check on startup")
         detectBrokenStreaks()
     }
